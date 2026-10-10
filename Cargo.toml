@@ -1,20 +1,51 @@
-# mdpp 的 workspace 根。
+# mdpp —— Markdown++
 #
-# 两个 member，分工是硬的：
+# 一个包、两个 target：库 `mdpp` 与二进制 `mdpp`。
 #
-# - `mdpp`：库。**不依赖任何终端、文件、仓库概念**，只做「markdown → HTML」。
-# - `mdpp-cli`：二进制（命令名 `mdpp`）。库唯一的消费者。
-#
-# 分成两个 crate 而不是「一个包、src/lib.rs + src/bin/」是为了让那条边界在
-# 编译期就成立：库那一侧误用了 CLI 侧的依赖，`cargo build` 会直接失败，
-# 而不是等到运行时才发现。
+# 为什么不是 workspace（原��是两个包，库 `mdpp` + CLI `mdpp-cli`）：那层间接带来的
+# 好处只有「库与二进制不能互相依赖」这一条，而那条在同一个包里**由 rustc 本身**保证
+# —— 二进制里的代码要用库的东西得写 `use mdpp::`，而库那边根本看不到二进制。
+# 为此多一个 `Cargo.toml`、多一层目录、少一次 `cargo` 参数，是划不来的。
 
-[workspace]
-members = ["mdpp", "mdpp-cli"]
-resolver = "2"
+[package]
+name = "mdpp"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+description = "Markdown++ —— markdown-it 之上的可扩展块级语法与链接解析库，附一个命令行"
+keywords = ["markdown", "html", "markdown-it", "cmark", "parser"]
+categories = ["text-processing", "template-engine", "command-line-utilities"]
 
-# 库产物不带符号表、panic 时直接停 —— 两条对库都是纯收益，且对 CLI 同样成立。
-# `lto` 保持 `"thin"`：跨 crate 的模板分发是间接调用，全量 LTO 在这里收益很小，
+[lib]
+# target 名与包名相同，这样库里的路径就是 `mdpp::Mdpp`，不必写 `mdpp_lib::`。
+# `path` 是默认的（`src/lib.rs`），写出来只是为了让两个 target 都摆在明面上。
+name = "mdpp"
+path = "src/lib.rs"
+
+[[bin]]
+# 二进制也叫 `mdpp`：命令行就该这么叫。
+name = "mdpp"
+path = "src/bin/mdpp/main.rs"
+
+[dependencies]
+# 正文解析。刻意关掉默认 features：里面带 `syntect`，它把代码高亮配色以内联
+# style 写死，跟随不了主题，而代码分词不该由一个后端库决定。
+markdown-it = { version = "0.6", default-features = false, features = ["linkify"] }
+# `::html` 的净化器：按 HTML5 规范解析后按白名单重建。
+#
+# 与 markdown-it 的渲染器无关（它输出原始 HTML），所以这两条是本 crate 里仅剩的
+# 「自己动手拼 HTML」的地方 —— 拼之前必须先按规范解析一遍，否则白名单就是一句空话。
+html5ever = "0.39"
+markup5ever_rcdom = "0.39.0"
+
+[dev-dependencies]
+# 只有二进制的测试用它（造临时目录）。库一个都不用，所以它是 dev-dependencies ——
+# 写成普通依赖会让库的使用者也拖上 tempfile。
+tempfile = "3"
+
+# 库产物不带符号表、panic 时直接停 —— 两条对库和二进制都是纯收益。
+# `lto` 保持 `"thin"`：跨 crate 的块分发是间接调用，全量 LTO 在这里收益很小，
 # 而编译时间的代价是实打实的。
 [profile.release]
 opt-level = 3
