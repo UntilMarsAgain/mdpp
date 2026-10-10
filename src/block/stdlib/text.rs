@@ -111,11 +111,7 @@ pub(super) fn render_fields(block: &Block, _node: &Node, fmt: &mut dyn Renderer)
 /// 名字取 `banner` 而不是「方框标题」之类：它是一个**横条**，越短越不容易与别的块混淆。
 pub(super) fn render_banner(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     if node.children.is_empty() {
-        render_problem(
-            block,
-            fmt,
-            "内容是空的：标题带要写一行字，或用 text=… 给",
-        );
+        render_problem(block, fmt, "内容是空的：标题带要写一行字，或用 text=… 给");
         return;
     }
 
@@ -145,7 +141,9 @@ pub(super) fn render_banner(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     }
 
     // 圆角默认开着；要直角就写 rounded=off
-    let rounded = block.param("rounded").map(|value| value.trim().to_lowercase());
+    let rounded = block
+        .param("rounded")
+        .map(|value| value.trim().to_lowercase());
     match rounded.as_deref() {
         None | Some("" | "on" | "true" | "yes") => {}
         Some("off" | "false" | "no" | "0") => class.push_str(" banner--square"),

@@ -87,11 +87,7 @@ impl BlockRule for BlockScanner {
         };
 
         let mode = spec.mode();
-        let mut node = Node::new(BlockNode(Block {
-            name,
-            params,
-            body,
-        }));
+        let mut node = Node::new(BlockNode(Block { name, params, body }));
 
         match mode {
             // 原始档：**不解析**。正文就在 `block.body` 里，一个字不动。

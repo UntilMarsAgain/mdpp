@@ -154,7 +154,10 @@ mod tests {
         }
 
         let mut pages = Pages::default();
-        pages.0.insert("卡片".into(), TemplatePage::Ready("::banner\n  卡片来了\n".into()));
+        pages.0.insert(
+            "卡片".into(),
+            TemplatePage::Ready("::banner\n  卡片来了\n".into()),
+        );
 
         let context = crate::RenderContext::new().with_templates(Arc::new(pages));
         let html = crate::Mdpp::new().render_with("::卡片\n", &context);

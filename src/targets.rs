@@ -166,7 +166,10 @@ mod tests {
         // 跨行的目标不存在
         assert_eq!(encode_target_spaces("![a](b\nc.png)"), "![a](b\nc.png)");
         // 括号配对的不受影响（文件名里有括号）
-        assert_eq!(encode_target_spaces("![a](图 (1).png)"), "![a](图%20(1).png)");
+        assert_eq!(
+            encode_target_spaces("![a](图 (1).png)"),
+            "![a](图%20(1).png)"
+        );
     }
 
     /// `~~~` 围栏同样整个跳过 —— 只认 ``` 会漏掉它

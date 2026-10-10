@@ -40,11 +40,11 @@ use markdown_it::MarkdownIt;
 
 use crate::block;
 use crate::context::{self, RenderContext};
-use crate::telemetry::{debug, trace, Size};
 use crate::registry::BlockRegistry;
 use crate::slug;
 use crate::syntax;
 use crate::targets;
+use crate::telemetry::{debug, trace, Size};
 
 /// 「在渲染途中再渲染一段 markdown」的能力。
 ///
@@ -168,7 +168,10 @@ fn render_parts(
     let _context_guard = context::enter(context.clone());
     // 「再渲染一段」用的是**当次这一趟**的上下文与注册表，而不是新的空的一份 ——
     // 否则 `<markdown>` 里那段里的内部链接会一律变红链、`::html src=` 也取不到页。
-    trace!(depth = crate::context::depth(), "嵌套渲染：装上再渲染一段的能力");
+    trace!(
+        depth = crate::context::depth(),
+        "嵌套渲染：装上再渲染一段的能力"
+    );
     let _nested_guard = NestedGuard {
         previous: NESTED.with(|cell| {
             cell.borrow_mut().replace(Box::new({
@@ -389,8 +392,8 @@ impl MdppBuilder {
 #[cfg(test)]
 mod tests {
     use super::Mdpp;
-    use crate::registry::ContentMode;
     use crate::registry::BlockRegistry;
+    use crate::registry::ContentMode;
     use markdown_it::{Node, Renderer};
 
     fn md_of(src: &str) -> String {
@@ -449,7 +452,10 @@ mod tests {
 
     #[test]
     fn anchor_anchors_can_be_turned_off() {
-        let html = Mdpp::builder().heading_anchors(false).build().render("## 表格\n");
+        let html = Mdpp::builder()
+            .heading_anchors(false)
+            .build()
+            .render("## 表格\n");
         assert!(html.contains("<h2"), "{html}");
         assert!(!html.contains("id="), "{html}");
     }
@@ -482,20 +488,14 @@ mod tests {
     /// 排版规则是可以打开的 —— 这里是证明「默认关」是一个选择，不是不支持
     #[test]
     fn the_typographer_can_be_turned_on_on_purpose() {
-        let html = Mdpp::builder()
-            .typographer(true)
-            .build()
-            .render("a -- b\n");
+        let html = Mdpp::builder().typographer(true).build().render("a -- b\n");
         assert!(html.contains('\u{2013}'), "{html}");
     }
 
     /// 关掉内部链接之后，`[[…]]` 老实当普通文字
     #[test]
     fn the_wikilink_syntax_can_be_turned_off() {
-        let html = Mdpp::builder()
-            .wikilink(false)
-            .build()
-            .render("[[目标]]\n");
+        let html = Mdpp::builder().wikilink(false).build().render("[[目标]]\n");
         assert!(!html.contains("wikilink"), "{html}");
         assert!(html.contains("[[目标]]"), "{html}");
     }
@@ -515,16 +515,12 @@ mod tests {
     #[test]
     fn a_registered_block_renders() {
         let mut registry = BlockRegistry::with_builtins();
-        registry.register_fn(
-            "问候",
-            ContentMode::Markdown,
-            |block, node, fmt| {
-                fmt.open("p", &[("class", "greet".to_string())]);
-                fmt.text(&format!("你好，{}", block.param("who").unwrap_or("世界")));
-                fmt.contents(&node.children);
-                fmt.close("p");
-            },
-        );
+        registry.register_fn("问候", ContentMode::Markdown, |block, node, fmt| {
+            fmt.open("p", &[("class", "greet".to_string())]);
+            fmt.text(&format!("你好，{}", block.param("who").unwrap_or("世界")));
+            fmt.contents(&node.children);
+            fmt.close("p");
+        });
         let mdpp = Mdpp::builder().registry(registry).build();
 
         let html = mdpp.render("::问候 who=某人\n  内容\n");
@@ -558,11 +554,11 @@ mod tests {
     #[test]
     fn two_parsers_keep_their_own_registry() {
         let mut registry = BlockRegistry::new();
-        registry.register_fn("只有一个", ContentMode::Raw, |_, _, fmt| fmt.text("出来了"));
+        registry.register_fn("只有一个", ContentMode::Raw, |_, _, fmt| {
+            fmt.text("出来了")
+        });
         let one = Mdpp::builder().registry(registry).build();
-        let two = Mdpp::builder()
-            .registry(BlockRegistry::new())
-            .build();
+        let two = Mdpp::builder().registry(BlockRegistry::new()).build();
 
         assert!(one.render("::只有一个\n").contains("出来了"));
         assert!(!two.render("::只有一个\n").contains("出来了"));

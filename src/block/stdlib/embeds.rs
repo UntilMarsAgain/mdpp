@@ -110,10 +110,7 @@ pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     let mut attrs: Vec<(&str, String)> = vec![("class", "template-code".to_string())];
     if let Some(lines) = block.param("lines") {
         let off = matches!(lines.trim(), "off" | "false" | "no");
-        attrs.push((
-            "data-lines",
-            if off { "off" } else { "on" }.to_string(),
-        ));
+        attrs.push(("data-lines", if off { "off" } else { "on" }.to_string()));
     }
     if let Some(start) = block.param("start") {
         attrs.push(("data-line-start", start.trim().to_string()));
@@ -312,7 +309,9 @@ mod tests {
     /// 多行的 TeX 里那些 markdown 记号（`#`、`*`、`_`、行首的 `-`）都不该动
     #[test]
     fn multi_line_tex_is_left_alone() {
-        let html = render("::math\n  \\begin{aligned}\n  a &= b_1 \\\\\n  # 行内的井号\n  \\end{aligned}\n");
+        let html = render(
+            "::math\n  \\begin{aligned}\n  a &= b_1 \\\\\n  # 行内的井号\n  \\end{aligned}\n",
+        );
         assert!(html.contains("# 行内的井号"), "{html}");
         assert!(!html.contains("<h1"), "{html}");
         assert!(!html.contains("<em>"), "{html}");

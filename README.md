@@ -219,10 +219,18 @@ mdpp --debug 正文.md > 输出.html    # 输出.html 里没有一行日志
 ## 开发
 
 ```sh
-cargo test               # 179 个测试（库 155、命令行 20、文档 4）
+cargo fmt                # 提交前先跑这个
+cargo test               # 180 个测试（库 156、命令行 20、文档 4）
 cargo clippy --all-targets
 cargo doc --open
 ```
+
+排版交给 rustfmt，语义风格交给 clippy，两件事分开：
+
+- rustfmt 的 `wrap_comments` 默认是 `false`，所以**注释内容一个字都不动** ——
+  中文注释里那些手工对齐的缩进与列表原样留着，它只管代码那部分。
+- clippy 只提示不拦路（没有 blanket `deny`）。deny 掉之后一行警告就发不了版，
+  于是会开始加 `#[allow]` —— 而 `#[allow]` 大多是「这里我知道，改起来更麻烦」。
 
 ## 许可
 

@@ -69,9 +69,8 @@ impl TemplateSource for Pages {
 /// 返回 `Err` 的那一句是给人看的（哪个文件读不了），因为**读了一半的模板页表**
 /// 只会让 `::那个名字` 报「未知块」，而真正的毛病在文件系统那边。
 pub fn template_pages(dir: &Path) -> Result<TemplatePages, String> {
-    let entries = std::fs::read_dir(dir).map_err(|error| {
-        format!("读不了模板页目录 {}：{error}", dir.display())
-    })?;
+    let entries = std::fs::read_dir(dir)
+        .map_err(|error| format!("读不了模板页目录 {}：{error}", dir.display()))?;
 
     let mut pages = Pages::default();
     // 目录里有什么顺序是不定的，排序一下 —— 输出稳定了，diff 才说得上话
@@ -83,14 +82,19 @@ pub fn template_pages(dir: &Path) -> Result<TemplatePages, String> {
     paths.sort();
 
     for path in paths {
-        let Some(stem) = path.file_stem().map(|name| name.to_string_lossy().into_owned()) else {
+        let Some(stem) = path
+            .file_stem()
+            .map(|name| name.to_string_lossy().into_owned())
+        else {
             continue;
         };
         let text = std::fs::read_to_string(&path)
             .map_err(|error| format!("读不了模板页 {}：{error}", path.display()))?;
         // 键存小写：库那边传来的 `name` 也是小写（`page_key` 归一过），
         // 两边一致，`::卡片` 与 `::template:卡片` 才落到同一页
-        pages.0.insert(stem.to_lowercase(), TemplatePage::Ready(text));
+        pages
+            .0
+            .insert(stem.to_lowercase(), TemplatePage::Ready(text));
     }
 
     // 这一条发 `info`：装上订阅器的人（`--debug`）正好想知道「模板页到底进了几页」
@@ -140,7 +144,8 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         std::fs::write(dir.path().join("卡片.md"), "::banner\n  卡片来了\n").expect("写得下");
 
-        let context = RenderContext::new().with_templates(template_pages(dir.path()).expect("读得动"));
+        let context =
+            RenderContext::new().with_templates(template_pages(dir.path()).expect("读得动"));
         // 注意第三个要加引号：不加的话头解析会在空白处断开，变成两个参数 ——
         // 那不是归一失灵，是词法如此
         for src in ["卡片", "template:卡片", r#""Template:  卡片  ""#] {
@@ -161,8 +166,7 @@ mod tests {
                 })
             }
         }
-        let context =
-            RenderContext::new().with_templates(std::sync::Arc::new(Locked));
+        let context = RenderContext::new().with_templates(std::sync::Arc::new(Locked));
         let html = Mdpp::new().render_with("::卡片\n", &context);
         assert!(html.contains("需要口令"), "{html}");
         assert!(!html.contains("template--unknown"), "{html}");

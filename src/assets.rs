@@ -70,7 +70,11 @@ mod tests {
 
     #[test]
     fn the_stylesheet_is_embedded_and_not_empty() {
-        assert!(DEFAULT_CSS.len() > 500, "样式表该是内进来的：{}", DEFAULT_CSS.len());
+        assert!(
+            DEFAULT_CSS.len() > 500,
+            "样式表该是内进来的：{}",
+            DEFAULT_CSS.len()
+        );
         assert!(DEFAULT_CSS.contains(".mdpp-content"), "正文那一层得有样式");
     }
 
@@ -100,20 +104,29 @@ mod tests {
         assert!(html.contains("<p>正文</p>"), "{html}");
         // 样式表里本来就写着 data-mdpp-theme（那是 `::theme` 的落点），
         // 所以这里只能断言 html 标签上**没有**那个属性
-        assert!(html.starts_with("<!DOCTYPE html>\n<html lang=\"zh-Hans\">"), "{html}");
+        assert!(
+            html.starts_with("<!DOCTYPE html>\n<html lang=\"zh-Hans\">"),
+            "{html}"
+        );
     }
 
     #[test]
     fn a_theme_lands_on_the_html_element() {
         let html = full_document("t", "x", Some("dark"));
-        assert!(html.contains(r#"<html lang="zh-Hans" data-mdpp-theme="dark">"#), "{html}");
+        assert!(
+            html.contains(r#"<html lang="zh-Hans" data-mdpp-theme="dark">"#),
+            "{html}"
+        );
     }
 
     /// 标题常常是文件名，里面带 `&` 与引号很常见 —— 不转义就进不了属性
     #[test]
     fn the_title_is_escaped_into_the_attribute() {
         let html = full_document(r#"a"b&c<d"#, "x", None);
-        assert!(html.contains("<title>a&quot;b&amp;c&lt;d</title>"), "{html}");
+        assert!(
+            html.contains("<title>a&quot;b&amp;c&lt;d</title>"),
+            "{html}"
+        );
         // `<` 不该原样出现在标签名附近
         assert!(!html.contains("<d"), "{html}");
     }

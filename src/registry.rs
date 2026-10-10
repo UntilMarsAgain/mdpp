@@ -172,11 +172,7 @@ impl BlockSpec {
     /// 造一条注册项（渲染器是任意**闭包**）
     ///
     /// 写 `BlockSpec::plain` 就够的那些不必用这条 —— 函数指针那条少一次间接调用。
-    pub fn new(
-        name: impl Into<String>,
-        mode: ContentMode,
-        renderer: impl BlockRendererFn,
-    ) -> Self {
+    pub fn new(name: impl Into<String>, mode: ContentMode, renderer: impl BlockRendererFn) -> Self {
         Self {
             name: name.into(),
             renderer: RendererKind::Boxed(Arc::new(renderer.into_boxed())),
@@ -318,7 +314,9 @@ impl BlockRegistry {
 
 impl std::fmt::Debug for BlockRegistry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BlockRegistry").field("blocks", &self.names()).finish()
+        f.debug_struct("BlockRegistry")
+            .field("blocks", &self.names())
+            .finish()
     }
 }
 
@@ -507,7 +505,10 @@ mod tests {
         registry.register_fn("a", ContentMode::Sections, noop);
 
         assert_eq!(registry.len(), 2, "{:?}", registry.names());
-        assert_eq!(registry.get("a").map(BlockSpec::mode), Some(ContentMode::Sections));
+        assert_eq!(
+            registry.get("a").map(BlockSpec::mode),
+            Some(ContentMode::Sections)
+        );
     }
 
     #[test]
