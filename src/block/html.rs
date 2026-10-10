@@ -286,12 +286,7 @@ fn walk_node(node: &Handle, render: &dyn Fn(&str) -> String, slots: &[String], o
 }
 
 /// 文本节点：把占位记号认出来，认出来了就把那一段 markdown 真的渲染一遍塞进去。
-fn write_text(
-    text: &str,
-    render: &dyn Fn(&str) -> String,
-    slots: &[String],
-    out: &mut String,
-) {
+fn write_text(text: &str, render: &dyn Fn(&str) -> String, slots: &[String], out: &mut String) {
     let mut rest = text;
     loop {
         let Some(open) = rest.find(SLOT_OPEN) else {

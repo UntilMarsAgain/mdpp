@@ -58,7 +58,9 @@ impl Options {
     /// 解析命令行参数。
     ///
     /// 传 `-h` / `--help` / `-V` / `--version` 会拿到 [`Wanted`]，由调用方去打印。
-    pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Result<Result<Self, Wanted>, BadUsage> {
+    pub fn parse<I: IntoIterator<Item = String>>(
+        args: I,
+    ) -> Result<Result<Self, Wanted>, BadUsage> {
         let mut options = Options::default();
         // 收成 `Vec` 而不是留原来的迭代器：`--opt=值` 那条要把参数插到**最前面**
         // 重新从头走一遍，迭代器不是可变的双端队列，那样做不出来

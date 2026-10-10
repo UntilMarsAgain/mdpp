@@ -16,8 +16,8 @@ use crate::block::fill;
 use crate::block::template::{self, page_key, TemplatePage};
 use crate::context::{self, MAX_TEMPLATE_DEPTH};
 use crate::registry::Block;
-use crate::telemetry::{debug, trace, warn};
 use crate::syntax::wikilink;
+use crate::telemetry::{debug, trace, warn};
 
 /// 展开一个**用户自定义块**：模板页的正文 → 填 `{{参数}}` → 解析成节点。
 ///
@@ -43,7 +43,11 @@ pub(crate) fn expand_user_block(
 
     if context::depth() >= MAX_TEMPLATE_DEPTH {
         // warn 而不是 debug：作者多半不知道自己写了个转圈的块，而这件事值得吵一下
-        warn!(name, limit = MAX_TEMPLATE_DEPTH, "块嵌套超过上限，多半是自嵌");
+        warn!(
+            name,
+            limit = MAX_TEMPLATE_DEPTH,
+            "块嵌套超过上限，多半是自嵌"
+        );
         return Some(reported_node(
             "块嵌套太深",
             "template--problem",
@@ -125,12 +129,7 @@ impl NodeValue for Reported {
 }
 
 /// 造一个「说清出了什么事」的节点，children 上挂一条指向那一页的链接
-fn reported_node(
-    badge: &'static str,
-    class: &'static str,
-    name: &str,
-    why: &str,
-) -> Node {
+fn reported_node(badge: &'static str, class: &'static str, name: &str, why: &str) -> Node {
     let mut node = Node::new(Reported {
         block: Block {
             name: name.to_string(),

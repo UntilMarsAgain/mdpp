@@ -169,8 +169,8 @@ impl Stats {
         // 数的是**容器**个数（`class="template …`），不是块数：
         // 「一个块里嵌了几个块」数不清，而嵌套的深浅也不是这里要报的事
         self.blocks += html.matches("class=\"template ").count();
-        self.problems += html.matches("template--unknown").count()
-            + html.matches("template--problem").count();
+        self.problems +=
+            html.matches("template--unknown").count() + html.matches("template--problem").count();
         self.links += html.matches("<a class=\"wikilink").count();
         let _ = name;
     }

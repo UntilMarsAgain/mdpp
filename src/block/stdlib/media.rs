@@ -124,11 +124,7 @@ fn render_media(block: &Block, _node: &Node, fmt: &mut dyn Renderer, kind: &str)
 ///
 /// 「缺 src」与「src 是危险协议」是**两件事**，所以提示词不同 ——
 /// 混成一句「取不到地址」的话，作者会先去查文件存不存在，而文件好好的。
-fn checked_source(
-    block: &Block,
-    fmt: &mut dyn Renderer,
-    missing: &str,
-) -> Option<String> {
+fn checked_source(block: &Block, fmt: &mut dyn Renderer, missing: &str) -> Option<String> {
     let Some(source) = block.param("src").map(str::trim).filter(|s| !s.is_empty()) else {
         render_problem(block, fmt, &format!("缺少 src=…：{missing}"));
         return None;

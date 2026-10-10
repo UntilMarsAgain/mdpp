@@ -58,7 +58,9 @@ pub fn source_of(block: &Block) -> Result<String, String> {
         None => {
             // 报的是**归一之后**的页名：写 `template:卡片` 时就别再叠一层前缀
             let page = template::page_key(name).unwrap_or_else(|| name.trim().to_string());
-            Err(format!("`{page}` 这一页不存在（名字按页面名写，不用带 `.md`）"))
+            Err(format!(
+                "`{page}` 这一页不存在（名字按页面名写，不用带 `.md`）"
+            ))
         }
     }
 }
@@ -387,10 +389,7 @@ mod tests {
         assert_eq!(scope_css("body { }"), ".mdpp-content { }");
         assert_eq!(scope_css(":root { --x: 1 }"), ".mdpp-content { --x: 1 }");
         // 已经收过的不重复收
-        assert_eq!(
-            scope_css(".mdpp-content a { }"),
-            ".mdpp-content a { }"
-        );
+        assert_eq!(scope_css(".mdpp-content a { }"), ".mdpp-content a { }");
     }
 
     #[test]

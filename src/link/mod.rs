@@ -127,7 +127,9 @@ pub(crate) mod tests {
 
     impl LinkResolver for AnyTarget {
         fn resolve(&self, target: &str) -> Option<ResolvedLink> {
-            Some(ResolvedLink::Link(LinkTarget::new(format!("/page/{target}"))))
+            Some(ResolvedLink::Link(LinkTarget::new(format!(
+                "/page/{target}"
+            ))))
         }
     }
 
@@ -156,7 +158,9 @@ pub(crate) mod tests {
 
     #[test]
     fn link_target_chains_attrs() {
-        let target = LinkTarget::new("/x").attr("class", "wikilink").attr("data-id", "7");
+        let target = LinkTarget::new("/x")
+            .attr("class", "wikilink")
+            .attr("data-id", "7");
         assert_eq!(target.url, "/x");
         assert_eq!(
             target.attrs,

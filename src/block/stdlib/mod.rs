@@ -57,9 +57,28 @@ fn spec(
 /// 单独一张表是为了 [`names`] 便宜（诊断与命令行帮助会频繁问）。
 /// 它与 [`register`] 里挂的那一批必须一致 —— `the_two_tables_agree` 盯着这件事。
 pub const NAMES: &[&str] = &[
-    "quote", "code", "aside", "fields", "banner", "title", "tabs", "theme", "image", "video",
-    "audio", "css", "html", "js", "mermaid", "math", "signature", "note", "tip", "warning",
-    "danger", "error",
+    "quote",
+    "code",
+    "aside",
+    "fields",
+    "banner",
+    "title",
+    "tabs",
+    "theme",
+    "image",
+    "video",
+    "audio",
+    "css",
+    "html",
+    "js",
+    "mermaid",
+    "math",
+    "signature",
+    "note",
+    "tip",
+    "warning",
+    "danger",
+    "error",
 ];
 
 /// 把内置块灌进注册表。
@@ -249,7 +268,10 @@ mod tests {
             size_rule("max-width", "320"),
             Some("max-width: 320px;".into())
         );
-        assert_eq!(size_rule("max-width", "50%"), Some("max-width: 50%;".into()));
+        assert_eq!(
+            size_rule("max-width", "50%"),
+            Some("max-width: 50%;".into())
+        );
         assert_eq!(size_rule("max-width", "1px; background:url(//evil)"), None);
         assert_eq!(size_rule("max-width", "很久"), None);
     }

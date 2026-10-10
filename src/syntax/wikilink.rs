@@ -233,7 +233,10 @@ mod tests {
         }
         let html = render_with(Marked, "[[没有的条目]]\n");
         // 整个节点归它：不是 `<a>`，也没有 data-doc
-        assert!(html.contains(r#"<span class="redlink">没有的条目 ✗</span>"#), "{html}");
+        assert!(
+            html.contains(r#"<span class="redlink">没有的条目 ✗</span>"#),
+            "{html}"
+        );
         assert!(!html.contains("<a "), "{html}");
         assert!(!html.contains("data-doc"), "{html}");
     }
@@ -259,7 +262,10 @@ mod tests {
                         Targets(vec![format!("条目{index}")]),
                         &format!("[[条目{index}]]\n"),
                     );
-                    assert!(html.contains(&format!(r#"href="/page/条目{index}""#)), "{html}");
+                    assert!(
+                        html.contains(&format!(r#"href="/page/条目{index}""#)),
+                        "{html}"
+                    );
                     assert!(html.contains("wikilink"), "{html}");
                 })
             })
