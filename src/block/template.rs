@@ -1,20 +1,29 @@
 //! 模板页：**不在注册表里的块名，去哪里找正文**。
 //!
-//! ## 为什么它是一个 trait 而不是一张表
+//! ## 这个模块只给接口，不给实现
 //!
-//! 模板页的正文明明是「某个地方的一页 markdown」，但**那个地方是什么**本库不能猜：
-//! 是一堆目录里的 `.md` 文件？是数据库的一行？是加密存的、渲染前才解出来的？
+//! 「在哪里找那一页」是**文档之外**的事 —— 是一堆目录里的 `.md` 文件？是数据库的
+//! 一行？是搜索索引？是加密存的、渲染前才解出来的？本库不猜，也不提供任何一种猜法。
 //!
-//! 所以这里只给一个问法（[`TemplateSource::page`]）与两种答案（[`TemplatePage`]）。
-//! 使用方自己实现，把 [`TemplatePages`] 递进 [`RenderContext`](crate::RenderContext) 即可。
+//! 所以这里只有三个东西：问法（[`TemplateSource::page`]）、答案（[`TemplatePage`]）、
+//! 以及递进上下文的那个容器类型（[`TemplatePages`]）。**查表的活儿在外面** ——
+//! 使用方自己写那几行。命令行里那个「读一个目录成一张表」的就是最简的一版
+//! （见 `src/bin/context.rs`），而它也只有三十行。
+//!
+//! 库**曾经**在这里带过一个 `MapPages`（`HashMap` 版），拿掉的理由是它不只是省事，
+//! 还会**规定形状**：它暗示「模板页就是一整张表、渲染前全在内存里」。真实使用方
+//! 常常不是这样 —— 按需查一库、或从索引里捞 —— 而要绕开那个类型得重新实现一遍
+//! trait。留一个「最常见的那种」进库，等于给这件事定了个默认答案。
 //!
 //! ## 名字怎么归一
 //!
 //! [`page_key`] 管这一件事：`甲`、`模板:甲`、`template:甲`（大小写与首尾空白都宽松）
-//! 都指同一页。归一是**库**做的，所以实现方不必在 `page` 里自己再处理一遍 ——
-//! 而漏掉这一步的症状很隐蔽（`::甲` 能用、`::template:甲` 却报未知块）。
+//! 都指同一页。归一是**库**做的 —— 它属于「这个名字怎么写」，属于文档解析 ——
+//! 所以实现方不必在 `page` 里自己再处理一遍，而漏掉这一步的症状很隐蔽
+//! （`::甲` 能用、`::template:甲` 却报未知块）。
 //!
-//! [模板命名空间]: https://zh.wikipedia.org/wiki/Template:
+//! [`page_key`] 传来的 `name` 已经归一过（**小写**、剥掉了前缀），所以最简单的
+//! 实现就是「拿它当键查一下」。
 
 use std::sync::Arc;
 
@@ -42,6 +51,27 @@ pub enum TemplatePage {
 /// 要 `Debug` 不是为了好看：实现方那几样（目录、数据库连接）多半已经 `Debug`，
 /// 而没有它的话调用方连「这一份上下文里带了什么」都打印不出来 —— 一份渲染上下文
 /// 打印不出来，排问题时就少了一双手。
+///
+/// [`crate::link::LinkResolver`] 上也有同一条约束，理由一样。
+///
+/// ## 实现有多短
+///
+/// 十行，没有依赖，也没有任何关于「模板页存在哪里」的假设：
+///
+/// ```
+/// use std::collections::HashMap;
+/// use mdpp::block::template::{TemplatePage, TemplateSource};
+///
+/// #[derive(Debug, Default)]
+/// struct Pages(HashMap<String, TemplatePage>);
+///
+/// impl TemplateSource for Pages {
+///     fn page(&self, name: &str) -> Option<TemplatePage> {
+///         // name 已经归一过了（小写、剥了前缀），所以直接查
+///         self.0.get(name).cloned()
+///     }
+/// }
+/// ```
 pub trait TemplateSource: Send + Sync + std::fmt::Debug {
     /// 取一页模板页的正文。没有这一页就返回 `None`。
     ///
@@ -76,32 +106,6 @@ pub fn display_name(name: &str) -> String {
     format!("{TEMPLATE_PREFIX}:{}", name.trim())
 }
 
-/// 一个用 `HashMap` 装好的模板页表 —— 命令行、测试、小型使用方直接用它。
-///
-/// ```no_run
-/// use std::collections::HashMap;
-/// use std::sync::Arc;
-/// use mdpp::block::template::{MapPages, TemplatePage, TemplatePages};
-///
-/// let mut pages = HashMap::new();
-/// pages.insert("卡片".to_string(), TemplatePage::Ready("::banner\n  {{标题}}\n".into()));
-/// let source: TemplatePages = Arc::new(MapPages(pages));
-/// # let _ = source;
-/// ```
-#[derive(Debug, Clone, Default)]
-pub struct MapPages(pub std::collections::HashMap<String, TemplatePage>);
-
-impl TemplateSource for MapPages {
-    fn page(&self, name: &str) -> Option<TemplatePage> {
-        // 查两遍：一遍按调用方给的名字，一遍按归一后的键 ——
-        // 这样「`::卡片`」与「`::template:卡片`」指向同一页，而**存表时**用哪个写法都行。
-        self.0
-            .get(name)
-            .or_else(|| self.0.get(&name.to_lowercase()))
-            .cloned()
-    }
-}
-
 /// 块名的下一站：模板页。扫描器在注册表里没查到时来这里。
 ///
 /// 顺着写下来是：`::卡片` → 块名就是 `卡片` → [`page_key`] 归一 → 问来源。
@@ -130,6 +134,31 @@ mod tests {
         assert_eq!(page_key("   "), None);
         assert_eq!(page_key("template:"), None);
         assert_eq!(page_key("template:   "), None);
+    }
+
+    /// **一个从零写的实现够不够用** —— 这条钉的是「本模块不给实现」这个决定。
+    ///
+    /// 如果哪天真在库里加了什么「更方便」的模板页来源，这条会提醒你重新想一遍
+    /// 那是不是又把「存在哪」这件事定进了库里。
+    #[test]
+    fn a_scratch_implementation_is_all_anyone_needs() {
+        use std::collections::HashMap;
+
+        #[derive(Debug, Default)]
+        struct Pages(HashMap<String, TemplatePage>);
+
+        impl TemplateSource for Pages {
+            fn page(&self, name: &str) -> Option<TemplatePage> {
+                self.0.get(name).cloned()
+            }
+        }
+
+        let mut pages = Pages::default();
+        pages.0.insert("卡片".into(), TemplatePage::Ready("::banner\n  卡片来了\n".into()));
+
+        let context = crate::RenderContext::new().with_templates(Arc::new(pages));
+        let html = crate::Mdpp::new().render_with("::卡片\n", &context);
+        assert!(html.contains("卡片来了"), "{html}");
     }
 
     #[test]
