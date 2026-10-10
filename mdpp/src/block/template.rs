@@ -104,7 +104,7 @@ impl TemplateSource for MapPages {
 
 /// 块名的下一站：模板页。扫描器在注册表里没查到时来这里。
 ///
-/// 顺着写下来是：`::卡片` → [`Block::name`] 是 `卡片` → [`page_key`] 归一 → 问来源。
+/// 顺着写下来是：`::卡片` → 块名就是 `卡片` → [`page_key`] 归一 → 问来源。
 pub fn page_for(name: &str) -> Option<TemplatePage> {
     let key = page_key(name)?;
     crate::context::templates()?.page(&key)

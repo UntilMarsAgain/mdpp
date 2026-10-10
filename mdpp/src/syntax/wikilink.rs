@@ -6,7 +6,7 @@
 //! ## 渲染成什么由外部决定
 //!
 //! 这一层只负责**认**出链接、把目标递给 [`crate::link::LinkResolver`]，然后按递回来的
-//! 东西渲染（见 [`ResolvedLink`](crate::link::ResolvedLink) 的两个变体）。
+//! 东西渲染（见 [`ResolvedLink`] 的两个变体）。
 //!
 //! **解析器没递进来**（[`crate::context::links`] 是 `None`）时落成
 //! `<a class="wikilink" data-doc="目标">显示文字</a>` —— **故意不带 `href`**。
