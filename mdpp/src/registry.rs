@@ -1,62 +1,41 @@
-//! `::` 块的注册表：**外部**在这里挂自己的块，**内部**在这里派发。
+//! `::` 块的注册表：外部在这里挂块，内部在这里派发。
 //!
-//! ## 注册表是普通数据
+//! [`BlockRegistry`] 是普通数据 —— 不含解析器，也不含全局状态。想要一份自定义的，
+//! 构造一份交给 [`MdppBuilder::registry`](crate::engine::MdppBuilder::registry)，
+//! 两个 [`Mdpp`](crate::engine::Mdpp) 各带各的，互不相干。
 //!
-//! [`BlockRegistry`] 不含解析器，也不含全局状态 —— 想要一份自定义的注册表，构造一份
-//! 灌进去，交给 [`MdppBuilder::registry`](crate::engine::MdppBuilder::registry) 即可。
-//! 两个 [`Mdpp`](crate::engine::Mdpp) 各带各的注册表，互不相干。
+//! 注册一块要交代两件事：渲染函数，以及**块内容怎么处理**（[`ContentMode`]）。
+//! 后者不是可选项 —— 扫描器要靠它在内容被解析**之前**决定走哪条路，那时渲染函数
+//! 还没被调用过。
 //!
-//! ## 一块要向注册表交代两件事
-//!
-//! 除了渲染函数，还必须说清**块内容怎么处理**（[`ContentMode`]）。这一条不是可选项：
-//! 扫描器要靠它在**内容被解析之前**决定走哪条路（要不要分节、要不要干脆不解析），
-//! 那时渲染函数还没有被调用过。
-//!
-//! ## 重名的处理
-//!
-//! [`BlockRegistry::register`] 覆盖 —— 这是「改掉一个内置块」最短的路。
-//! [`BlockRegistry::builtin`] 内部走的是同一套，所以不存在「内置的表」与
-//! 「用户的表」两张表对不上的可能（那种半截状态最难查）。
+//! [`BlockRegistry::register`] 对同名块**覆盖**，这是改掉一个内置块最短的路。
 
 use std::cell::RefCell;
 use std::sync::Arc;
 
 use markdown_it::{Node, Renderer};
 
-/// 写出一个 `::` 块。
+/// 写出一个 `::` 块：块的头、已解析好的子节点（形状由 [`ContentMode`] 决定）、渲染器。
 ///
-/// 参数：`块的头`（名字、参数、正文原文）、**已解析好的子节点**、渲染器。
-///
-/// 「已解析好的子节点」是 `ContentMode` 决定的：见 [`ContentMode`]。
-///
-/// 三个生命周期**显式写成高阶的**（`for<'a,'b,'c>`），不能省成
-/// `Fn(&Block, &Node, &mut dyn Renderer)`：省略写法在函数指针类型的位置上会被
-/// 定死成某一个具体生命周期，于是「把一个函数指针接成渲染器」那种写法编译不过
-/// （报 `implementation of FnOnce is not general enough`）。
+/// 三个生命周期显式写成高阶的，不能省成 `Fn(&Block, &Node, &mut dyn Renderer)`：
+/// 省略写法在函数指针的位置上会被定死成某一个具体生命周期，于是接函数指针的那种写法
+/// 编译不过。
 pub type BlockRenderer =
     dyn for<'a, 'b, 'c> Fn(&'a Block, &'b Node, &'c mut (dyn Renderer + 'c)) + Send + Sync;
 
 /// 块内容怎么处理。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ContentMode {
-    /// 交给整个解析器再解析一遍，子节点挂在这个块下。模板里因此能写 markdown、
-    /// 能写内部链接，也能再嵌 `::` 块。**绝大多数块都是这个。**
+    /// 交给整个解析器再解析一遍，子节点挂在这个块下。
     #[default]
     Markdown,
-    /// 按 `[标签]` 行切成几节，**各节各解析一遍**，每节是一个子节点。
-    ///
-    /// 用于「一节是一篇独立的小文档」的那类块（选项卡、主题面板）。
-    /// 为什么值得单列一档：一节里能写列表、能写链接、能再嵌块，
-    /// 而大块里的一段普通文字做不到这些。
+    /// 按 `[标签]` 行切成几节，**各节各解析一遍**，每节一个子节点。用于「一节是一篇
+    /// 独立的小文档」的块（选项卡、主题面板）。
     Sections,
     /// **不解析**，原文交给渲染器。
     ///
-    /// 存在的理由有两条，都不是「省时间」：
-    ///
-    /// - 正确性：TeX、图表定义、样式里的记号各有各的语法，按 markdown 走一遍会被
-    ///   改写（`$x$`、`*`、`_`、行首的 `#` 全都是 markdown 的记号）。不解析就是原文。
-    /// - 性能：块规则在这一行重新进整个解析器，于是嵌套 N 层时代价随 N 超线性增长
-    ///   （实测每层约 ×1.95）。不解析的块直接把那一层摘掉。
+    /// 理由是正确性而非性能：TeX、图表定义、样式里的记号各有各的语法，按 markdown
+    /// 走一遍会被改写（`$x$`、`*`、`_`、行首的 `#` 全是 markdown 的记号）。
     Raw,
 }
 
@@ -78,8 +57,8 @@ pub struct Block {
 impl Block {
     /// 解析头一行：`::名字 key=value …`。不是头就返回 `None`。
     ///
-    /// 名字必须紧跟在 `::` 之后，且不能含 `=` / `:` —— 那两个字符属于参数与
-    /// 「目标前缀」，出现在名字里几乎一定是写错了。宁可退回普通段落，也不要认出一个坏块。
+    /// 名字必须紧跟 `::`，且不能含 `=` / `:`（那两个字符属于参数与「目标前缀」）。
+    /// 认出一个坏块比退回普通段落更糟。
     pub fn parse_header(line: &str) -> Option<(String, Vec<(String, String)>)> {
         let rest = line.trim_start().strip_prefix("::")?;
         let mut tokens = tokenize(rest)?.into_iter();
@@ -105,11 +84,8 @@ impl Block {
             .map(|(_, value)| value.as_str())
     }
 
-    /// 这个开关有没有写
-    ///
-    /// 与 [`Block::param`] 的区别：只写 `flag` 的参数值是空串，于是
-    /// `param("flag")` 给出 `Some("")`，与「写了 `flag=`」分不开，而这两件事
-    /// 在实践中并不总是同一个意思。
+    /// 这个开关有没有写。与 [`Block::param`] 的区别：只写 `flag` 的参数值是空串，
+    /// `param("flag")` 给出 `Some("")`，与「写了 `flag=`」分不开。
     pub fn has(&self, key: &str) -> bool {
         self.params.iter().any(|(name, _)| name == key)
     }
@@ -123,12 +99,9 @@ pub struct BlockSpec {
     mode: ContentMode,
 }
 
-/// 渲染器的两种存法。
-///
-/// 分成两种是为了让**函数指针**那条路不必绕 HRTB：把 `fn(&Block, &Node, &mut dyn
-/// Renderer)` 包进一个闭包时，闭包的参数生命周期会被按实体推断出来（而不是按
-/// `BlockRenderer` 那个高阶签名），于是报 `implementation of FnOnce is not general
-/// enough`。直接存函数指针就没这个问题 —— 顺带还少一次间接调用。
+/// 渲染器的两种存法。函数指针那条路不必绕 HRTB：把 `fn(&Block, &Node, &mut dyn
+/// Renderer)` 包进闭包时，闭包的参数生命周期会按实体推断，于是报
+/// `implementation of FnOnce is not general enough`。
 #[derive(Clone)]
 enum RendererKind {
     /// 一个普通的函数指针。本库自带的块全是这一种。
@@ -170,8 +143,6 @@ impl BlockSpec {
     }
 
     /// 造一条注册项（渲染器是任意**闭包**）
-    ///
-    /// 写 `BlockSpec::plain` 就够的那些不必用这条 —— 函数指针那条少一次间接调用。
     pub fn new(name: impl Into<String>, mode: ContentMode, renderer: impl BlockRendererFn) -> Self {
         Self {
             name: name.into(),
@@ -211,11 +182,8 @@ impl std::fmt::Debug for BlockSpec {
     }
 }
 
-/// [`BlockSpec::new`] 的渲染函数那一参。
-///
-/// 存在的理由只有一个：让 `new` 收**任何** `Fn(&Block, &Node, &mut dyn Renderer)`，
-/// 而不必让调用方自己 `Box::new` 出一个 `Arc<BlockRenderer>` 再塞进来。
-/// 实现是 blanket 的 —— 调用方永远不用直接碰它。
+/// [`BlockSpec::new`] 的渲染函数那一参：让 `new` 收**任何**
+/// `Fn(&Block, &Node, &mut dyn Renderer)`，调用方不必自己装箱。
 pub trait BlockRendererFn {
     /// 装箱成 `Arc<BlockRenderer>`
     fn into_boxed(self) -> Box<BlockRenderer>;
@@ -230,9 +198,7 @@ where
     }
 }
 
-/// `::` 块的注册表。
-///
-/// 有序：诊断与命令行帮助按注册次序列出，加了什么一眼看得见。
+/// `::` 块的注册表。有序：诊断与帮助按注册次序列出，加了什么一眼看得见。
 #[derive(Clone, Default)]
 pub struct BlockRegistry {
     specs: Vec<BlockSpec>,
@@ -322,12 +288,9 @@ impl std::fmt::Debug for BlockRegistry {
 
 // ---- 当前生效的那一份 --------------------------------------------------
 //
-// 扫描器与分发器是零大小的 markdown-it 规则，拿不到「自己属于哪个解析器」——
-// 而一个进程里可以有好几个 [`Mdpp`](crate::engine::Mdpp)，各带各的注册表。
-//
-// markdown-it 给的 `ext` 集合放不下：它的键值是 `&'static dyn Any`，而这里的
-// 生命周期由 `Mdpp` 的拥有者决定。于是走线程局部，理由与
-// [`crate::context`] 那份一模一样（渲染是同步的，规则必然跑在同一个线程上）。
+// 扫描器与分发器是零大小的 markdown-it 规则，拿不到「自己属于哪个解析器」—— 而一个
+// 进程里可以有好几个 `Mdpp`，各带各的注册表。走线程局部，理由与 `context` 相同：
+// 渲染是同步的，规则必然跑在同一个线程上。
 
 thread_local! {
     /// 现在这一趟渲染在用的注册表

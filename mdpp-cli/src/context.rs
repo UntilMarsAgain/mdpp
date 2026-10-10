@@ -1,16 +1,8 @@
 //! 递进渲染上下文的那两样东西：`[[目标]]` 的地址、模板页的正文。
 //!
-//! ## 这一层该怎么写
-//!
-//! **像库的任何一个使用者那样**：库给两个 trait，这里各实现一份，别的什么都不做。
-//! 库不知道「目标在哪」「模板页存在哪」，它只会问（[`LinkResolver::resolve`]、
-//! [`TemplateSource::page`]）；知道的是这里，以及真正的使用方 —— 一个接了数据库
-//! 或搜索索引的程序。
-//!
-//! 所以这两个实现都刻意保持最简：**不加任何猜测**。前缀就是前缀，不判断目标存不
-//! 在；目录里的 `.md` 就是模板页，不做递归、不认别的扩展名、不按 front matter
-//! 分流。想要更聪明的，那份聪明应该写在**知道那些约定的地方**，而不是写进一个
-//! 所有人都得继承的基类。
+//! 两个实现都**刻意保持最简，不加任何猜测**：前缀就是前缀，不判断目标存不存在；
+//! 目录里的 `.mdpp` 就是模板页，不递归、不认别的扩展名、不按 front matter 分流。
+//! 更聪明的那部分应该写在**知道那些约定的地方**。
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -21,8 +13,7 @@ use mdpp::link::{LinkResolver, LinkTarget, ResolvedLink};
 /// 把 `[[目标]]` 配上「前缀 + 目标」的 `href`。
 ///
 /// 命令行没有仓库，所以目标存不存在**一律当成存在** —— 它只是个拼地址的办法，
-/// 判断「在不在」是使用方的事。真的要看存在与否，实现方递自己的解析器即可
-/// （见 `mdpp::LinkResolver`）。
+/// 判断「在不在」是使用方的事。
 struct Prefix {
     prefix: String,
 }
@@ -35,12 +26,9 @@ impl LinkResolver for Prefix {
     }
 }
 
-/// 有前缀就递一个解析器，没有就不递 ——
-/// 不递的那些 `[[…]]` 落成不带 `href` 的 `<a class="wikilink" data-doc=…>`，
-/// 至少把原文留着。
+/// 有前缀就递一个解析器，没有就不递 —— 不递的那些 `[[…]]` 落成红链。
 ///
-/// 注意「没有就不递」与「递一个什么都认不出的」在输出上**是一样的**。这不是偷懒：
-/// 实现方不必为「我这份数据不全」写特殊分支 —— 那是个会出错的分支。
+/// 注意「没有就不递」与「递一个什么都认不出的」在输出上**是一样的**。
 pub fn link_resolver(prefix: Option<&str>) -> Option<std::sync::Arc<dyn LinkResolver>> {
     let prefix = prefix?;
     Some(std::sync::Arc::new(Prefix {
@@ -48,13 +36,9 @@ pub fn link_resolver(prefix: Option<&str>) -> Option<std::sync::Arc<dyn LinkReso
     }))
 }
 
-/// 「名字 → 那一页」的表 —— [`TemplateSource`] 的最简实现。
-///
-/// **全部**就是一次哈希查找。库传来的 `name` 已经归一过（小写、剥掉了
-/// `template:` 前缀，见 `page_key`），所以存的时候也存小写，两边就对上了。
-///
-/// 刻意不带缓存、不带回退、不带「大小写不敏感的第二种拼法」：那些是**调用方**该
-/// 决定的事，而库给一个现成实现的最大坏处正是它会变成那个默认答案。
+/// 「名字 → 那一页」的表 —— [`TemplateSource`] 的最简实现，全部就是一次哈希查找。
+/// 库传来的 `name` 已经归一过（小写、剥掉了 `template:` 前缀，见 `page_key`），
+/// 所以存的时候也存小写，两边就对上了。
 #[derive(Debug, Default)]
 struct Pages(HashMap<String, TemplatePage>);
 
@@ -64,11 +48,10 @@ impl TemplateSource for Pages {
     }
 }
 
-/// 模板页文件的后缀。目录里带这个后缀的才是模板页。/// 目录里别的文件一律不认 —— 那是别的文件，不是模板页。
+/// 模板页文件的后缀。目录里带这个后缀的才是模板页，别的文件一律不认。
 ///
-/// 用 `.mdpp` 而不是 `.md` 是有意的：模板页里常有 `{{}}` 与 `::` 方言，而它终究
-/// 要走进 markdown 解析器。用一个专门的后缀标出来，「这一份不是普通 markdown」
-/// 就在文件名里，而不必去猜内容。
+/// 用 `.mdpp` 而不是 `.md` 是有意的：模板页里常有 `{{}}` 与 `::` 方言，而它终究要走进
+/// markdown 解析器。用一个专门的后缀标出来，「这一份不是普通 markdown」就在文件名里。
 pub const TEMPLATE_SUFFIX: &str = "mdpp";
 
 /// 把一个目录读成模板页表：`<目录>/<名字>.mdpp` 就是那一页。
@@ -123,7 +106,7 @@ mod tests {
         assert!(html.contains(r#"data-doc="甲""#), "{html}");
     }
 
-    /// 没有前缀就不递解析器 —— 那些 `[[…]]` 落成不带 href 的写法
+    /// 没有前缀就不递解析器 —— 那些 `[[…]]` 落成红链
     #[test]
     fn without_a_prefix_there_is_no_href() {
         assert!(link_resolver(None).is_none());

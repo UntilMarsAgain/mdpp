@@ -7,10 +7,6 @@
 // | `ResolvedLink::Link` | 带 `href` 的普通链 |
 // | `ResolvedLink::Node` | 整个节点归那个函数写（连 `<a>` 都由它决定） |
 // | `None`，或压根没递解析器 | **红链**：`class="wikilink wikilink--missing"` |
-//
-// 最后那一种是最要紧的默认值：「不认得这个目标」与「没人去认」是同一件事 ——
-// 调用方不知道 `[[某页]]` 存不存在。渲染成一条看起来正常的链，等于替它宣称
-// 「这一页存在」，而那是它没说过、也没法说的事。
 
 use std::collections::HashSet;
 use std::sync::Arc;

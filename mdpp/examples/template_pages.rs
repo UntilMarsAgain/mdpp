@@ -2,11 +2,8 @@
 //
 //     cargo run -p mdpp --example template_pages
 //
-// `::卡片` 不是一个注册好的块，而是**去模板页里找 `卡片` 那一页**，把它��正文
-// 填好 `{{参数}}` 再按 markdown 解析一遍。于是模板页怎么写就长什么样 ——
-// 上面那一层什么都不知道，也不需要知道。
-//
-// 跑法：`cargo run -p mdpp --example template_pages`
+// `::卡片` 不是一个注册好的块，而是去模板页里找 `卡片` 那一页，把它正文填好
+// `{{参数}}` 再按 markdown 解析一遍。于是模板页怎么写就长什么样。
 
 use std::sync::Arc;
 

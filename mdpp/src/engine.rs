@@ -5,32 +5,29 @@
 //! [`Mdpp`] 持有的是一个构建好的 markdown-it。构建要装十几条规则、跑若干遍
 //! `plugins::*::add`，那是一次性的活；[`Mdpp::render`] 只取 `&self`，可以反复调。
 //!
-//! ## 关于并发，说清楚
+//! ## 并发
 //!
-//! **`Mdpp` 既不是 `Send` 也不是 `Sync`。** markdown-it 内部有 `RefCell`（它的 `ext`
-//! 集合），而 `parse` 期间真的会读写那个集合（围栏代码块的语言前缀、标题的 slug
-//! 函数都从那里取），所以两个线程共用一个解析器是**数据竞争**，不是「慢一点」。
+//! **`Mdpp` 既不是 `Send` 也不是 `Sync`。** markdown-it 的 `ext` 集合是 `RefCell`，
+//! 而 `parse` 期间真的读写它（围栏代码块的语言前缀、标题的 slug 函数都从那里取），
+//! 所以两个线程共用一个解析器是**数据竞争**，不是「慢一点」。
 //!
-//! 于是定成：**一个线程建一个**。建一次是微秒级的事（十几条规则），比外面套一把
-//! 锁划算，也比给一个 `!Sync` 的东西硬加 `unsafe impl Sync` 划算。
+//! 定成**一个线程建一个**：建一次是微秒级的事，比外面套一把锁划算，也比给一个
+//! `!Sync` 的东西硬加 `unsafe impl Sync` 划算。
 //!
 //! **渲染状态**（链接解析器、模板页、注册表那一趟）是线程局部的，各线程各渲各的
-//! 互不干扰 —— 这条由 [`crate::context`] 与
-//! [`the_resolver_does_not_leak_across_threads`](crate::syntax::wikilink) 钉着。
+//! 互不干扰 —— 由 [`crate::context`] 与 [`crate::syntax::wikilink`] 的测试钉着。
 //!
-//! ## 默认值都是**从正文的使用场景倒推**的，不是 markdown-it 的默认
+//! ## 默认值：几处刻意的关掉
 //!
-//! 几处刻意的关掉（每一处都有代价，换来的东西写在各处的注释里）：
-//!
-//! - **raw HTML**：不注册 `plugins::html`。渲染出来的 HTML 常常是被直接注入页面的
-//!   （`innerHTML` 那一套），开着它等于把 XSS 入口交给正文作者。
-//! - **缩进代码块**：关掉。缩进在本库里有别的用途 —— 它是 `::` 块的边界，
-//!   两者会互相干扰（一个缩进的块很容易先被当成代码块收走）。代码块请用围栏写法。
-//! - **排版规则**（typographer / smartquotes）：关掉。它们会把 `--accent` 变成
-//!   `–accent`、把 `"引号"` 变成 `“引号”` —— 在正文里是锦上添花，在代码片段里
-//!   是**改坏内容**。而这两条规则不区分代码片段。
-//! - **syntect**（随 `plugins::extra` 的默认 features 进来）：关掉。它把高亮配色
-//!   以内联 style 写死，跟随不了主题。
+//! - **raw HTML**：不注册 `plugins::html`。渲染出来的 HTML 常常被直接注入页面，
+//!   开着它等于把 XSS 入口交给正文作者。
+//! - **缩进代码块**：缩进在本库里有别的用途 —— 它是 `::` 块的边界，两者会互相干扰。
+//!   代码块请用围栏写法。
+//! - **typographer / smartquotes**：它们会把 `--accent` 变成 `–accent`、把 `"引号"`
+//!   变成 `“引号”` —— 在正文里是锦上添花，在代码片段里是**改坏内容**，而这两条规则
+//!   不区分代码片段。
+//! - **syntect**（随 `plugins::extra` 的默认 features 进来）：它把高亮配色以内联
+//!   style 写死，跟随不了主题。
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -46,15 +43,11 @@ use crate::syntax;
 use crate::targets;
 use crate::telemetry::{Size, debug, trace};
 
-/// 「在渲染途中再渲染一段 markdown」的能力。
+/// 「在渲染途中再渲染一段 markdown」的能力，即 `::html` 里的 `<markdown>`。
 ///
-/// 存在的理由是 `::html` 里的 `<markdown>`（见 [`crate::block::html`]）：净化器在
-/// 树的中间遇到占位记号，那一刻它手上只有一段 markdown 源码与一个输出缓冲，
-/// 拿不到解析器。
-///
-/// 为什么是**线程局部里的闭包**而不是一个全局解析器：一个进程里可以有多个
-/// [`Mdpp`]，而嵌套渲染要用的是**当次那一个**。把「用哪个」在
-/// [`Mdpp::render_with`] 入口处记下来，出栈时还原，就与上下文是同一套办法。
+/// 走线程局部里的闭包而不是一个全局解析器：一个进程里可以有多个 [`Mdpp`]，而嵌套
+/// 渲染要用的是**当次那一个**。「用哪个」在 [`Mdpp::render_with`] 入口处记下来，
+/// 出栈时还原。
 type Nested = Box<dyn Fn(&str) -> String>;
 
 thread_local! {
@@ -99,12 +92,10 @@ impl Drop for NestedGuard {
 /// **既不是 `Send` 也不是 `Sync`** —— 一个线程一个，见模块头。
 #[derive(Debug)]
 pub struct Mdpp {
-    /// 用 `Rc` 而不是直接持有：嵌套渲染（`::html` 里的 `<markdown>`）要把
-    /// 「用哪个解析器」记进线程局部，而那个闭包必须是 `'static` 的 ——
-    /// 抓住 `&self` 编译不过，`Rc` 克隆一份才是能存进线程局部的形态。
+    /// 用 `Rc` 而不是直接持有：嵌套渲染要把「用哪个解析器」记进线程局部，而那个闭包
+    /// 必须是 `'static` 的 —— 抓住 `&self` 编译不过。
     ///
-    /// [`Rc`] 而不是 [`Arc`] 的理由与「不是 `Sync`」是同一条：解析器本来就不该跨线程，
-    /// `Arc` 那层原子计数只会白花时间。
+    /// [`Rc`] 而不是 [`Arc`] 的理由与「不是 `Sync`」是同一条。
     parser: Rc<MarkdownIt>,
     registry: Arc<BlockRegistry>,
 }
@@ -131,19 +122,15 @@ impl Mdpp {
         &self.registry
     }
 
-    /// 渲染一段 markdown。
-    ///
-    /// 没有链接解析器、没有模板页：所有 `[[…]]` 落成不带 `href` 的
-    /// `<a class="wikilink" data-doc=…>`，所有非内置的 `::名字` 落成「未知块」框。
+    /// 渲染一段 markdown，用默认上下文：没有链接解析器、没有模板页，于是所有 `[[…]]`
+    /// 落成红链，所有非内置的 `::名字` 落成「未知块」框。
     pub fn render(&self, source: &str) -> String {
         self.render_with(source, &RenderContext::new())
     }
 
-    /// 带上下文渲染。
-    ///
-    /// 这是**带上下文**的那一条：链接解析器与模板页来源都在 [`RenderContext`] 里。
-    /// 两者都在进入时装上、返回时还原，所以本方法可以递归调用（`::html` 里的
-    /// `<markdown>` 就是这么做的），外层那一趟不受影响。
+    /// 带上下文渲染。这是**带上下文**的那一条：链接解析器与模板页来源都在
+    /// [`RenderContext`] 里。两者进入时装上、返回时还原，所以本方法可以递归调用
+    /// （`::html` 里的 `<markdown>` 就是这么做的），外层那一趟不受影响。
     pub fn render_with(&self, source: &str, context: &RenderContext) -> String {
         render_parts(&self.parser, &self.registry, context, source)
     }
@@ -151,9 +138,8 @@ impl Mdpp {
 
 /// 真正干活的那一趟。四样东西各自装上、各自还原，全在同一次调用里成对出现。
 ///
-/// 拆成自由函数（而不是留在 `&self` 的方法里）是因为嵌套渲染要在线程局部里
-/// 存一个**'static 闭包**：闭包得抓住解析器与上下文的**所有权**（`Rc` / `Arc` 的
-/// 克隆），抓 `&self` 存不进去。
+/// 拆成自由函数（而不是留在 `&self` 的方法里）是因为嵌套渲染要在线程局部里存一个
+/// `'static` 闭包，而闭包得抓住解析器与上下文的**所有权**（`Rc` / `Arc` 的克隆）。
 fn render_parts(
     parser: &Rc<MarkdownIt>,
     registry: &BlockRegistry,
@@ -166,8 +152,7 @@ fn render_parts(
     // 顺序无所谓，三个都是各自独立的槽位
     let _registry_guard = crate::registry::enter(Arc::new(registry.clone()));
     let _context_guard = context::enter(context.clone());
-    // 「再渲染一段」用的是**当次这一趟**的上下文与注册表，而不是新的空的一份 ——
-    // 否则 `<markdown>` 里那段里的内部链接会一律变红链、`::html src=` 也取不到页。
+    // 「再渲染一段」用的是**当次这一趟**的上下文与注册表，而不是新的空的一份
     trace!(
         depth = crate::context::depth(),
         "嵌套渲染：装上再渲染一段的能力"
@@ -274,9 +259,8 @@ impl MdppBuilder {
         self
     }
 
-    /// raw HTML：正文里的 HTML 原样透传。默认**关**。理由在模块头。
-    ///
-    /// 要在自己那套已经做过净化的管线里用它，才打开。
+    /// raw HTML：正文里的 HTML 原样透传。默认**关**，理由在模块头。要在自己那套
+    /// 已经做过净化的管线里用它，才打开。
     pub fn raw_html(mut self, on: bool) -> Self {
         self.syntax.raw_html = on;
         self
@@ -290,9 +274,8 @@ impl MdppBuilder {
 
     /// Setext 标题（`标题` 下一行写 `===` 或 `---`）。默认**关**。
     ///
-    /// 关的理由不是「它不好」，而是它和 `---`（thematic break）撞在一起：
-    /// 摘掉 Setext 之后 `标题\n---` 会老老实实退化成「段落 + 分隔线」，
-    /// 而开着的时候它是标题 —— 一段写错了的正文会变成另一种意思。
+    /// 理由是它和 `---`（thematic break）撞：摘掉之后 `标题\n---` 老老实实退化成
+    /// 「段落 + 分隔线」，开着的时候它是标题 —— 一段写错了的正文会变成另一种意思。
     pub fn setext(mut self, on: bool) -> Self {
         self.syntax.setext = on;
         self
@@ -323,8 +306,7 @@ impl MdppBuilder {
         if options.setext {
             // 留着什么都不用做：`cmark::add` 已经把它装上了
         } else {
-            // 块级规则在另一个 ruler 里，所以要摘 `md.block` 而不是 `md.remove_rule` ——
-            // 后者只管 CoreRule，写错了会编译通过但完全无效。
+            // 块级规则在另一个 ruler 里，所以摘的是 `md.block` 而不是 `md.remove_rule`
             md.block
                 .remove_rule::<markdown_it::plugins::cmark::block::lheading::LHeadingScanner>();
         }
@@ -338,9 +320,8 @@ impl MdppBuilder {
 
         // `extra::add` 是一整套，接着按开关把不要的摘掉。
         //
-        // 摘法：`Ruler::remove_rule` 按**规则类型**摘，而 markdown-it 0.6 只有一列
-        // 规则（没有老版本的 `ruler2`），所以块级走 `md.block`、行内走 `md.inline`。
-        // `md.remove_rule` 只管 CoreRule，写错了会编译通过但完全无效。
+        // 摘法：`Ruler::remove_rule` 按**规则类型**摘。markdown-it 0.6 只有一列规则
+        //（没有老版本的 `ruler2`），块级走 `md.block`、行内走 `md.inline`。
         if !options.tables {
             md.block
                 .remove_rule::<markdown_it::plugins::extra::tables::TableScanner>();
@@ -375,7 +356,6 @@ impl MdppBuilder {
         block::add(&mut md);
 
         // 建好之后报一句「这一份解析器带了什么」—— 排查「为什么这个块没生效」时，
-        // 第一件要确认的就是它到底注册上没有
         debug!(
             blocks = registry.len(),
             names = ?registry.names(),
