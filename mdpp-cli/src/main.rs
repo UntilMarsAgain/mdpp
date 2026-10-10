@@ -72,7 +72,7 @@ fn run(options: &Cli) -> Result<(), String> {
     debug!(
         full = options.full,
         theme = ?options.theme,
-        "配置就绪，开始渲染"
+        "配置就绪"
     );
 
     // `--css` / `--js` 附的那些：读进来放在默认的后面
@@ -84,7 +84,7 @@ fn run(options: &Cli) -> Result<(), String> {
     let multiple = options.inputs.len() > 1;
 
     for (name, text) in &sources {
-        info!(name, bytes = text.len(), "渲染这一个");
+        info!(name, bytes = text.len(), "渲染");
         let html = parser.render_with(text, &context);
         total.add(name, text, &html);
 
@@ -100,10 +100,11 @@ fn run(options: &Cli) -> Result<(), String> {
             html
         };
         out.write_all(chunk.as_bytes())
-            .map_err(|error| format!("写不出去：{error}"))?;
+            .map_err(|error| format!("写标准输出失败：{error}"))?;
     }
 
-    out.flush().map_err(|error| format!("写不出去：{error}"))?;
+    out.flush()
+        .map_err(|error| format!("写标准输出失败：{error}"))?;
     if options.stats {
         eprint!("{total}");
     }
@@ -202,8 +203,8 @@ impl std::fmt::Display for Stats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
-            "{} 份输入（{} 字节）→ {} 字节 HTML；未知块 {} 个，误用 {} 个，内部链接 {} 条",
-            self.files, self.bytes_in, self.bytes_out, self.unknown, self.misused, self.links
+            "{} 份输入，{} 字节 → {} 字节 HTML；内部链接 {} 条，未知块 {} 个，误用 {} 个",
+            self.files, self.bytes_in, self.bytes_out, self.links, self.unknown, self.misused
         )
     }
 }

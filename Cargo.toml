@@ -1,21 +1,15 @@
 # mdpp 的 workspace 根。
 #
-# 这里**只有一个 [workspace]，没有 [package]** —— 这是「这两个是各干各的工具」
-# 的书面证据。库在 `mdpp/`，二进制在 `mdpp-cli/`，各自一份完整清单；
-# 根上只有一件事是共用的：`[profile]`。
-#
-# 为什么共用的只有 profile：cargo 的 profile **只认 workspace 根**，
-# 写在 member 的清单里会被忽略（而且 cargo 会警告一次，看着像生效了）。
-# 除它之外，一个包该有什么就是什么 —— 没有共享的依赖表，没有共享的清单片段，
-# 也不存在「谁把谁带进来」的顺序问题。
+# 这里**只有 [workspace]，没有 [package]**：库在 `mdpp/`，二进制在 `mdpp-cli/`，
+# 各自一份完整清单。根上唯一共用的是 `[profile]` —— cargo 的 profile 只认 workspace
+# 根，写在 member 的清单里会被忽略并警告一次。
 
 [workspace]
 members = ["mdpp", "mdpp-cli"]
 resolver = "2"
 
-# 库产物不带符号表、panic 时直接停 —— 两条对库和二进制都是纯收益。
-# `lto` 保持 `"thin"`：跨 crate 的块分发是间接调用，全量 LTO 在这里收益很小，
-# 而编译时间的代价是实打实的。
+# 库产物不带符号表、panic 时直接停。`lto` 保持 `"thin"`：跨 crate 的块分发是间接
+# 调用，全量 LTO 在这里收益很小，编译时间的代价却是实打实的。
 [profile.release]
 opt-level = 3
 lto = "thin"

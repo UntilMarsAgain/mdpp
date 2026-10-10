@@ -1,10 +1,7 @@
 # mdpp —— 把 Markdown++ 渲染成 HTML（命令行）
 #
 # 这个包是**库的一个普通使用者**：能用库的东西只有 `use mdpp::…`，也就是它的公开
-# API 那圈。库那边不知道这个包存在，反过来也一样（它甚至不知道有人会写命令行）。
-#
-# 顺带一件事：这个包是唯一带 `tracing-subscriber` 的那个 —— 只用库的人不必把它
-# 解出来。
+# API 那圈。它也是唯一带 `tracing-subscriber` 的那个 —— 只用库的人不必把它解出来。
 
 [package]
 name = "mdpp-cli"
@@ -15,39 +12,31 @@ license = "MIT"
 description = "把 Markdown++ 渲染成 HTML 的命令行工具"
 keywords = ["markdown", "html", "cmark", "cli"]
 categories = ["command-line-utilities", "text-processing"]
-# 不发布：这个包只有跟着库走才有意义（它 `path` 依赖库、同时声明了 `version`，
-# 库一改这里就得跟着改，单独发一个版本没有意义）。想装就
-# `cargo install --git <仓库> mdpp-cli`。
+# 不发布：这个包只有跟着库走才有意义，它 `path` 依赖库、同时声明了 `version`，
+# 库一改这里就得跟着改。想装就 `cargo install --path mdpp-cli`。
 publish = false
 
 [[bin]]
-# 程序名是 `mdpp`，跟库的包名一样 —— 命令行就该这么叫。
-name = "mdpp"
+name = "mdpp"          # 程序名跟库的包名一样
 path = "src/main.rs"
-# 不给这个二进制生成文档。两个后果，第二个才是要紧的：
-#
-# - 它没有值得生成文档的接口（那些 `//!` 是写给改它的人看的内部说明）；
-# - 不关掉的话 `cargo doc` 会为库与这个二进制各写一份 `mdpp/index.html`，
-#   后写的盖掉先写的 —— cargo 会为此报一次「output filename collision」。
+# 不为这个二进制生成文档：它没有对外的接口，而 `cargo doc` 会为库与它各写一份
+# `mdpp/index.html`，后写的盖掉先写的。
 doc = false
 
 [dependencies]
-# 本地开发走 `path`，发布走 `version`。两个都写是 cargo 的正规写法：
-# 它在本地用路径，发布时用版本号去 crates.io 上把同一个包接上。
+# 本地开发走 `path`，发布走 `version` —— 两个都写是 cargo 的正规写法。
 mdpp = { path = "../mdpp", version = "0.1.0" }
 
-# 订阅器。库只发不装，装给谁、什么格式、过滤到哪一档都是使用方的事 ——
-# 而这个包就是那个使用方。
+# 订阅器。库只发不装，装给谁、什么格式、过滤到哪一档都是使用方的事。
 tracing-subscriber = { version = "0.3", features = ["fmt"] }
 
-# 门面（发日志用的宏）。它同时也是 `tracing-subscriber` 的对接口，两个得一起写。
-#
-# 库那边也列了 `tracing` —— 两个包各写各的，不合并。库没有 `pub use tracing;`
-# 是有意的：那等于替使用方决定了「你也用这一套」。这里要用，就自己列一条。
+# 门面（发日志用的宏）。它是 `tracing-subscriber` 的对接口，两个得一起写。
+# 库那边也列了 `tracing`，两个包各写各的；库没有 `pub use tracing;`，
+# 那会替使用方决定了「你也用这一套」。
 tracing = "0.1"
+
 clap = { version = "4.6.7", features = ["derive"] }
 
 [dev-dependencies]
-# 只有这个包的测试用它（造一个放模板页的临时目录）。库那边一个都不用 ——
-# 所以它跟着使用者走，而不是跟着库走。
+# 只有这个包的测试用它造临时目录。库那边一个都不用 —— 它跟着使用者走。
 tempfile = "3"
