@@ -16,6 +16,11 @@ license = "MIT"
 description = "Markdown++ —— markdown-it 之上的可扩展块级语法与链接解析库，附一个命令行"
 keywords = ["markdown", "html", "markdown-it", "cmark", "parser"]
 categories = ["text-processing", "template-engine", "command-line-utilities"]
+# 命令行自己的零件放在 `src/bin/`，而 `src/bin/` 是 cargo 的「自动发现二进制」
+# 目录 —— 不关掉的话 `options.rs` 与 `context.rs` 会各自变成一个叫 `options`、
+# `context` 的二进制（编译时直接报「crate 里找不到 main」）。关掉之后只剩下面
+# 显式声明的那一个。
+autobins = false
 
 [lib]
 # target 名与包名相同，这样库里的路径就是 `mdpp::Mdpp`，不必写 `mdpp_lib::`。
@@ -25,8 +30,9 @@ path = "src/lib.rs"
 
 [[bin]]
 # 二进制也叫 `mdpp`：命令行就该这么叫。
+# 入口是 `src/main.rs`（惯例位置）；写出来是为了让两个 target 在文件里都看得见。
 name = "mdpp"
-path = "src/bin/mdpp/main.rs"
+path = "src/main.rs"
 
 [dependencies]
 # 正文解析。刻意关掉默认 features：里面带 `syntect`，它把代码高亮配色以内联

@@ -3,15 +3,14 @@
 // 输出默认是**片段**（像 `cmark` 那样）：那段 HTML 往哪去、外面套什么样式，
 // 是调用方的事。`--full` 才输出一个完整文档（内嵌本库那份默认样式表）。
 
-mod context;
-mod options;
+mod bin;
 
 use std::io::{Read, Write};
 use std::process::ExitCode;
 
 use mdpp::{Mdpp, RenderContext};
 
-use options::{BadUsage, Options, Wanted};
+use bin::{help, link_resolver, template_pages, version, BadUsage, Options, Wanted, NAME};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -20,15 +19,15 @@ fn main() -> ExitCode {
         Ok(Ok(options)) => options,
         Ok(Err(wanted)) => {
             let text = match wanted {
-                Wanted::Help => options::help(),
-                Wanted::Version => options::version(),
+                Wanted::Help => help(),
+                Wanted::Version => version(),
             };
             print!("{text}");
             return ExitCode::SUCCESS;
         }
         Err(BadUsage(message)) => {
-            eprintln!("{NAME}: {message}", NAME = options::NAME);
-            eprintln!("试试 `{NAME} --help`。", NAME = options::NAME);
+            eprintln!("{NAME}: {message}");
+            eprintln!("试试 `{NAME} --help`。");
             return ExitCode::from(2);
         }
     };
@@ -36,7 +35,7 @@ fn main() -> ExitCode {
     match run(&options) {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
-            eprintln!("{NAME}: {message}", NAME = options::NAME);
+            eprintln!("{NAME}: {message}");
             ExitCode::FAILURE
         }
     }
@@ -104,11 +103,11 @@ fn build(options: &Options) -> Mdpp {
 /// 按选项拼出上下文（链接前缀 + 模板页目录）
 fn build_context(options: &Options) -> Result<RenderContext, String> {
     let mut context = RenderContext::new();
-    if let Some(resolver) = context::link_resolver(options.link_prefix.as_deref()) {
+    if let Some(resolver) = link_resolver(options.link_prefix.as_deref()) {
         context = context.with_links(resolver);
     }
     if let Some(dir) = &options.template_dir {
-        context = context.with_templates(context::template_pages(dir)?);
+        context = context.with_templates(template_pages(dir)?);
     }
     Ok(context)
 }
