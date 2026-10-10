@@ -62,6 +62,15 @@
 
 #![deny(missing_docs)]
 
+/// 把仓库根的 README 里的 ```rust 段当 doctest 跑一遍。
+///
+/// 没有这一条时 README 的代码从没被编译过 —— `MyPages` 那个元组结构体被当构造器
+/// 传进 `Arc::new` 的错误就是这么活下来的。`cfg(doctest)` 让它只存在于测试里，
+/// 不进真实的文档。
+#[cfg(doctest)]
+#[doc = include_str!("../../README.md")]
+pub struct ReadmeSnippets;
+
 pub mod block;
 pub mod context;
 pub mod engine;

@@ -1,12 +1,10 @@
-# 巡览：这一版带的块，每一个来一次。
+# 巡览：每一个内置块各来一次
 
-> 这份文件本身是 `.mdpp`。想看渲染结果：
->
 > ```sh
-> cargo run -p mdpp-cli -- examples/tour.mdpp
+> cargo run -p mdpp-cli -- -T examples/templates examples/tour.mdpp
 > ```
 >
-> 它也是一份**语法速查表** —— 下面每一节的标题就是那个块名。
+> 每一节的标题就是那个块名，所以这份文件也当语法速查表用。
 
 # 文字块
 
@@ -113,8 +111,8 @@
     </markdown>
   </div>
 
-默认 HTML 被净化过，`<script>`、`on*=`、`javascript:` 都被拿掉；要放行得显式
-写 `::html js`，而写下它本身就是一次决定。
+默认过滤掉会执行脚本的东西（`<script>`、`on*=`、`javascript:` 都在白名单外）。
+要放行得显式写 `::html js` —— 写下它本身就是一次决定。
 
 ::js
   console.log("这一段原样注入；`</script` 会被转义，免得提前闭合");
@@ -131,16 +129,12 @@
 
 # 用户块
 
-`::卡片` 与 `::面板` 不在注册表里 —— 它们是**模板页**，正文在这个目录下：
+`::卡片` 与 `::面板` 不在注册表里，它们是**模板页**：
 
     examples/templates/卡片.mdpp
     examples/templates/面板.mdpp
 
-所以要带上模板目录才渲染得出来：
-
-```sh
-cargo run -p mdpp-cli -- -T examples/templates examples/tour.mdpp
-```
+带上模板目录才渲染得出来（见开头那条命令）。
 
 ::卡片 标题="一个模板页" 额外="（认不出来的参数原样留着）"
   块正文会填进模板页的 {{body}}。

@@ -88,7 +88,7 @@ pub fn template_pages(dir: &Path) -> Result<TemplatePages, String> {
     }
 
     // 这一条发 `info`：装上订阅器的人（`--debug`）正好想知道「模板页到底进了几页」
-    tracing::info!(dir = %dir.display(), pages = pages.0.len(), "模板页目录读完了");
+    tracing::info!(dir = %dir.display(), pages = pages.0.len(), "模板页目录已读入");
 
     Ok(std::sync::Arc::new(pages))
 }

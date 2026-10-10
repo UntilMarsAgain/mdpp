@@ -8,8 +8,6 @@ use clap::Parser;
 pub const NAME: &str = "mdpp";
 
 /// 把 Markdown++ 渲染成 HTML
-///
-/// 不给文件就从标准输入读。给多个文件就依次渲染，每个文件一段。
 #[derive(Parser, Debug)]
 #[command(
     name = "mdpp",
@@ -17,13 +15,18 @@ pub const NAME: &str = "mdpp";
     about,
     long_about = None,
     after_help = HELP_NOTE,
+    next_help_heading = "选项",
+    help_template = HELP_TEMPLATE,
+    override_usage = "mdpp [选项] [文件]...",
+    disable_help_flag = true,
+    disable_version_flag = true,
 )]
 pub struct Cli {
-    /// 要渲染的文件
-    #[arg(value_name = "文件")]
+    /// 要渲染的文件；不给则从标准输入读
+    #[arg(value_name = "文件", help_heading = "参数")]
     pub inputs: Vec<PathBuf>,
 
-    /// 输出完整 HTML 文档（内联默认样式与默认脚本）而不是片段
+    /// 输出完整 HTML 文档（内联默认样式与脚本），而不是片段
     #[arg(short, long)]
     pub full: bool,
 
@@ -31,54 +34,53 @@ pub struct Cli {
     #[arg(short, long, value_name = "标题")]
     pub title: Option<String>,
 
-    /// 完整文档写死主题，::theme 的两节由它挑
-    #[arg(long, value_name = "light|dark", value_parser = ["light", "dark"])]
+    /// 完整文档的主题（light 或 dark）；::theme 的两节由它挑
+    #[arg(long, value_name = "主题", value_parser = ["light", "dark"], hide_possible_values = true)]
     pub theme: Option<String>,
 
-    /// 附带自己的 CSS（可以给多次，按给的次序接在默认那份后面）
+    /// 附加 CSS，可多次；按给定次序接在默认样式之后
     #[arg(long, value_name = "文件", requires = "full")]
     pub css: Vec<PathBuf>,
 
-    /// 附带自己的 JS（可以给多次，按给的次序接在默认那段后面）
+    /// 附加 JS，可多次；按给定次序接在默认脚本之后
     ///
-    /// 默认那段只做「点一下就切选项卡」这一件事 —— 最小可用的那份。
-    /// 方向键、动画、记住上次选中的那一栏这些属于各自的界面，由这里接进来。
+    /// 默认脚本只做「点一下就切选项卡」。方向键、动画、记忆选中项属于调用方。
     #[arg(long, value_name = "文件", requires = "full")]
     pub js: Vec<PathBuf>,
 
-    /// 允许正文里的 raw HTML（默认转义）
+    /// 允许正文中的原始 HTML（默认转义）
     #[arg(short = 'u', long)]
     pub unsafe_html: bool,
 
-    /// 打开排版替换（-- 变 –，直引号变弯引号）
+    /// 启用排版替换（-- 变 –，直引号变弯引号）
     #[arg(long)]
     pub typographer: bool,
 
-    /// 打开 Setext 标题（标题下一行写 ===）
+    /// 启用 Setext 标题（标题下一行写 ===）
     #[arg(long)]
     pub setext: bool,
 
-    /// 打开缩进代码块（四空格开头）
+    /// 启用缩进代码块（四空格开头）
     #[arg(long)]
     pub indented_code: bool,
 
-    /// 关掉 $…$
+    /// 关闭行内公式 $…$
     #[arg(long)]
     pub no_math: bool,
 
-    /// 关掉 [[内部链接]]
+    /// 关闭内部链接 [[…]]
     #[arg(long)]
     pub no_wikilink: bool,
 
-    /// 给 [[目标]] 配上 <前缀>目标 的 href
+    /// [[目标]] 的 href 前缀
     #[arg(short = 'p', long, value_name = "前缀")]
     pub link_prefix: Option<String>,
 
-    /// 模板页目录：<目录>/<名字>.mdpp 就是那一页，于是 ::名字 能取到它
+    /// 模板页目录；<目录>/<名字>.mdpp 是一页，::名字 从这里取
     #[arg(short = 'T', long, value_name = "目录")]
     pub template_dir: Option<PathBuf>,
 
-    /// 列出这一版带的块名，然后退出
+    /// 列出内置块名后退出
     #[arg(short = 'L', long)]
     pub list_blocks: bool,
 
@@ -86,15 +88,22 @@ pub struct Cli {
     #[arg(short, long)]
     pub stats: bool,
 
-    /// 装一个 DEBUG 级的日志订阅器（写标准错误）
+    /// 启用 DEBUG 级日志（标准错误）
     #[arg(short, long)]
     pub debug: bool,
+
+    /// 显示帮助
+    #[arg(short = 'h', long, action = clap::ArgAction::Help)]
+    pub help: Option<bool>,
+
+    /// 显示版本
+    #[arg(short = 'V', long, action = clap::ArgAction::Version)]
+    pub version: Option<bool>,
 }
 
 impl Cli {
-    /// `<title>`：没给就用第一个输入的文件名；再没有就叫「未命名」
-    ///
-    /// 不能是空串：那会渲染出一个空的 `<title>`。
+    /// `<title>`：没给就用第一个输入的文件名；再没有就叫「未命名」。
+    /// 不能是空串 —— 那会渲染出一个空的 `<title>`。
     pub fn title_or(&self) -> String {
         if let Some(title) = &self.title {
             return title.clone();
@@ -107,19 +116,29 @@ impl Cli {
     }
 }
 
+/// `--help` 的版式。clap 把 `Usage:` / `Options:` / `Print help` 写死成英文，
+/// 用 `override_usage` 与这个模板替掉；参数表的内容仍由 clap 排。
+///
+/// 换 clap 版本时要复查这一段 —— 模板里的占位符是它的内部约定。
+const HELP_TEMPLATE: &str = "\
+{about-with-newline}
+用法：{usage}
+
+{all-args}{after-help}";
+
 /// `--help` 末尾那一段：块怎么写。
 ///
 /// 挂在 `after_help` 上，而不是在 `main` 里另打一遍 —— 输出通道是 **stdout**，
 /// 而 stdout 是**产物**（HTML）要去的地方。
 const HELP_NOTE: &str = "\
-块写法（块的内容按缩进划边界，遇到不更深的行就结束）：
+块的内容按缩进划边界，遇到不更深的行就结束：
 
     ::note title=\"提醒\"
       这里可以写 **markdown**，也可以写 [[内部链接]]。
 
-  行内公式是 $E = mc^2$，多行的用 ::math。
+行内公式是 $E = mc^2$，多行的用 ::math 块。
 
-例子见仓库里的 examples/，那里有一份把全部块都过一遍的 tour.mdpp。";
+全部块名与示例见仓库的 examples/，其中 tour.mdpp 是一个块的巡览。";
 
 #[cfg(test)]
 mod tests {
@@ -277,5 +296,26 @@ mod tests {
         ] {
             assert!(help.contains(flag), "帮助里少了 {flag}");
         }
+    }
+
+    /// 帮助里不该混进英文 —— 那一半是 clap 写死的，用 [`HELP_TEMPLATE`] 与
+    /// `override_usage` 替掉。升级 clap 时这条会先红。
+    #[test]
+    fn the_help_is_chinese_throughout() {
+        let help = Cli::command().render_long_help().to_string();
+        for english in [
+            "Usage:",
+            "Options:",
+            "Arguments:",
+            "Print help",
+            "Print version",
+        ] {
+            assert!(!help.contains(english), "帮助里混进了 {english}：\n{help}");
+        }
+        assert!(help.contains("用法："), "{help}");
+        assert!(help.contains("显示帮助"), "{help}");
+        // 主题的取值写进了帮助正文，而不是留在 clap 那句英文的 possible values 里
+        assert!(help.contains("light") && help.contains("dark"), "{help}");
+        assert!(!help.contains("possible values"), "{help}");
     }
 }
