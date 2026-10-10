@@ -172,7 +172,7 @@ pub fn help() -> String {
       --no-math           关掉 $…$
       --no-wikilink       关掉 [[内部链接]]
   -p, --link-prefix <前缀> 给 [[目标]] 配上 <前缀>目标 的 href
-  -T, --template-dir <目录> 模板页目录：<目录>/<名字>.md 就是那一页，
+  -T, --template-dir <目录> 模板页目录：<目录>/<名字>.mdpp 就是那一页，
                            于是 ::名字 能取到它
   -L, --list-blocks       列出这一版带的块名，然后退出
   -s, --stats             把统计写到标准错误

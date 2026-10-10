@@ -59,7 +59,7 @@ pub fn source_of(block: &Block) -> Result<String, String> {
             // 报的是**归一之后**的页名：写 `template:卡片` 时就别再叠一层前缀
             let page = template::page_key(name).unwrap_or_else(|| name.trim().to_string());
             Err(format!(
-                "`{page}` 这一页不存在（名字按页面名写，不用带 `.md`）"
+                "`{page}` 这一页不存在（名字按页面名写，不用带后缀）"
             ))
         }
     }

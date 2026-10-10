@@ -196,7 +196,21 @@ markdown-it 默认开着、本库默认关掉四样，每一条的代价都写�
 
 ## 例子
 
-`mdpp/examples/` 下的四个都是能跑的，对着三个扩展点各来一份：
+**两处，别混：**
+
+| 在哪 | 是什么 |
+|---|---|
+| `examples/` | 用命令行跑的**示例文件**（`.mdpp`）：一份块的全景巡览、一份内部链接的写法，外加两个模板页 |
+| `mdpp/examples/` | 四个 Rust 例子，对着库的三个扩展点各来一份 |
+
+示例文件是被测的：`mdpp-cli/tests/samples.rs` 每一份都渲染一遍，断言里面没有
+「未知块」与「误用」的框 —— 所以块改名了示例不会悄悄烂掉。
+
+```sh
+cargo run -p mdpp-cli -- --link-prefix /notes/ -T examples/templates examples/tour.mdpp
+```
+
+Rust 那四个：
 
 | 例子 | 讲什么 |
 |---|---|
