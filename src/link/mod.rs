@@ -94,6 +94,15 @@ pub trait NodeRenderer: Send + Sync {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer);
 }
 
+/// 闭包也算一个 `NodeRenderer`。
+///
+/// 这一条 blanket impl 与 [`crate::block::template`] 那边的选择是**反着**的，
+/// 说清区别免得看着像自相矛盾：
+///
+/// - 这里给的是**写法**上的方便 —— 写一个闭包就是「直接说出要渲染成什么」，
+///   里面没有任何「东西存在哪」的知识；
+/// - `TemplateSource` 与 [`LinkResolver`] 上刻意**不给**任何实现 —— 那两个 trait
+///   的内容恰恰就是「东西存在哪」，给一个现成的就会把最常见的那种存法定成默认答案。
 impl<F> NodeRenderer for F
 where
     F: Fn(&Node, &mut dyn Renderer) + Send + Sync,

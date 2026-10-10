@@ -118,17 +118,16 @@ impl LinkResolver for RedLink {
 ### 三、模板页也是一个 trait
 
 ```rust
+use std::collections::HashMap;
 use mdpp::{block::template::{TemplatePage, TemplateSource}, RenderContext};
 
-#[derive(Debug)]
-struct MyPages;
+#[derive(Debug, Default)]
+struct MyPages(HashMap<String, TemplatePage>);
+
 impl TemplateSource for MyPages {
     fn page(&self, name: &str) -> Option<TemplatePage> {
         // name 已经归一过（小写、剥掉了 template: 前缀）
-        match name {
-            "卡片" => Some(TemplatePage::Ready("::banner\n  {{标题}}\n".into())),
-            _ => None,
-        }
+        self.0.get(name).cloned()
     }
 }
 
@@ -139,6 +138,20 @@ let html = Mdpp::new().render_with("::卡片 标题=某\n", &context);
 `Ready` 是正文；`Unreadable { reason }` 是「这一页在，但这一刻读不出来」——
 那两种情况对作者是两件事，混成一句「取不到」最难查，所以分成了两个变体，
 渲染出来也是两个不同的框。
+
+### 这两个 trait 上，本库**一个实现都不带**
+
+这不是「忘了」，是刻意的。给一个现成的实现（一张 `HashMap`、一个文件目录）
+就等于把**「东西存在哪」定成默认答案** —— 而真实使用方常常是数据库、搜索索引、
+或者按需解密的页；要绕开那个类型，就得重新实现一遍 trait。
+
+所以最简的实现只有十行，十行里没有任何关于「存在哪」的假设（上面那段就是）。
+`src/bin/context.rs` 里是同样两行的另一份：`--template-dir` 把一个目录读成那张表，
+`--link-prefix` 把目标拼成地址。**那个二进制就是本库的一个普通使用者**，没有开挂。
+
+有一处看着像例外，其实不是：`impl<F: Fn(&Node, &mut dyn Renderer)> NodeRenderer for F`
+（闭包当渲染器）。那个给的是**写法**上的方便 —— 写个闭包就是「直接说出要渲染成
+什么」，里面没有「东西存在哪」的知识；而上面那两个 trait 的内容恰恰就是那个知识。
 
 页名的归一（`甲` 与 `template:甲` 是同一页）在**库里**做，实现方不必自己处理一遍
 —— 漏掉这一步的症状很隐蔽：`::甲` 能用、`src=template:甲` 却报「不存在」。
