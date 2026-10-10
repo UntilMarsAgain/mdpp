@@ -1,12 +1,12 @@
 // 把渲染结果变成一个能双击打开的文件。
 //
-//     cargo run --example standalone_page
+//     cargo run -p mdpp --example standalone_page
 //
 // 库**不**管正文往哪去、外面套什么样式 —— 它给的是一段 HTML 片段。
 // `assets::full_document` 是库里唯一「自己套壳」的地方，套的是那份默认样式表：
 // 想换样式，复制 `assets::DEFAULT_CSS` 改，或者干脆自己写壳（那更常见）。
 //
-// 跑法：`cargo run --example standalone-page`（会在当前目录写出 out/）
+// 跑法：`cargo run -p mdpp --example standalone_page`（会在当前目录写出 out/）
 
 use std::path::Path;
 

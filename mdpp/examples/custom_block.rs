@@ -1,12 +1,12 @@
 // 自定义块：往注册表里加自己的 `::` 块。
 //
-//     cargo run --example custom-block
+//     cargo run -p mdpp --example custom_block
 //
 // 三种 `ContentMode` 各来一个 —— 那不是三份文档，是**三种写法形状**：
 // Markdown 档能写列表与内嵌块，Sections 档按 `[标签]` 分节，Raw 档一个字都不解析
 // （TeX、样式、代码里的记号按 markdown 走一遍就毁了）。
 //
-// 跑法：`cargo run --example custom-block`
+// 跑法：`cargo run -p mdpp --example custom_block`
 
 use mdpp::markdown_it::{Node, Renderer};
 use mdpp::{registry::BlockRegistry, ContentMode, Mdpp};

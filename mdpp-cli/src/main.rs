@@ -3,17 +3,22 @@
 // 输出默认是**片段**（像 `cmark` 那样）：那段 HTML 往哪去、外面套什么样式，
 // 是调用方的事。`--full` 才输出一个完整文档（内嵌本库那份默认样式表）。
 
-mod bin;
+// 下面三个模块**只属于这个二进制**，库那边一概不知道它们存在 —— 所以它们住在
+// `mdpp-cli` 这个包里，而不是 `mdpp` 那边。它们对 `mdpp::` 不可见（`pub(crate)`），
+// 而这个包要用库的东西只能写 `use mdpp::…`，也就是公开 API 那圈。
+mod context;
+mod options;
+mod telemetry;
+
+use context::{link_resolver, template_pages};
+use options::{help, version, BadUsage, Options, Wanted, NAME};
+use telemetry::install;
 
 use std::io::{Read, Write};
 use std::process::ExitCode;
 
 use mdpp::{Mdpp, RenderContext};
-
-use bin::{
-    debug, help, info, install, link_resolver, template_pages, version, BadUsage, Options, Wanted,
-    NAME,
-};
+use tracing::{debug, info};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

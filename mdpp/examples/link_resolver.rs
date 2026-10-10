@@ -1,6 +1,6 @@
 // 内部链接解析器：接住 `[[目标]]`，决定它渲染成什么。
 //
-//     cargo run --example link-resolver
+//     cargo run -p mdpp --example link_resolver
 //
 // 递回来的东西有两种，是**目标性质的不同**，不是口味：
 //
@@ -11,7 +11,7 @@
 // 第二种不给 `href` 不是缺陷：`href` 一旦有，浏览器就会自己走，接单击处理的
 // 那一侧根本轮不到。
 //
-// 跑法：`cargo run --example link-resolver`
+// 跑法：`cargo run -p mdpp --example link_resolver`
 
 use std::collections::HashSet;
 use std::sync::Arc;

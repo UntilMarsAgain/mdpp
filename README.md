@@ -8,6 +8,8 @@
 cargo build --release
 ./target/release/mdpp 正文.md          # HTML 片段
 ./target/release/mdpp --full 正文.md   # 完整文档（内嵌默认样式）
+
+cargo install --path mdpp-cli          # 装到 PATH 里（程序名还是 mdpp）
 ```
 
 ## 它是什么
@@ -146,7 +148,7 @@ let html = Mdpp::new().render_with("::卡片 标题=某\n", &context);
 或者按需解密的页；要绕开那个类型，就得重新实现一遍 trait。
 
 所以最简的实现只有十行，十行里没有任何关于「存在哪」的假设（上面那段就是）。
-`src/bin/context.rs` 里是同样两行的另一份：`--template-dir` 把一个目录读成那张表，
+`mdpp-cli/src/context.rs` 里是同样两行的另一份：`--template-dir` 把一个目录读成那张表，
 `--link-prefix` 把目标拼成地址。**那个二进制就是本库的一个普通使用者**，没有开挂。
 
 有一处看着像例外，其实不是：`impl<F: Fn(&Node, &mut dyn Renderer)> NodeRenderer for F`
@@ -194,7 +196,7 @@ markdown-it 默认开着、本库默认关掉四样，每一条的代价都写�
 
 ## 例子
 
-`examples/` 下的四个都是能跑的（`cargo run --example …`），对着三个扩展点各来一份：
+`mdpp/examples/` 下的四个都是能跑的，对着三个扩展点各来一份：
 
 | 例子 | 讲什么 |
 |---|---|
@@ -220,7 +222,7 @@ mdpp --debug 正文.md > 输出.html    # 输出.html 里没有一行日志
 
 ```sh
 cargo fmt                # 提交前先跑这个
-cargo test               # 180 个测试（库 156、命令行 20、文档 4）
+cargo test               # 全部：库 156 + 4 文档、命令行 20
 cargo clippy --all-targets
 cargo doc --open
 ```

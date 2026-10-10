@@ -1,0 +1,47 @@
+# mdpp —— Markdown++（库）
+#
+# 「markdown → HTML」。这一层**不知道文件系统、终端、仓库的任何事**：目标存不
+# 存在、模板页正文从哪来、正文写到哪去，一概不问 —— 那些由使用方通过 trait
+# 递进来（`LinkResolver` 与 `TemplateSource`）。
+#
+# 二进制是另一个包（`mdpp-cli`），它用这个库的方式与别的使用方没有区别。
+
+[package]
+name = "mdpp"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+description = "Markdown++ —— markdown-it 之上的可扩展块级语法与链接解析库"
+keywords = ["markdown", "html", "markdown-it", "parser"]
+categories = ["text-processing", "template-engine"]
+
+[lib]
+# target 名与包名相同，这样库里的路径就是 `mdpp::Mdpp`，不必写 `mdpp_lib::`。
+# `path` 是默认的（`src/lib.rs`），写出来只是为了让「库在这里」摆在明面上。
+name = "mdpp"
+path = "src/lib.rs"
+
+[dependencies]
+# 日志。只用**门面**（`tracing` 本身没有依赖，带实现的是 `tracing-subscriber`），
+# 库这一侧只 `debug!` / `trace!`，订阅器由二进制装 —— 于是「装不装、装哪个」是
+# 使用方的事，库永远不替它决定。
+#
+# 这里**没有** `tracing-subscriber`：那是 `mdpp-cli` 的依赖。分开成两个包就是为了
+# 这个 —— 只用库的人不必把它解出来、更不必编它。
+tracing = "0.1"
+
+# 正文解析。刻意关掉默认 features：里面带 `syntect`，它把代码高亮配色以内联
+# style 写死，跟随不了主题，而代码分词不该由一个后端库决定。
+markdown-it = { version = "0.6", default-features = false, features = ["linkify"] }
+# `::html` 的净化器：按 HTML5 规范解析后按白名单重建。
+#
+# 与 markdown-it 的渲染器无关（它输出原始 HTML），所以这两条是本 crate 里仅剩的
+# 「自己动手拼 HTML」的地方 —— 拼之前必须先按规范解析一遍，否则白名单就是一句空话。
+html5ever = "0.39"
+markup5ever_rcdom = "0.39.0"
+
+[dev-dependencies]
+# 例子里的 `standalone_page` 要写一个文件出去。正经的库功能一个都不用它，
+# 所以它是 dev-dependencies —— 写成普通依赖会让库的使用者也拖上 tempfile。
+tempfile = "3"
