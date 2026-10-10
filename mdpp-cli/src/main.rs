@@ -159,9 +159,9 @@ fn read_sources(options: &Options) -> Result<Vec<(String, String)>, String> {
 #[derive(Default)]
 struct Stats {
     files: usize,
-    blocks: usize,
     links: usize,
-    problems: usize,
+    unknown: usize,
+    misused: usize,
     bytes_in: usize,
     bytes_out: usize,
 }
@@ -171,11 +171,13 @@ impl Stats {
         self.files += 1;
         self.bytes_in += source.len();
         self.bytes_out += html.len();
-        // 数的是**容器**个数（`class="template …`），不是块数：
-        // 「一个块里嵌了几个块」数不清，而嵌套的深浅也不是这里要报的事
-        self.blocks += html.matches("class=\"template ").count();
-        self.problems +=
-            html.matches("template--unknown").count() + html.matches("template--problem").count();
+        // **不报「块有几个」** —— 那个数不出来：22 个块各写各的 class，要数就得把
+        // 那 22 个名字抄一份在这儿，而那份清单第二天就会过期。过期之后它报出来的
+        // 数字还是「像模像样」的，比不报更坏。
+        //
+        // 报的是**出问题的地方**：那两个类名由 `block::dispatch` 一处写死，不会过期。
+        self.unknown += html.matches("template--unknown").count();
+        self.misused += html.matches("template--problem").count();
         self.links += html.matches("<a class=\"wikilink").count();
         let _ = name;
     }
@@ -187,8 +189,8 @@ impl std::fmt::Display for Stats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
-            "{} 份输入（{} 字节）→ {} 字节 HTML；块 {} 个（其中报错的 {} 个），内部链接 {} 条",
-            self.files, self.bytes_in, self.bytes_out, self.blocks, self.problems, self.links
+            "{} 份输入（{} 字节）→ {} 字节 HTML；未知块 {} 个，误用 {} 个，内部链接 {} 条",
+            self.files, self.bytes_in, self.bytes_out, self.unknown, self.misused, self.links
         )
     }
 }

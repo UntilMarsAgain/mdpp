@@ -1,0 +1,149 @@
+# 巡览：这一版带的块，每一个来一次。
+
+> 这份文件本身是 `.mdpp`。想看渲染结果：
+>
+> ```sh
+> cargo run -p mdpp-cli -- examples/tour.mdpp
+> ```
+>
+> 它也是一份**语法速查表** —— 下面每一节的标题就是那个块名。
+
+# 文字块
+
+内容照常按 markdown 解析，所以里面能写列表、链接、内部链接，也能再嵌块。
+
+::quote origin="某 人"
+  引用里也能写 **强调** 与 [[内部链接]]。
+
+  两段之间空一行，就分成两段。
+
+::aside title="十四门桥"
+  右侧的信息栏。里面的正文同样是 markdown：
+
+  - 建于某年
+  - 与某桥并称
+
+::signature
+  甲
+  2026 年秋
+
+::title text="卷首的题名"
+::banner color=#0055a4
+  深色底，字色由亮度自动定
+::banner text="圆角默认开着" rounded=off
+  这一条要直角
+
+# 提示框
+
+五种形状一样，差别只在记号与配色。`title=` 换掉默认标题，`color=` 换掉底色
+（只认 `#rgb` / `#rrggbb`）。
+
+::note
+  补充一点背景。
+::tip
+  一个更省事的路子。
+::warning
+  不做会出麻烦，但眼下还没坏。
+::danger
+  会丢东西、会不可逆的那类操作。
+::error
+  已经出错了。
+
+# 属性表
+
+逐行 `标签 | 值`。值是**原文**，不解析 markdown。
+
+::fields
+  地址 | 福建省某村
+  分类 | 古建筑
+  年代 | 清
+
+# 选项卡与深浅色
+
+按 `[标签]` 分节，每一节是一篇独立的小文档。
+
+::tabs
+  [读法一]
+  照着念。
+
+  第二节里照样能写列表：
+
+  - 甲
+  - 乙
+  [读法二]
+  自己试。
+
+::theme
+  [light]
+  浅色下显示这一段。
+  [dark]
+  深色下显示这一段。
+
+# 代码、图、公式
+
+这四个块**一个字都不解析** —— 里面的记号是它自己的，按 markdown 走一遍就毁了。
+
+::code lang=rust
+  fn main() {
+      // 这里的 * 与 _ 不该被当成强调
+      println!("{:#?}", &[1, 2, 3]);
+  }
+
+::mermaid
+  graph TD
+    A[开始] --> B{行不行}
+    B -->|行| C[干活]
+
+::math
+  \frac{a}{b} = c_1 * d
+
+行内公式是 $E = mc^2$，独立一行的是 $$ \int_0^1 x^2 \, dx $$。
+
+# 样式与标记
+
+::css
+  .我有自己的样式 {
+    color: var(--mdpp-accent);
+  }
+
+::html
+  <div class="card" title="白名单里的属性都留着">
+    <markdown>
+    **HTML 里反过来写 markdown**：可以写列表、写内部链接、写 ::note 这样的块。
+    </markdown>
+  </div>
+
+默认 HTML 被净化过，`<script>`、`on*=`、`javascript:` 都被拿掉；要放行得显式
+写 `::html js`，而写下它本身就是一次决定。
+
+::js
+  console.log("这一段原样注入；`</script` 会被转义，免得提前闭合");
+
+# 媒体
+
+尺寸参数是**上限**（`max-width` / `max-height`），不是拉伸。
+
+::image src=图片.png width=320 align=center
+  图注写在图片下面这一行
+
+::video src=片子.mp4 width=480
+::audio src=录音.mp3
+
+# 用户块
+
+`::卡片` 与 `::面板` 不在注册表里 —— 它们是**模板页**，正文在这个目录下：
+
+    examples/templates/卡片.mdpp
+    examples/templates/面板.mdpp
+
+所以要带上模板目录才渲染得出来：
+
+```sh
+cargo run -p mdpp-cli -- -T examples/templates examples/tour.mdpp
+```
+
+::卡片 标题="一个模板页" 额外="（认不出来的参数原样留着）"
+  块正文会填进模板页的 {{body}}。
+
+::面板 标题="另一个模板页"
+  模板页也可以分节 —— 它里面写的就是一个 `::tabs` 块。

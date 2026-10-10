@@ -64,7 +64,14 @@ impl TemplateSource for Pages {
     }
 }
 
-/// 把一个目录读成模板页表：`<目录>/<名字>.md` 就是那一页。
+/// 模板页文件的后缀。目录里带这个后缀的才是模板页。/// 目录里别的文件一律不认 —— 那是别的文件，不是模板页。
+///
+/// 用 `.mdpp` 而不是 `.md` 是有意的：模板页里常有 `{{}}` 与 `::` 方言，而它终究
+/// 要走进 markdown 解析器。用一个专门的后缀标出来，「这一份不是普通 markdown」
+/// 就在文件名里，而不必去猜内容。
+pub const TEMPLATE_SUFFIX: &str = "mdpp";
+
+/// 把一个目录读成模板页表：`<目录>/<名字>.mdpp` 就是那一页。
 ///
 /// 返回 `Err` 的那一句是给人看的（哪个文件读不了），因为**读了一半的模板页表**
 /// 只会让 `::那个名字` 报「未知块」，而真正的毛病在文件系统那边。
@@ -77,7 +84,7 @@ pub fn template_pages(dir: &Path) -> Result<TemplatePages, String> {
     let mut paths: Vec<_> = entries
         .filter_map(Result::ok)
         .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|ext| ext == "md"))
+        .filter(|path| path.extension().is_some_and(|ext| ext == TEMPLATE_SUFFIX))
         .collect();
     paths.sort();
 
@@ -128,8 +135,10 @@ mod tests {
     #[test]
     fn a_directory_becomes_a_page_table() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        std::fs::write(dir.path().join("卡片.md"), "::banner\n  卡片来了\n").expect("写得下");
-        std::fs::write(dir.path().join("不是模板.txt"), "不认").expect("写得下");
+        std::fs::write(dir.path().join("卡片.mdpp"), "::banner\n  卡片来了\n").expect("写得下");
+        // 后缀不对的、根本没有后缀的，都不是模板页
+        std::fs::write(dir.path().join("不是模板.md"), "不认").expect("写得下");
+        std::fs::write(dir.path().join("也没有后缀"), "也不认").expect("写得下");
 
         let pages = template_pages(dir.path()).expect("读得动");
         let context = RenderContext::new().with_templates(pages);
@@ -142,7 +151,7 @@ mod tests {
     #[test]
     fn the_prefixed_spelling_finds_the_same_page() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        std::fs::write(dir.path().join("卡片.md"), "::banner\n  卡片来了\n").expect("写得下");
+        std::fs::write(dir.path().join("卡片.mdpp"), "::banner\n  卡片来了\n").expect("写得下");
 
         let context =
             RenderContext::new().with_templates(template_pages(dir.path()).expect("读得动"));
@@ -178,6 +187,25 @@ mod tests {
     fn an_unreadable_directory_says_which_one() {
         let message = template_pages(Path::new("/没有这个目录")).unwrap_err();
         assert!(message.contains("模板页目录"), "{message}");
+    }
+
+    /// 目录里带别的后缀的一律不认：模板页是本方言的东西，用一个专门的后缀标出来
+    #[test]
+    fn only_the_marked_suffix_counts_as_a_template_page() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        for name in ["卡片.mdpp", "别的.md", "别的.txt", "别的"] {
+            std::fs::write(dir.path().join(name), "::banner\n  卡片来了\n").expect("写得下");
+        }
+
+        let context =
+            RenderContext::new().with_templates(template_pages(dir.path()).expect("读得动"));
+        let mdpp = Mdpp::new();
+        assert!(mdpp.render_with("::卡片\n", &context).contains("卡片来了"));
+        let absent = mdpp.render_with("::别的\n", &context);
+        assert!(
+            absent.contains("template--unknown"),
+            "别的（那几个后缀）不该被当成模板页：{absent}"
+        );
     }
 
     /// 空目录不报错 —— 那只是「还没有自定义块」，与「出错」是两件事
