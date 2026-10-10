@@ -1,17 +1,16 @@
-// 内部链接解析器：接住 `[[目标]]`，决定它渲染成什么。
+// 内部链接：`[[目标]]` 的三种结局。
 //
 //     cargo run -p mdpp --example link_resolver
 //
-// 递回来的东西有两种，是**目标性质的不同**，不是口味：
+// | 情形 | 渲染成 |
+// |---|---|
+// | `ResolvedLink::Link` | 带 `href` 的普通链 |
+// | `ResolvedLink::Node` | 整个节点归那个函数写（连 `<a>` 都由它决定） |
+// | `None`，或压根没递解析器 | **红链**：`class="wikilink wikilink--missing"` |
 //
-// - `ResolvedLink::Link` —— 目标是出得去的地方，给一个 `href`；
-// - `ResolvedLink::Node` —— 目标没有 `href`，但**仍然是个链接**（人会点它），
-//   只是「点它会发生什么」由使用方决定。
-//
-// 第二种不给 `href` 不是缺陷：`href` 一旦有，浏览器就会自己走，接单击处理的
-// 那一侧根本轮不到。
-//
-// 跑法：`cargo run -p mdpp --example link_resolver`
+// 最后那一种是最要紧的默认值：「不认得这个目标」与「没人去认」是同一件事 ——
+// 调用方不知道 `[[某页]]` 存不存在。渲染成一条看起来正常的链，等于替它宣称
+// 「这一页存在」，而那是它没说过、也没法说的事。
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -28,11 +27,7 @@ struct FakeVault {
     existing: HashSet<String>,
 }
 
-/// 一个「在不在仓库里」的解析器：存在的给地址，不存在的标成红链。
-///
-/// 红链那条走的是 `Node` —— 单页应用里点它该由前端拦下替换正文，所以**不能**给
-/// `href`（给了浏览器就自己走了）。也正因为它**是个链接**，所以仍然渲染成
-/// `<a>`、仍然带 `data-doc`。
+/// 认得出的给地址，认不出的什么都不给 —— 后者就落成红链。
 impl LinkResolver for FakeVault {
     fn resolve(&self, target: &str) -> Option<ResolvedLink> {
         // 带命名空间前缀的一律当成「别人家的页」：出得去就出得去
@@ -42,18 +37,26 @@ impl LinkResolver for FakeVault {
             ));
         }
 
-        if self.existing.contains(target) {
-            return Some(ResolvedLink::Link(
+        self.existing.contains(target).then(|| {
+            ResolvedLink::Link(
                 LinkTarget::new(format!("/notes/{target}")).attr("data-page", target),
-            ));
-        }
-
-        // 不存在 → 红链。整段交给函数，连 `<a>` 都由它开
-        Some(ResolvedLink::Node(Box::new(RedLink)))
+            )
+        })
     }
 }
 
-/// 红链：点它的人知道「这一页还没写」
+/// 一个「谁都不认」的解析器
+#[derive(Debug)]
+struct NoVault;
+
+impl LinkResolver for NoVault {
+    fn resolve(&self, _target: &str) -> Option<ResolvedLink> {
+        None
+    }
+}
+
+/// 递 `Node` 的那一种：目标没有 `href`，但**仍然是个链接**（人会点它），
+/// 只是「点它会发生什么」由使用方决定。
 struct RedLink;
 
 impl NodeRenderer for RedLink {
@@ -65,14 +68,19 @@ impl NodeRenderer for RedLink {
     }
 }
 
-/// 什么都不认的解析器 —— 用来对照「没递解析器」时是什么样
+/// 递了它自己那份红链的实现：库的默认形态长什么样、我的能不能换掉
 #[derive(Debug)]
-struct NoVault;
+struct DrawsItsOwnRedLink;
 
-impl LinkResolver for NoVault {
+impl LinkResolver for DrawsItsOwnRedLink {
     fn resolve(&self, _target: &str) -> Option<ResolvedLink> {
-        None
+        Some(ResolvedLink::Node(Box::new(RedLink)))
     }
+}
+
+fn render_with(resolver: impl LinkResolver + 'static, src: &str) -> String {
+    let resolver: Arc<dyn LinkResolver> = Arc::new(resolver);
+    Mdpp::new().render_with(src, &RenderContext::new().with_links(resolver))
 }
 
 fn main() {
@@ -80,16 +88,27 @@ fn main() {
 
     let mut existing = HashSet::new();
     existing.insert("已经写了的那页".to_string());
-    let vault = Arc::new(FakeVault { existing });
 
-    println!("== 递了解析器 ==\n");
-    let context = RenderContext::new().with_links(vault);
-    println!("{}", Mdpp::new().render_with(source, &context));
+    println!("== 递了「哪些页存在」的解析器 ==\n");
+    println!("{}", render_with(FakeVault { existing }, source));
 
-    println!("== 递了一个什么都不认的 ==\n");
-    let context = RenderContext::new().with_links(Arc::new(NoVault));
-    println!("{}", Mdpp::new().render_with(source, &context));
+    println!("\n== 递了一个谁都不认的解析器 —— 与下面那句**完全一样** ==\n");
+    println!("{}", render_with(NoVault, source));
 
-    println!("== 压根没递解析器 ==\n");
+    println!("\n== 压根没递解析器 ==\n");
     println!("{}", Mdpp::new().render(source));
+
+    println!("\n== 想换掉红链的样子：递 Node，自己画 ==\n");
+    println!("{}", render_with(DrawsItsOwnRedLink, "[[随便一页]]\n"));
+
+    println!("\n== 想让它看起来正常：给一个能问出地址的解析器 ==\n");
+    println!(
+        "{}",
+        render_with(
+            FakeVault {
+                existing: HashSet::from(["随便一页".to_string()])
+            },
+            "[[随便一页]]\n"
+        )
+    );
 }

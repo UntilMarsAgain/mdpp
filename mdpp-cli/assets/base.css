@@ -162,6 +162,16 @@
   border-bottom-style: solid;
 }
 
+/* 红链：解析器说没有这个目标，或者压根没人递解析器。
+ * 必须排在上面那条**之后** —— 两条的选择器权重一样，靠次序决出谁胜。 */
+.mdpp-content a.wikilink--missing {
+  color: var(--mdpp-danger);
+}
+
+.mdpp-content a.wikilink--missing:hover {
+  border-bottom-style: solid;
+}
+
 .mdpp-content blockquote {
   margin: var(--mdpp-gap) 0;
   padding: 0.2rem 1rem;
