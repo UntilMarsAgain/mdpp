@@ -5,9 +5,10 @@
 //! 下面挂到本块的 `children` 上 —— 一节是一篇独立的小文档，所以渲染器只做一件事：
 //! 把各节按自己的方式摆出来。
 //!
-//! 两者的差别也只在于**怎么摆**：选项卡是一排按钮加若干面板，切换交给使用方接线；
-//! 深浅色主题是把两节都渲染进去、显示哪一节由样式按 `data-mdpp-theme` 决定
-//! （切主题不必重新渲染正文）。
+//! 两者的差别也只在于**怎么摆**：选项卡是一排按钮加若干面板，**切换靠一段脚本**
+//! （`mdpp-cli/assets/mdpp.js` —— 那是界面那一层的事，渲染器不该管，所以这里只
+//! 吐结构）；深浅色主题是把两节都渲染进去、显示哪一节由样式按
+//! `data-mdpp-theme` 决定（切主题不必重新渲染正文）。
 
 use super::super::dispatch::{render_problem, sections};
 use crate::registry::Block;
@@ -55,7 +56,7 @@ pub(super) fn render_tabs(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     );
     for (index, (label, _)) in sections.iter().enumerate() {
         let selected = index == 0;
-        // 用真按钮：Tab 键走得到、回车就切（切换的接线在使用方）
+        // 用真按钮：Tab 键走得到、回车就切（切换的那段脚本认 `role="tablist"`）
         let attrs: Vec<(&str, String)> = vec![
             (
                 "class",
@@ -81,11 +82,15 @@ pub(super) fn render_tabs(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     fmt.close("div");
     fmt.cr();
 
-    for (index, (_, content)) in sections.iter().enumerate() {
+    for (index, (label, content)) in sections.iter().enumerate() {
         let mut attrs: Vec<(&str, String)> = vec![
             ("class", "tabs__panel".to_string()),
             ("role", "tabpanel".to_string()),
             ("data-panel", index.to_string()),
+            // 屏幕上这一面是藏着的，名字已经写在标签上了；打印时全展开，
+            // 就得靠这个字段给每一节起名字（见 mdpp.css 里那段 `@media print`）。
+            // 缺了它，打印出来就是几段没有标题的正文。
+            ("data-label", (*label).to_string()),
         ];
         if index != 0 {
             attrs.push(("hidden", "hidden".to_string()));

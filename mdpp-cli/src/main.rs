@@ -8,6 +8,7 @@
 // 而这个包要用库的东西只能写 `use mdpp::…`，也就是公开 API 那圈。
 mod context;
 mod options;
+mod page;
 mod telemetry;
 
 use context::{link_resolver, template_pages};
@@ -89,8 +90,10 @@ fn run(options: &Options) -> Result<(), String> {
             // 看不出哪段是哪段
             let _ = writeln!(out, "<!-- {name} -->");
         }
+        // `--full` 才套外壳：外面套什么、内联什么，是界面那一层的事。
+        // 片段是常态（像 cmark 那样），而那一段该往哪去由调用方决定。
         let chunk = if options.full {
-            mdpp::assets::full_document(name, &html, options.theme.as_deref())
+            page::full_document(name, &html, options.theme.as_deref())
         } else {
             html
         };

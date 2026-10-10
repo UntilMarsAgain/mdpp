@@ -502,3 +502,102 @@
   margin: 0.4em 0 0;
   border-style: solid;
 }
+/* ---- 打印 --------------------------------------------------------- */
+/*
+ * 屏幕上折叠的东西，打印时都要展开。
+ *
+ * 「折叠」在屏幕上是对的（一次只显示一栏），印在纸上却只印得出第一栏 ——
+ * 而读者以为那就是全部。选项卡与深浅色两节都属于这一类。
+ *
+ * 面板上的 `data-label` 是渲染器给的（`::tabs` 落的那一节标题），所以展开之后
+ * 每节仍有名字可读；`::theme` 的两节同理。
+ */
+
+@media print {
+  /* 留一点底色：默认浏览器会把背景色省掉，而提示框全靠底色区分 */
+  .mdpp-content {
+    --mdpp-note-bg: #eef3fb;
+    --mdpp-tip-bg: #eef8f2;
+    --mdpp-warning-bg: #fdf6e6;
+    --mdpp-danger-bg: #fceeee;
+    --mdpp-error-bg: #f5eefa;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* 每一节都出来，每节顶上带它自己的名字 */
+  .mdpp-content .tabs__panel[hidden] {
+    display: block !important;
+  }
+
+  .mdpp-content .tabs__panel::before {
+    content: attr(data-label);
+    display: block;
+    margin: 0.8em 0 0.3em;
+    font-weight: 600;
+  }
+
+  .mdpp-content .tabs__panel + .tabs__panel {
+    margin-top: 0.8em;
+    border-top: 1px solid var(--mdpp-border);
+    padding-top: 0.6em;
+  }
+
+  /* 标签条本身在纸上没意义：每个标签下面就是它那一节 */
+  .mdpp-content .tabs__bar {
+    display: none;
+  }
+
+  /* 深浅色两节都出来（不然纸上只有屏幕上是深色那一半） */
+  .mdpp-content .theme__part--light,
+  .mdpp-content .theme__part--dark {
+    display: block !important;
+  }
+
+  .mdpp-content .theme__part + .theme__part {
+    margin-top: 0.8em;
+    border-top: 1px solid var(--mdpp-border);
+    padding-top: 0.6em;
+  }
+
+  /* 信息栏在屏幕上浮在右边绕着正文走，纸上浮动只会让它只占半页 */
+  .mdpp-content .aside {
+    float: none;
+    width: auto;
+    margin: 0.8em 0;
+    page-break-inside: avoid;
+  }
+
+  /* 地址写出来：纸上看不见链接指向哪儿 */
+  .mdpp-content a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.85em;
+    word-break: break-all;
+  }
+
+  /* 内部链接那串点是给人看的，纸上没用 */
+  .mdpp-content a.wikilink {
+    border-bottom: 0;
+  }
+
+  /* 别把一块内容从中间撕成两页 */
+  .mdpp-content .callout,
+  .mdpp-content .banner,
+  .mdpp-content .template,
+  .mdpp-content figure,
+  .mdpp-content pre {
+    page-break-inside: avoid;
+  }
+
+  .mdpp-content pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* 屏幕上靠滚动才看得到的东西，纸上全出来 */
+  .mdpp-content {
+    height: auto;
+    overflow: visible;
+    padding: 0;
+  }
+}

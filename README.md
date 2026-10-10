@@ -7,7 +7,7 @@
 ```sh
 cargo build --release
 ./target/release/mdpp 正文.md          # HTML 片段
-./target/release/mdpp --full 正文.md   # 完整文档（内嵌默认样式）
+./target/release/mdpp --full 正文.md   # 完整文档（内联默认样式 + 默认脚本）
 
 cargo install --path mdpp-cli          # 装到 PATH 里（程序名还是 mdpp）
 ```
@@ -219,6 +219,24 @@ Rust 那四个：
 | `template_pages` | 模板页的四种结局：可用、没参数、读不出来、不存在 |
 | `standalone_page` | 把片段套成能双击打开的 HTML 文件 |
 
+## `--full`：能看，也能用
+
+片段是常态（像 `cmark` 那样）。要整页时加 `--full`，它内联两样东西：
+
+| | 内容 |
+|---|---|
+| 默认样式 | `mdpp/assets/mdpp.css`（13 KB）—— 也以 `mdpp::assets::DEFAULT_CSS` 公开，自己写外壳的人用得上 |
+| 默认脚本 | `mdpp-cli/assets/mdpp.js`（2.5 KB）—— 只做一件事：让 `::tabs` 切得动 |
+
+为什么这两样归**二进制**而不是渲染器：渲染器吐的是结构（`role="tablist"` /
+`aria-selected` / `hidden`），它不该知道「点一下会发生什么」—— 那是界面那一层的
+事。往输出里塞 `onclick` 既过不了 CSP，又会在同一页面的多处注入里各写一份。所以
+脚本住在 `mdpp-cli`，由 `--full` 内联。
+
+**打印**（Ctrl+P）时折叠的东西会展开：选项卡的每一节都出来并顶上带自己的名字
+（渲染器在面板上落了 `data-label`，打印样式靠 `attr(data-label)` 取），深浅色两节
+都出来，信息栏取消浮动，链接后面写出地址。
+
 ## 日志
 
 库**只发日志、不装订阅器** —— 装给谁、什么格式、过滤到哪一档，都是使用方的事。
@@ -256,35 +274,47 @@ MIT。版权属于 Until Mars Again。代码来自 `refind-note-demo`，那一�
 ## 结构
 
 ```
-Cargo.toml
-assets/mdpp.css              默认样式表（include_str! 进库）
-src/
-├── lib.rs                   库
-├── engine.rs                Mdpp：构建器、渲染入口、嵌套渲染
-├── context.rs               渲染上下文（线程局部，每次调用一份）
-├── registry.rs              :: 块的注册表、Block、ContentMode
-├── link/mod.rs              LinkResolver 与 ResolvedLink
-├── block/
-│   ├── mod.rs               `::` 方言的入口
-│   ├── scanner.rs           块级规则：认头、量缩进、按 ContentMode 处理内容
-│   ├── dispatch.rs          按名字分发；不认识/用法不对各一个框
-│   ├── expand.rs            用户块：模板页 → 填 {{}} → 解析
-│   ├── fill.rs              {{}} 填空、CSS 收窄、HTML 净化转发
-│   ├── html.rs              ::html 的白名单净化器与 <markdown> 回环
-│   ├── template.rs          TemplateSource：模板页从哪来
-│   └── stdlib/              22 个内置块，按内容怎么处理分五组
-├── syntax/                  行内：math.rs（$…$）、wikilink.rs（[[…]]）
-├── slug.rs                  标题 id
-├── targets.rs               链接目标里的空格补成 %20
-├── assets.rs                内嵌样式表与完整文档
-├── telemetry.rs             发日志的地方，宏全部从这儿取
-├── main.rs                  二进制入口（惯例位置）：读写、拼装
-└── bin/                     **只有**二进制用的那几个文件
-    ├── mod.rs
-    ├── options.rs           手写的参数解析与帮助
-    ├── context.rs           链接前缀与模板页目录
-    └── telemetry.rs         装订阅器（--debug）
+Cargo.toml                  只有 [workspace]：members 与 profile，没有 [package]
 
-examples/                   四个能跑的例子，对着三个扩展点各一份
-assets/mdpp.css             默认样式表（include_str! 进库）
+examples/                   用命令行跑的示例文件（.mdpp）
+├── README.md
+├── tour.mdpp                22 个块的巡览，当语法速查表
+├── links.mdpp               [[…]] 的几种写法
+└── templates/               模板页：卡片.mdpp、面板.mdpp
+
+mdpp/                       库
+├── Cargo.toml
+├── assets/mdpp.css         默认样式表（include_str! 进库，含 @media print）
+├── examples/               四个能跑的例子，对着三个扩展点各一份
+└── src/
+    ├── lib.rs
+    ├── engine.rs            Mdpp：构建器、渲染入口、嵌套渲染
+    ├── context.rs           渲染上下文（线程局部，每次调用一份）
+    ├── registry.rs          :: 块的注册表、Block、ContentMode
+    ├── telemetry.rs         发日志的地方，宏全部从这儿取
+    ├── link/mod.rs          LinkResolver 与 ResolvedLink
+    ├── block/
+    │   ├── mod.rs           `::` 方言的入口
+    │   ├── scanner.rs       块级规则：认头、量缩进、按 ContentMode 处理内容
+    │   ├── dispatch.rs      按名字分发；不认识/用法不对各一个框
+    │   ├── expand.rs        用户块：模板页 → 填 {{}} → 解析
+    │   ├── fill.rs          {{}} 填空、CSS 收窄、HTML 净化转发
+    │   ├── html.rs          ::html 的白名单净化器与 <markdown> 回环
+    │   ├── template.rs      TemplateSource：模板页从哪来
+    │   └── stdlib/          22 个内置块，按内容怎么处理分五组
+    ├── syntax/              行内：math.rs（$…$）、wikilink.rs（[[…]]）
+    ├── slug.rs              标题 id
+    ├── targets.rs           链接目标里的空格补成 %20
+    └── assets.rs            默认样式表（DEFAULT_CSS）
+
+mdpp-cli/                   命令行
+├── Cargo.toml              path + version 依赖库；唯一带 tracing-subscriber 的
+├── assets/mdpp.js          默认脚本：让 ::tabs 切得动
+├── tests/samples.rs        把 examples/ 每一份渲染一遍，断言一个错都没有
+└── src/
+    ├── main.rs             入口：读写、拼装
+    ├── page.rs             整页外壳（--full）：内联 CSS 与那段 JS
+    ├── options.rs          手写的参数解析与帮助
+    ├── context.rs          链接前缀与模板页目录（两份 trait 实现各十几行）
+    └── telemetry.rs        装订阅器（--debug）
 ```
