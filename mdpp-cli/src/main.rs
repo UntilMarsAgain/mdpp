@@ -166,10 +166,12 @@ impl Stats {
 }
 
 impl std::fmt::Display for Stats {
+    /// 末尾的换行由 `writeln!` 给（不是 `write!` 里写死一个）—— 少那一个换行时
+    /// shell 提示符会粘在这一行后面，而那种错只有真跑一次才看得见。
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
+        writeln!(
             f,
-            "{} 份输入（{} 字节）→ {} 字节 HTML；块 {} 个（其中报错的 {} 个），内部链接 {} 条\n",
+            "{} 份输入（{} 字节）→ {} 字节 HTML；块 {} 个（其中报错的 {} 个），内部链接 {} 条",
             self.files, self.bytes_in, self.bytes_out, self.blocks, self.problems, self.links
         )
     }
