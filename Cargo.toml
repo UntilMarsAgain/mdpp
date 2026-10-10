@@ -1,0 +1,24 @@
+# mdpp 的 workspace 根。
+#
+# 两个 member，分工是硬的：
+#
+# - `mdpp`：库。**不依赖任何终端、文件、仓库概念**，只做「markdown → HTML」。
+# - `mdpp-cli`：二进制（命令名 `mdpp`）。库唯一的消费者。
+#
+# 分成两个 crate 而不是「一个包、src/lib.rs + src/bin/」是为了让那条边界在
+# 编译期就成立：库那一侧误用了 CLI 侧的依赖，`cargo build` 会直接失败，
+# 而不是等到运行时才发现。
+
+[workspace]
+members = ["mdpp"]
+resolver = "2"
+
+# 库产物不带符号表、panic 时直接停 —— 两条对库都是纯收益，且对 CLI 同样成立。
+# `lto` 保持 `"thin"`：跨 crate 的模板分发是间接调用，全量 LTO 在这里收益很小，
+# 而编译时间的代价是实打实的。
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true
