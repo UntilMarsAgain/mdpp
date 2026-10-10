@@ -9,7 +9,7 @@
 [package]
 name = "mdpp-cli"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 rust-version = "1.85"
 license = "MIT"
 description = "把 Markdown++ 渲染成 HTML 的命令行工具"
@@ -45,6 +45,7 @@ tracing-subscriber = { version = "0.3", features = ["fmt"] }
 # 库那边也列了 `tracing` —— 两个包各写各的，不合并。库没有 `pub use tracing;`
 # 是有意的：那等于替使用方决定了「你也用这一套」。这里要用，就自己列一条。
 tracing = "0.1"
+clap = { version = "4.6.7", features = ["derive"] }
 
 [dev-dependencies]
 # 只有这个包的测试用它（造一个放模板页的临时目录）。库那边一个都不用 ——

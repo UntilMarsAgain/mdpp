@@ -12,36 +12,36 @@ mod page;
 mod telemetry;
 
 use context::{link_resolver, template_pages};
-use options::{help, version, BadUsage, Options, Wanted, NAME};
+use options::{Cli, NAME};
 use telemetry::install;
 
 use std::io::{Read, Write};
 use std::process::ExitCode;
 
+use clap::Parser;
 use mdpp::{Mdpp, RenderContext};
 use tracing::{debug, info};
 
 fn main() -> ExitCode {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-
-    let options = match Options::parse(args) {
-        Ok(Ok(options)) => options,
-        Ok(Err(wanted)) => {
-            let text = match wanted {
-                Wanted::Help => help(),
-                Wanted::Version => version(),
+    // clap 自己处理 `--help` / `--version` / 用法错误（后者走退出码 2，
+    // 与「跑起来了但失败」的 1 区分开 —— cmark 也是这么分的）
+    let options = match Cli::try_parse() {
+        // 注意这里**什么都不往 stdout 打**：stdout 是产物要去的地方
+        Ok(cli) => cli,
+        Err(err) => {
+            let _ = err.print();
+            return match err.kind() {
+                clap::error::ErrorKind::DisplayHelp
+                | clap::error::ErrorKind::DisplayVersion
+                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+                    ExitCode::SUCCESS
+                }
+                _ => ExitCode::from(2),
             };
-            print!("{text}");
-            return ExitCode::SUCCESS;
-        }
-        Err(BadUsage(message)) => {
-            eprintln!("{NAME}: {message}");
-            eprintln!("试试 `{NAME} --help`。");
-            return ExitCode::from(2);
         }
     };
 
-    // 订阅器在解析之后才装：否则连「这组参数是不是错的」都还没定，就已经打了一堆日志
+    // 订阅器在解析之后才装：否则连「这组参数是不是错的」都还没定，就已���打了一堆日志
     install(options.debug);
 
     match run(&options) {
@@ -53,7 +53,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(options: &Options) -> Result<(), String> {
+fn run(options: &Cli) -> Result<(), String> {
     if options.list_blocks {
         let mut out = std::io::stdout().lock();
         for name in mdpp::builtin_blocks() {
@@ -76,6 +76,10 @@ fn run(options: &Options) -> Result<(), String> {
         "配置就绪，开始渲染"
     );
 
+    // `--css` / `--js` 附的那些：读进来放在默认的后面
+    let extra_css = read_all(&options.css)?;
+    let extra_js = read_all(&options.js)?;
+
     let mut out = std::io::stdout().lock();
     let mut total = Stats::default();
     let multiple = options.inputs.len() > 1;
@@ -93,7 +97,7 @@ fn run(options: &Options) -> Result<(), String> {
         // `--full` 才套外壳：外面套什么、内联什么，是界面那一层的事。
         // 片段是常态（像 cmark 那样），而那一段该往哪去由调用方决定。
         let chunk = if options.full {
-            page::full_document(name, &html, options.theme.as_deref())
+            page::full_document(name, &html, options.theme.as_deref(), &extra_css, &extra_js)
         } else {
             html
         };
@@ -109,7 +113,7 @@ fn run(options: &Options) -> Result<(), String> {
 }
 
 /// 按选项拼出解析器
-fn build(options: &Options) -> Mdpp {
+fn build(options: &Cli) -> Mdpp {
     Mdpp::builder()
         .raw_html(options.unsafe_html)
         .typographer(options.typographer)
@@ -121,7 +125,7 @@ fn build(options: &Options) -> Mdpp {
 }
 
 /// 按选项拼出上下文（链接前缀 + 模板页目录）
-fn build_context(options: &Options) -> Result<RenderContext, String> {
+fn build_context(options: &Cli) -> Result<RenderContext, String> {
     let mut context = RenderContext::new();
     if let Some(resolver) = link_resolver(options.link_prefix.as_deref()) {
         context = context.with_links(resolver);
@@ -136,7 +140,7 @@ fn build_context(options: &Options) -> Result<RenderContext, String> {
 ///
 /// 一次全读进内存而不是流式 —— 命令行的输入是一篇笔记，而 `--full` 那条路
 /// 本来就要整篇拼成一个文档。
-fn read_sources(options: &Options) -> Result<Vec<(String, String)>, String> {
+fn read_sources(options: &Cli) -> Result<Vec<(String, String)>, String> {
     if options.inputs.is_empty() {
         let mut text = String::new();
         std::io::stdin()
@@ -156,6 +160,17 @@ fn read_sources(options: &Options) -> Result<Vec<(String, String)>, String> {
         sources.push((name, text));
     }
     Ok(sources)
+}
+
+/// 读几个附带文件（`--css` / `--js`）。读不了就说清是哪个。
+fn read_all(paths: &[std::path::PathBuf]) -> Result<Vec<String>, String> {
+    paths
+        .iter()
+        .map(|path| {
+            std::fs::read_to_string(path)
+                .map_err(|error| format!("读不了 {}：{error}", path.display()))
+        })
+        .collect()
 }
 
 /// `--stats` 那一行

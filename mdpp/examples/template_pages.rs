@@ -11,8 +11,8 @@
 use std::sync::Arc;
 
 use mdpp::{
-    block::template::{TemplatePage, TemplateSource},
     Mdpp, RenderContext,
+    block::template::{TemplatePage, TemplateSource},
 };
 
 #[derive(Debug)]

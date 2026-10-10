@@ -9,11 +9,11 @@
 //!    按 `[标签]` 分节各解析一遍、或者干脆不解析；
 //! 4. **名字不在表里**：交给 [`crate::block::expand`] 去模板页里找同名的一页。
 
-use markdown_it::parser::block::{BlockRule, BlockState};
 use markdown_it::Node;
+use markdown_it::parser::block::{BlockRule, BlockState};
 
 use crate::block::dispatch::BlockNode;
-use crate::block::{expand, Section};
+use crate::block::{Section, expand};
 use crate::registry::{self as reg, Block, ContentMode};
 
 /// 块级规则：由 [`crate::block::add`] 挂到解析器上，排在段落规则之前。

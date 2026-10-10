@@ -9,7 +9,7 @@
 [package]
 name = "mdpp"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 rust-version = "1.85"
 license = "MIT"
 description = "Markdown++ —— markdown-it 之上的可扩展块级语法与链接解析库"

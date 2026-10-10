@@ -13,33 +13,45 @@
 //! 内联而不是外链，是为了让 `--full` 产出的那一个文件**自己就能看** —— 拷走、
 //! 发给别人、丢进网盘，都还是那样。这正是「完整文档」的意思。
 //!
-//! 代价是每个页面都带着那 ~6 KB 样式与 ~2 KB 脚本，而页面多半用不上每一行。
-//! 为此单开一个「不内联」开关不值当：想要自己控制外壳的人，本来就在写自己的外壳。
-
-/// 默认脚本（[`assets/mdpp.js`](../../assets/mdpp.js) 的内容）。
-///
-/// 内联进 `<head>`，带 `defer` 语义 —— 它自己判 `document.readyState`，所以放在
-/// `<head>` 里、在那些元素存在之前跑，也没关系。
-pub const DEFAULT_JS: &str = include_str!("../assets/mdpp.js");
+//! 代价是每个页面都带着那 ~13 KB 样式与 ~2 KB 脚本，而页面多半用不上每一行。
+//! 为此单开一个「不内联」开关不值当：想要自己控制外壳的人，本来就在写自己的外壳
+//! —— 或者用 `--css` / `--js` 附上自己那份，那两份会接在默认的**后面**。
 
 /// 一个能直接看的完整 HTML 文档：正文 + 内联样式 + 内联脚本。
 ///
 /// - `title` 写进 `<title>`；
 /// - `theme` 给 `Some("light" | "dark")` 时设 `data-mdpp-theme`，`::theme`
-///   那两节就由它挑（见样式表里那段）。
+///   那两节就由它挑（见样式表里那段）；
+/// - `extra_css` / `extra_js` 是调用方用 `--css` / `--js` 附上的那些，
+///   接在默认的**后面** —— 同优先级时后者胜出，所以「改一下」不必重写默认那份。
 ///
 /// 出来的那份**能看也能用**：样式在，选项卡切得动，打印时折叠的也都展开。
-pub fn full_document(title: &str, body: &str, theme: Option<&str>) -> String {
+pub fn full_document(
+    title: &str,
+    body: &str,
+    theme: Option<&str>,
+    extra_css: &[String],
+    extra_js: &[String],
+) -> String {
     // 属性值进 HTML 属性要转义；标题那一处尤其要紧 —— 它常常是文件名
     let title = escape_attribute(title);
     let theme_attr = match theme {
         Some(theme) => format!(" data-mdpp-theme=\"{}\"", escape_attribute(theme)),
         None => String::new(),
     };
-    // 脚本里出现 `</script` 会提前闭合标签，后面的字会漏成正文
-    let js = escape_script_end(DEFAULT_JS);
+    // 脚本里出现 `</script` 会提前闭合标签，后面的字会漏成正文。
+    // 用户附带的那几份更要处理 —— 它们是任���写来的。
+    let js = escape_script_end(mdpp::assets::DEFAULT_JS);
+    let js = std::iter::once(js)
+        .chain(extra_js.iter().map(|s| escape_script_end(s)))
+        .collect::<Vec<_>>()
+        .join("\n");
     // 同理，样式里出现 `</style` 会提前闭合
     let css = escape_style_end(mdpp::assets::DEFAULT_CSS);
+    let css = std::iter::once(css)
+        .chain(extra_css.iter().map(|s| escape_style_end(s)))
+        .collect::<Vec<_>>()
+        .join("\n");
 
     format!(
         "<!DOCTYPE html>\n\
@@ -119,7 +131,7 @@ mod tests {
 
     #[test]
     fn a_full_document_carries_the_stylesheet_the_script_and_the_body() {
-        let html = full_document("某篇笔记", "<p>正文</p>", None);
+        let html = full_document("某篇笔记", "<p>正文</p>", None, &[], &[]);
         assert!(html.starts_with("<!DOCTYPE html>"), "{html}");
         assert!(html.contains(".mdpp-content"), "样式没内联进来");
         assert!(html.contains("tabs__tab--on"), "脚本没内联进来");
@@ -131,14 +143,14 @@ mod tests {
     /// `data-mdpp-block` 之类的约定 —— 而那也只是形状上的线索。
     #[test]
     fn the_script_is_there_so_the_page_is_usable() {
-        let html = full_document("t", "<div class=\"tabs\"></div>", None);
+        let html = full_document("t", "<div class=\"tabs\"></div>", None, &[], &[]);
         assert!(html.contains("DOMContentLoaded"), "{html}");
         assert!(html.contains("tabs__tab--on"), "{html}");
     }
 
     #[test]
     fn a_theme_lands_on_the_html_element() {
-        let html = full_document("t", "x", Some("dark"));
+        let html = full_document("t", "x", Some("dark"), &[], &[]);
         assert!(
             html.contains(r#"<html lang="zh-Hans" data-mdpp-theme="dark">"#),
             "{html}"
@@ -148,7 +160,7 @@ mod tests {
     /// 标题常常是文件名，里面带 `&` 与引号很常见 —— 不转义就进不了属性
     #[test]
     fn the_title_is_escaped_into_the_attribute() {
-        let html = full_document(r#"a"b&c<d"#, "x", None);
+        let html = full_document(r#"a"b&c<d"#, "x", None, &[], &[]);
         assert!(
             html.contains("<title>a&quot;b&amp;c&lt;d</title>"),
             "{html}"
@@ -158,7 +170,7 @@ mod tests {
 
     #[test]
     fn a_hostile_theme_value_cannot_break_out_of_the_attribute() {
-        let html = full_document("t", "x", Some("dark\" onload=\"alert(1)"));
+        let html = full_document("t", "x", Some("dark\" onload=\"alert(1)"), &[], &[]);
         assert!(!html.contains("onload=\"alert"), "{html}");
         assert!(html.contains("&quot;"), "{html}");
     }
@@ -175,12 +187,36 @@ mod tests {
         assert_eq!(escape_script_end("x</script>y"), "xy");
     }
 
+    /// 附带的那些接在默认的**后面** —— 同优先级时后者胜出，
+    /// 所以「改一下」不必把默认那份重写一遍
     #[test]
-    fn the_embedded_script_is_the_file_we_ship() {
-        // 这条钉的是「真的内联了那一份」，而不是某个被顺手改短的副本
-        let shipped = include_str!("../assets/mdpp.js");
-        assert_eq!(DEFAULT_JS, shipped);
-        assert!(DEFAULT_JS.contains("data-mdpp-bound"), "少了防重复的标记");
-        assert!(DEFAULT_JS.contains("ArrowRight"), "少了方向键");
+    fn the_extra_files_come_after_the_defaults() {
+        let html = full_document(
+            "t",
+            "x",
+            None,
+            &["/* 我自己的 */".into()],
+            &["// 我自己的".into()],
+        );
+        let default_css = html.find(".mdpp-content").expect("默认样式");
+        let extra_css = html.find("/* 我自己的 */").expect("附带的样式");
+        let default_js = html.find("tabs__tab--on").expect("默认脚本");
+        let extra_js = html.find("// 我自己的").expect("附带的脚本");
+        assert!(default_css < extra_css, "附带的样式该在默认之后：{html}");
+        assert!(default_js < extra_js, "附带的脚本该在默认之后：{html}");
+    }
+
+    /// 附带文件里出现闭合标签也不能提前收尾 —— 那是**用户写的**，比默认那份危险
+    #[test]
+    fn the_extra_files_cannot_close_their_own_tags() {
+        let html = full_document(
+            "t",
+            "x",
+            None,
+            &["a{}</style><p>顶出来了</p>".into()],
+            &[r#"var s = "</script>";"#.into()],
+        );
+        assert_eq!(html.matches("</style>").count(), 1, "{html}");
+        assert!(!html.contains(r#"</script>";"#), "{html}");
     }
 }

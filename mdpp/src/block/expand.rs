@@ -13,7 +13,7 @@ use markdown_it::parser::block::BlockState;
 use markdown_it::{Node, NodeValue, Renderer};
 
 use crate::block::fill;
-use crate::block::template::{self, page_key, TemplatePage};
+use crate::block::template::{self, TemplatePage, page_key};
 use crate::context::{self, MAX_TEMPLATE_DEPTH};
 use crate::registry::Block;
 use crate::syntax::wikilink;

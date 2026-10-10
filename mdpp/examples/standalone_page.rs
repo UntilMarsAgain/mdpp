@@ -12,8 +12,8 @@
 
 use std::path::Path;
 
-use mdpp::assets::DEFAULT_CSS;
 use mdpp::Mdpp;
+use mdpp::assets::DEFAULT_CSS;
 
 const 标题: &str = "重逢笔记 · 一篇正文";
 
