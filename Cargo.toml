@@ -10,7 +10,7 @@
 # 而不是等到运行时才发现。
 
 [workspace]
-members = ["mdpp"]
+members = ["mdpp", "mdpp-cli"]
 resolver = "2"
 
 # 库产物不带符号表、panic 时直接停 —— 两条对库都是纯收益，且对 CLI 同样成立。

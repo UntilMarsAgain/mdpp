@@ -38,7 +38,11 @@ pub enum TemplatePage {
 }
 
 /// 模板页的来源。
-pub trait TemplateSource: Send + Sync {
+///
+/// 要 `Debug` 不是为了好看：实现方那几样（目录、数据库连接）多半已经 `Debug`，
+/// 而没有它的话调用方连「这一份上下文里带了什么」都打印不出来 —— 一份渲染上下文
+/// 打印不出来，排问题时就少了一双手。
+pub trait TemplateSource: Send + Sync + std::fmt::Debug {
     /// 取一页模板页的正文。没有这一页就返回 `None`。
     ///
     /// `name` 是**已经归一过的**（小写、剥掉了前缀，见 [`page_key`]），实现方不必
