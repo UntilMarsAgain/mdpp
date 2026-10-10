@@ -12,15 +12,16 @@ cargo build --release
 
 ## 它是什么
 
-两个 crate，边界是硬的：
+一个包、两个 target：
 
-| crate | 是什么 | 依赖 |
+| target | 路径 | 是什么 |
 |---|---|---|
-| [`mdpp`](mdpp) | 库。`markdown → HTML`。**不知道文件系统、终端、仓库的任何事** | markdown-it、html5ever |
-| [`mdpp-cli`](mdpp-cli) | 二进制，命令名 `mdpp`。库唯一的消费者 | 只依赖 `mdpp` |
+| 库 `mdpp` | `src/lib.rs` | `markdown → HTML`。**不知道文件系统、终端、仓库的任何事** |
+| 二进制 `mdpp` | `src/bin/mdpp/main.rs` | 命令行。库唯一的消费者 |
 
-分成两个 crate 是为了让那条边界在**编译期**就成立：库那一侧误用了 CLI 的依赖，
-`cargo build` 会直接失败，而不是等到运行时才发现。
+那条边界不用 workspace 来守 —— **rustc 自己就守着**：二进制里的代码要用库的东西
+得写 `use mdpp::`，而库那边根本看不到二进制。为此多一个 `Cargo.toml`、多一层
+目录是划不来的。
 
 ## 方言一览
 
@@ -47,8 +48,7 @@ cargo build --release
 ### 一、块注册表是普通数据
 
 ```rust
-use mdpp::registry::{BlockRegistry, ContentMode};
-use mdpp::Mdpp;
+use mdpp::{registry::{BlockRegistry, ContentMode}, Mdpp};
 
 let mut registry = BlockRegistry::with_builtins();
 registry.register_fn("问候", ContentMode::Markdown, |block, node, fmt| {
@@ -77,8 +77,10 @@ let mdpp = Mdpp::builder().registry(registry).build();
 ### 二、内部链接解析器是一个 trait
 
 ```rust
-use mdpp::link::{LinkResolver, LinkTarget, ResolvedLink, NodeRenderer};
-use mdpp::markdown_it::{Node, Renderer};
+use mdpp::{
+    link::{LinkResolver, LinkTarget, NodeRenderer, ResolvedLink},
+    markdown_it::{Node, Renderer},
+};
 
 // 目标出得去 → 给一个 href
 struct Route;
@@ -111,7 +113,7 @@ impl LinkResolver for RedLink {
 ### 三、模板页也是一个 trait
 
 ```rust
-use mdpp::block::template::{TemplatePage, TemplateSource};
+use mdpp::{block::template::{TemplatePage, TemplateSource}, RenderContext};
 
 #[derive(Debug)]
 struct MyPages;
@@ -126,7 +128,7 @@ impl TemplateSource for MyPages {
 }
 
 let context = RenderContext::new().with_templates(std::sync::Arc::new(MyPages));
-let html = mdpp.render_with("::卡片 标题=某\n", &context);
+let html = Mdpp::new().render_with("::卡片 标题=某\n", &context);
 ```
 
 `Ready` 是正文；`Unreadable { reason }` 是「这一页在，但这一刻读不出来」——
@@ -175,7 +177,7 @@ markdown-it 默认开着、本库默认关掉四样，每一条的代价都写�
 ## 开发
 
 ```sh
-cargo test           # 177 个测试
+cargo test           # 177 个测试（库 154、命令行 19、文档 4）
 cargo clippy --all-targets
 cargo doc --open
 ```
@@ -184,3 +186,33 @@ cargo doc --open
 
 MIT。版权属于 Until Mars Again。代码来自 `refind-note-demo`，那一版的著作权也是
 同一个人。
+
+## 结构
+
+```
+Cargo.toml
+assets/mdpp.css              默认样式表（include_str! 进库）
+src/
+├── lib.rs                   库
+├── engine.rs                Mdpp：构建器、渲染入口、嵌套渲染
+├── context.rs               渲染上下文（线程局部，每次调用一份）
+├── registry.rs              :: 块的注册表、Block、ContentMode
+├── link/mod.rs              LinkResolver 与 ResolvedLink
+├── block/
+│   ├── mod.rs               `::` 方言的入口
+│   ├── scanner.rs           块级规则：认头、量缩进、按 ContentMode 处理内容
+│   ├── dispatch.rs          按名字分发；不认识/用法不对各一个框
+│   ├── expand.rs            用户块：模板页 → 填 {{}} → 解析
+│   ├── fill.rs              {{}} 填空、CSS 收窄、HTML 净化转发
+│   ├── html.rs              ::html 的白名单净化器与 <markdown> 回环
+│   ├── template.rs          TemplateSource：模板页从哪来
+│   └── stdlib/              22 个内置块，按内容怎么处理分五组
+├── syntax/                  行内：math.rs（$…$）、wikilink.rs（[[…]]）
+├── slug.rs                  标题 id
+├── targets.rs               链接目标里的空格补成 %20
+├── assets.rs                内嵌样式表与完整文档
+└── bin/mdpp/
+    ├── main.rs              读写、拼装
+    ├── options.rs           手写的参数解析与帮助
+    └── context.rs           链接前缀与模板页目录
+```
