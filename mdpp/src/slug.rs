@@ -1,16 +1,11 @@
-//! 标题的 id：给页内跳转用。
+//! 标题锚点。
 //!
-//! 保留字母数字（中日韩字符也算），其余字符归并为 `-`，并去掉首尾多余的 `-`。
+//! 生成的 `id` 是**未编码的原文**，而 `[跳转](#表格)` 那样的 `href` 是 URL 编码过的
+//! —— 两者对不上，取元素之前要 `decodeURIComponent`。
 
-/// 由标题文字生成一个 id。
+/// 由标题文字生成锚点。
 ///
-/// 刻意不用 markdown-it 自带的 `simple_slugify_fn`：它的文档明确写着
-/// "added for testing and demonstration purposes only"。
-///
-/// 中文标题会被原样保留（`ch.is_alphanumeric()` 对汉字为真），所以
-/// `[跳转](#表格)` 里的 `href` 是 URL 编码过的，而标题上的 `id` 是未编码的原文 ——
-/// 两者对不上，**取元素之前要 `decodeURIComponent`**。这件事值得单说，因为它
-/// 很容易被当成 bug。
+/// 字母数字（汉字算）原样保留，其余归并为 `-`，去掉首尾多余的 `-`。
 pub fn heading_id(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut pending_dash = false;

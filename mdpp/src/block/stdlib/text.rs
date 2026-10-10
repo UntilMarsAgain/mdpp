@@ -1,19 +1,14 @@
 //! 只写文字的块：`quote` / `aside` / `banner` / `title` / `signature` / `fields`。
 //!
-//! 这一组里除 `fields` 外，内容都**照常按 markdown 解析** —— 内容已经由整个解析器
-//! 解析成子节点挂在 `node.children` 上，渲染器只管 `fmt.contents(&node.children)`，
-//! 所以块里能写链接、列表、内部链接，也能再嵌一个块。要「不解析」的块在
-//! [`super::embeds`]。
+//! 除 `fields` 外，内容都**照常按 markdown 解析** —— 子节点已经挂在 `node.children`
+//! 上，渲染器只管 `fmt.contents(&node.children)`，所以块里能写链接、列表、内部链接，
+//! 也能再嵌一个块。要「不解析」的块在 [`super::embeds`]。
 //!
-//! `fields` 是本组里唯一的例外：它的内容是**逐行拆出来**的属性表，值用原文
-//! （不解析 markdown）—— 它是「查参数」用的，一行一项最清楚。
+//! `fields` 是本组唯一的例外：内容是**逐行拆出来**的属性表，值用原文 —— 它是
+//! 「查参数」用的，一行一项最清楚。
 //!
 //! 参数只管**外框**长什么样：位置（`align`）、颜色（`color=`）、高度（`height=`）、
-//! 圆角。内容本身的规矩不在这里管。
-//!
-//! 组内还共享两样小工具，都写在下面渲染器的后面：
-//!
-//! - [`inline_or_blocks`]：「一条横条 / 一个大标题」里，内容该按行内还是按块渲染。
+//! 圆角。
 
 use super::super::dispatch::render_problem;
 use super::{normalize_hex, size_rule, text_on};
@@ -21,10 +16,7 @@ use crate::registry::Block;
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::{Node, Renderer};
 
-/// 署名前面那条横线。
-///
-/// 单独拎出来是因为它只该出现在一个地方：想换成两个破折号、或者换成普通连字符，
-/// 改这里一处即可。
+/// 署名前面那条横线（要换写法改这一处即可）。
 const ORIGIN_DASH: &str = "—";
 
 /// `::quote origin="署名"` —— 效果等同 markdown 的 `>`，但可以在参数里给一个署名，

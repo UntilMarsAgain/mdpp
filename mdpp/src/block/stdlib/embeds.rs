@@ -1,12 +1,12 @@
 //! 把内容**原样写出去**的块：`code` / `mermaid` / `math` / `css` / `html` / `js`。
 //!
-//! 这一组的共同规矩是**正文一概不按 markdown 解析**（注册表里是
-//! [`ContentMode::Raw`](crate::registry::ContentMode)），但理由分三种，各有各的讲究：
+//! 共同规矩是**正文一概不按 markdown 解析**（注册表里是
+//! [`ContentMode::Raw`](crate::registry::ContentMode)），但理由分三种：
 //!
-//! - `code` / `mermaid` / `math`：内容是**另一种语言**（代码、图定义、TeX），里面的
-//!   `*`、`_`、`\`、`-->`、`[]` 都是它自己的记号，按 markdown 解析就毁了。
+//! - `code` / `mermaid` / `math`：内容是**另一种语言**，里面的 `*`、`_`、`\`、`-->`、
+//!   `[]` 都是它自己的记号。
 //! - `css` / `js`：内容是**要执行的东西**，还要先过一遍 `{{参数}}` 填空与过滤
-//!   （见 [`fill`](crate::block::fill)）——过滤与转义在那里，不在这里。
+//!   （见 [`fill`](crate::block::fill)）。
 //! - `html`：内容是**要落进页面的标记**，默认过滤掉会执行脚本的东西，除非显式写了 `js`。
 //!
 //! 这一组都不碰 `node.children`：块正文走 `block.body`（原文）。
@@ -101,9 +101,9 @@ pub(super) fn render_math(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 /// `::code lang=rust lines=off start=10 highlight=2-3` —— 像 markdown 的代码块，
 /// 但能控制行号与要强调的行。
 ///
-/// 这里**只输出代码原文与几个 `data-*` 提示**：行号列与强调色带由使用方落地。
-/// 为什么不在这里生成行号或拆行：拆行会破坏 highlight.js 的分词（它的 span 可能跨行），
-/// 而「界面怎么显示」本来就属于界面那一层。
+/// 这里**只输出代码原文与几个 `data-*` 提示**：行号列与强调色带由使用方落地 ——
+/// 拆行会破坏 highlight.js 的分词（它的 span 可能跨行），而「界面怎么显示」属于界面
+/// 那一层。
 pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     let language = block.param("lang").unwrap_or("").trim();
 

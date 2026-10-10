@@ -3,24 +3,21 @@
 //! **有什么块只写在这一个文件** —— 名字在 [`NAMES`]、挂载在 [`register`]，两者由
 //! `the_two_tables_agree` 盯着。加一个块 = 写一个渲染器 + 在两处各加一行。
 //!
-//! 渲染器按**块内容怎么处理**分成五组，一个块的写法几乎全由这一点决定 —— 所以分组的
-//! 依据是职责，不是数量：
+//! 渲染器按**块内容怎么处理**分成五组：
 //!
-//! - `text`：只写文字的块。内容**照常按 markdown 解析**（`quote` / `aside` / `title` …），
-//!   参数只管外框的样子：`align`、`color=`、`height=` 之类。
-//! - `media`：把一个文件摆出来（`image` / `video` / `audio`）。三者共用一套 `src=` 校验、
-//!   尺寸上限与图注规矩，所以放在同一个文件里 —— 分开写就会各抄一份，那套规矩迟早走样。
-//! - `panels`：**按 `[标签]` 分节**的块（`tabs` / `theme`）。全库只有这两个；
-//!   它们不读块正文，而是各节已解析好的子节点。
-//! - `embeds`：把内容**原样写出去**的块（`code` / `mermaid` / `math` / `css` / `html` / `js`）。
-//!   这些块在注册表里是 [`ContentMode::Raw`]，正文一个字符都不解析。
-//! - `callouts`：提示框（`note` / `tip` / `warning` / `danger` / `error`）。**形状完全
-//!   一样**，差别只是「哪一种」，所以共用一个渲染器 + 一张五行的小表；加第六种 = 加一行。
+//! - `text`：只写文字的块（`quote` / `aside` / `title` …）。内容**照常按 markdown
+//!   解析**，参数只管外框的样子。
+//! - `media`：把一个文件摆出来（`image` / `video` / `audio`）。三者共用一套 `src=`
+//!   校验、尺寸上限与图注规矩。
+//! - `panels`：**按 `[标签]` 分节**的块（`tabs` / `theme`）。全库只有这两个；它们不读
+//!   块正文，而是各节已解析好的子节点。
+//! - `embeds`：把内容**原样写出去**的块（`code` / `mermaid` / `math` / `css` /
+//!   `html` / `js`），注册为 [`ContentMode::Raw`]，正文一个字符都不解析。
+//! - `callouts`：提示框（`note` / `tip` / `warning` / `danger` / `error`）。形状完全
+//!   一样，差别只是「哪一种」。
 //!
-//! 留在本文件的三个公共件：`size_rule`（尺寸参数 → 一条 CSS 声明）、
-//! `normalize_hex`（`color=` 只认十六进制）与 `text_on`（底色 → 字色）。它们都是
-//! **多组共用**的：尺寸是文字组与媒体组都要过，颜色的两个是 `::banner` 与提示框都要过。
-//! 放在任一组都会让另一组跨界来取，所以它们是这一层的公共件。
+//! 本文件另有三个多组共用的东西：`size_rule`（尺寸参数 → 一条 CSS 声明）、
+//! `normalize_hex`（`color=` 只认十六进制）与 `text_on`（底色 → 字色）。
 
 mod callouts;
 mod embeds;
@@ -40,10 +37,8 @@ use text::{
 
 use crate::registry::{Block, BlockRegistry, BlockSpec, ContentMode};
 
-/// 一条注册项：把函数指针接成渲染器。
-///
-/// 参数收**函数指针**而不是 `&BlockRenderer` trait 对象，是为了让上面那串
-/// `spec("quote", Markdown, render_quote)` 读起来就是一句话，不必每次装箱。
+/// 一条注册项：把函数指针接成渲染器。参数收**函数指针**而不是 trait 对象，是为了
+/// 下面那串 `spec("quote", Markdown, render_quote)` 读起来就是一句话，不必每次装箱。
 fn spec(
     name: &str,
     mode: ContentMode,
@@ -52,10 +47,8 @@ fn spec(
     BlockSpec::plain(name, mode, renderer)
 }
 
-/// 全部内置块的名字，按作者写下来的顺序。
-///
-/// 单独一张表是为了 [`names`] 便宜（诊断与命令行帮助会频繁问）。
-/// 它与 [`register`] 里挂的那一批必须一致 —— `the_two_tables_agree` 盯着这件事。
+/// 全部内置块的名字，按作者写下来的顺序。它与 [`register`] 里挂的那一批必须一致 ——
+/// `the_two_tables_agree` 盯着这件事。
 pub const NAMES: &[&str] = &[
     "quote",
     "code",

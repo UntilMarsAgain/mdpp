@@ -53,7 +53,7 @@ impl markdown_it::NodeValue for Section {
 /// 挂在解析器上的那一行。
 ///
 /// 挂载位置是刻意的：**必须排在段落规则之前**，否则 `::名字` 会先被当成一行普通
-/// 文字收走（见 [`scanner`]）。
+/// 文字收走。
 pub fn add(md: &mut MarkdownIt) {
     md.block
         .add_rule::<scanner::BlockScanner>()

@@ -1,11 +1,10 @@
 // mdpp —— 把 Markdown++ 渲染成 HTML
 //
-// 输出默认是**片段**（像 `cmark` 那样）：那段 HTML 往哪去、外面套什么样式，
-// 是调用方的事。`--full` 才输出一个完整文档（内嵌本库那份默认样式表）。
+// 输出默认是**片段**（像 `cmark` 那样）：那段 HTML 往哪去、外面套什么样式，是调用方的
+// 事。`--full` 才输出一个完整文档（内嵌本包那份默认样式表）。
 
-// 下面三个模块**只属于这个二进制**，库那边一概不知道它们存在 —— 所以它们住在
-// `mdpp-cli` 这个包里，而不是 `mdpp` 那边。它们对 `mdpp::` 不可见（`pub(crate)`），
-// 而这个包要用库的东西只能写 `use mdpp::…`，也就是公开 API 那圈。
+// 这三个模块只属于这个二进制，库那边一概不知道它们存在 —— 所以它们住在 `mdpp-cli`
+// 这个包里，并且对 `mdpp::` 不可见（`pub(crate)`）。
 mod context;
 mod options;
 mod page;
@@ -90,12 +89,11 @@ fn run(options: &Cli) -> Result<(), String> {
         total.add(name, text, &html);
 
         if multiple {
-            // 多个输入时每个文件一段，用注释隔开 —— 不加的话，几段 HTML 拼在一起
-            // 看不出哪段是哪段
+            // 多个输入时每个文件一段，用注释隔开 —— 不加的话几段 HTML 拼在一起看不出哪段是哪段
             let _ = writeln!(out, "<!-- {name} -->");
         }
-        // `--full` 才套外壳：外面套什么、内联什么，是界面那一层的事。
-        // 片段是常态（像 cmark 那样），而那一段该往哪去由调用方决定。
+        // 片段是常态（像 cmark 那样），`--full` 才套外壳 —— 外面套什么、内联什么，是界面
+        // 那一层的事
         let chunk = if options.full {
             page::full_document(name, &html, options.theme.as_deref(), &extra_css, &extra_js)
         } else {
@@ -189,11 +187,9 @@ impl Stats {
         self.files += 1;
         self.bytes_in += source.len();
         self.bytes_out += html.len();
-        // **不报「块有几个」** —— 那个数不出来：22 个块各写各的 class，要数就得把
-        // 那 22 个名字抄一份在这儿，而那份清单第二天就会过期。过期之后它报出来的
-        // 数字还是「像模像样」的，比不报更坏。
-        //
-        // 报的是**出问题的地方**：那两个类名由 `block::dispatch` 一处写死，不会过期。
+        // 只报**出问题的地方**：那几个类名由 `block::dispatch` 一处写死，不会过期。
+        // 「块有几个」数不出来 —— 22 个块各写各的 class，要数就得把 22 个名字抄一份
+        // 在这儿，而那份清单过期之后报出来的数字还是「像模���样」的，比不报更坏。
         self.unknown += html.matches("template--unknown").count();
         self.misused += html.matches("template--problem").count();
         self.links += html.matches("<a class=\"wikilink").count();
@@ -202,8 +198,7 @@ impl Stats {
 }
 
 impl std::fmt::Display for Stats {
-    /// 末尾的换行由 `writeln!` 给（不是 `write!` 里写死一个）—— 少那一个换行时
-    /// shell 提示符会粘在这一行后面，而那种错只有真跑一次才看得见。
+    /// 末尾的换行由 `writeln!` 给
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,

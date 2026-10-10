@@ -1,36 +1,31 @@
-//! `::html` 的净化器：**按 HTML5 规范解析，再按白名单逐个节点重建**。
+//! `::html` 的净化器：按 HTML5 规范解析，再按白名单逐个节点重建。
 //!
-//! 手写字符串扫描是不够的 —— 它只认 `<script>`、`on*=`、`javascript:` 三样。真正的
-//! 净化器要面对的远不止这些：大小写与属性顺序的绕过、`java\nscript:`、`<svg>` 里的
-//! 外来内容、`srcdoc`、畸形标签让浏览器与净化器对同一段文本产生不同理解…… 这些都不是
-//! 「多写几个 if」能补上的。
+//! ## 为什么用规范解析器而不是手写扫描
 //!
-//! 所以这里换一套做法：**用浏览器同一套的解析器（[`html5ever`]，WHATWG HTML5 规范）
-//! 先把 HTML 变成一棵树，再自己按白名单走一遍、把树重新拼成字符串**。三件事因此一起成立：
+//! 绕过手法远不止 `<script>` / `on*=` / `javascript:` 三样：大小写与属性顺序、
+//! `java\nscript:`、`<svg>` 里的外来内容、`srcdoc`、畸形标签让净化器与浏览器对
+//! 同一段文本产生不同理解。手写扫描补不完这些。
 //!
-//! - **只有白名单里的东西能活下来**，不是「黑名单里那些被拿掉」。没想过的东西默认
-//!   出不去 —— 这是净化器该有的默认方向。
-//! - **输出是我们自己拼的**，不是把输入原样吐回去。拼的时候属性值与文本都重新转义，
-//!   所以不存在「原样穿过来了」这种可能。
-//! - **理解与浏览器一致**：解析真实的畸形标签（`<b><i></b></i>`、未闭合的 `<p>`）
-//!   按规范补成浏览器看到的那棵树，我们与浏览器看的是同一份东西。
+//! 用 [`html5ever`]（WHATWG HTML5 规范）先把 HTML 变成树，再按白名单走一遍、把树
+//! 重新拼成字符串，于是三件事同时成立：
+//!
+//! - 白名单外的东西出不去（默认方向是关，不是开）；
+//! - 输出是自己拼的，属性值与文本都重新转义过；
+//! - 与浏览器看的是同一棵树。
 //!
 //! ## 白名单的取舍
 //!
-//! **按整棵子树丢掉**的：`script` / `style` / `link` / `meta` / `base` / `object` /
-//! `embed` / `applet` / `frame` / `frameset` / `form` 及其控件 / `template` / `noscript` /
-//! `svg` / `math`。最后两个是**外来内容**（foreign content）—— 它们有自己的一套命名空间
-//! 规则，是绕过白名单的经典入口，不是因为「画图」就丢的。
+//! **整棵子树丢掉**：`script` / `style` / `link` / `meta` / `base` / `object` /
+//! `embed` / `applet` / `frame` / `frameset` / `form` 及其控件 / `template` /
+//! `noscript` / `svg` / `math`。最后两个是**外来内容**（foreign content）—— 它们
+//! 有自己的一套命名空间规则，不是因为「画图」才丢。
 //!
-//! **不保留 `style` 属性**：内联样式能 `url()` 出去（能追踪读了哪一页）、能有表达式、
-//! 能改布局把东西藏起来。要样式就用 `::css` —— 那才是样式该待的地方，它与 `::html`
-//! 分开正是这个道理。
+//! **不保留 `style` 属性**：内联样式能 `url()` 出去、能藏东西。要样式用 `::css`。
 //!
-//! **URL 只认几个协议**：`http` / `https` / `mailto`，以及相对地址与 `#片段`。
-//! `javascript:` / `data:` / `vbscript:` 与一切没听说过的都丢。判定前先按浏览器的
-//! 规矩把协议那一段里的空白与控制字符去掉 —— 否则 `java\nscript:` 是绕得过去的。
+//! **URL 只认 `http` / `https` / `mailto`** 与相对地址（判定前先按浏览器的规矩把协议
+//! 那一段里的空白与控制字符去掉）。
 //!
-//! **不给 `id`**：调用方自己的锚点与查找用的是 `data-*` 与 class，`id` 撞了会串。
+//! **不给 `id`**：调用方的锚点与查找用 `data-*` 与 class，`id` 撞了会串。
 //!
 //! ## `<markdown>`：让 HTML 里反过来用本库的方言
 //!
@@ -45,18 +40,11 @@
 //! ```
 //!
 //! 做法是**先把 `<markdown>` 那几段从原文里取出来**（原样，一个字节不改），在原处
-//! 放一个占位记号；余下的 HTML 照常解析、净化；拼字符串时碰到占位记号，就把那一段
-//! 真的渲染一遍 markdown 塞进去。
+//! 放一个占位记号；余下的照常解析、净化；拼字符串时碰到占位记号，就把那一段真的
+//! 渲染一遍 markdown 塞进去。
 //!
-//! 为什么不用「解析完再从树里取」：那等于让 HTML 解析器先把 markdown 当 HTML 过一遍
-//! —— `&` 会被解成实体、`<div>` 会被当成标签吃掉、缩进与空行的意义全变了。markdown
-//! 的原文必须**原封不动**地回到自己的解析器手里，那才是同一种语言。
-//!
-//! 占位记号用私有区的两个字符夹住序号，它们在 HTML 文本里不会自然出现，也不会被
-//! 实体解码掉，所以能从解析结果里原样认回来。
-//!
-//! 套得深了会停：`<markdown>` 里再来一个 `::html`，里面又有 `<markdown>`……
-//! 用 [`crate::context::depth`] 记层数，超了就渲染一句说明而不是继续。
+//! 不能改成「解析完再从树里取」：那等于让 HTML 解析器先把 markdown 当 HTML 过一遍
+//! —— `&` 会被解成实体、`<div>` 会被当成标签吃掉、缩进与空行的意义全变了。
 
 use std::fmt::Write;
 
@@ -66,23 +54,15 @@ use markup5ever_rcdom::{Handle, NodeData, RcDom};
 
 /// `<markdown>` 最多套这么多层。
 ///
-/// 它防的是**模板自己套自己**（`::html` → `<markdown>` → `::html` → …），不是性能闸门。
-/// 比用户块嵌套（[`crate::context::MAX_TEMPLATE_DEPTH`]）少：每套一层要重新解析一遍
-/// markdown 并净化一遍 HTML，而且这条路的输入是作者写的 HTML —— 更该早点停。
+/// 它防的是**模板自己套自己**（`::html` → `<markdown>` → `::html` → …），不是性能
+/// 闸门。比 [`crate::context::MAX_TEMPLATE_DEPTH`] 少：每套一层要重新解析一遍
+/// markdown 并净化一遍 HTML。
 const MAX_NESTING: usize = 8;
 
 /// 净化一段 HTML（`::html` 的正文）。
 ///
-/// 白名单与取舍写在模块头。这里只讲**顺序**，因为顺序是这个实现的关键：
-///
-/// 1. 先把 `<markdown>` 那几段取出来，原处留占位记号；
-/// 2. 剩下的按 HTML5 规范解析成树；
-/// 3. 走一遍树，白名单外的丢、白名单里的按规则重建，占位记号处把渲染好的 markdown 塞进去。
-///
-/// `render_markdown` 就是第 3 步那一处「渲染一段 markdown」的出口。净化器自己
-/// 手上只有一段源码和一个输出缓冲，拿不到解析器 —— 所以那个能力由调用方递进来。
-/// [`crate::engine::render_nested`] 是本库内部用的那一个（沿用当次渲染的上下文
-/// 与注册表）；直接调本函数的场合传自己的。
+/// `render_markdown` 是 `<markdown>` 那几段的出口：净化器手上只有一段源码和一个输出
+/// 缓冲，解析器由调用方递进来。
 pub fn sanitize(source: &str, render_markdown: &dyn Fn(&str) -> String) -> String {
     let (skeleton, slots) = lift_markdown(source);
     let dom = html5ever::parse_document(RcDom::default(), ParseOpts::default())
@@ -93,11 +73,7 @@ pub fn sanitize(source: &str, render_markdown: &dyn Fn(&str) -> String) -> Strin
     out
 }
 
-/// 净化，但**不展开** `<markdown>`：那一段会被丢掉。
-///
-/// 存在的理由是「只想净化、不在渲染里」这个用法（校验一段 HTML 干不干净）。
-/// 注意这与 [`sanitize`] 的差别是**内容会少** —— 正文里写了 `<markdown>` 而拿到本函数
-/// 的输出，那一段就没了。
+/// 净化，但**不展开** `<markdown>`：正文里写了那一段，输出里就没有它。
 pub fn sanitize_without_markdown(source: &str) -> String {
     sanitize(source, &|_| String::new())
 }
@@ -110,10 +86,8 @@ const SLOT_CLOSE: char = '\u{E001}';
 
 /// 把 `<markdown>…</markdown>` 那几段取出来，原处留下占位记号。
 ///
-/// 返回 `(骨架, 各段的原文)`。**取出来的是原样的字节** —— markdown 后面还要回到
-/// 自己的解析器手里，任何「顺手规范化一下」都是错的。
-///
-/// 没有闭合标签时，那一段就当普通文字留着（骨架里原样不动）—— 少渲染一点比错渲染好。
+/// 返回 `(骨架, 各段的原文)`。**取出来的是原样的字节** —— markdown 还要回到自己的
+/// 解析器手里，任何「顺手规范化一下」都是错的。没有闭合标签时那一段当普通文字留着。
 fn lift_markdown(source: &str) -> (String, Vec<String>) {
     let lower = source.to_ascii_lowercase();
     let mut out = String::with_capacity(source.len());
@@ -166,19 +140,17 @@ fn find_tag(haystack: &str, from: usize, name: &str) -> Option<usize> {
 /// `<markdown>` 的正文从哪儿开始，以及与它配对的那个 `</markdown…>` 的 `<` 在哪儿。
 ///
 /// **要数层数**：`<markdown>` 里可以再写 `<markdown>`，只找第一个闭合标签会把内层的
-/// 开标签当正文、把外层的闭合当结束 —— 结果整段都散了。正文也就没有「原样」可言了。
+/// 开标签当正文、把外层的闭合当结束。
 fn find_close(haystack: &str, open: usize) -> Option<(usize, usize)> {
-    // 关键：**从开标签之后**开始数。数到 `depth` 归零的那个 `</markdown>` 才是
-    // 与最外层配对的那个 —— 从开标签本身那个位置开始数的话，开标签会被数两次，
-    // 层数永远归不了零（于是整段当作「没闭合」）。
+    // 从开标签**之后**开始数，否则开标签被数两次，`depth` 永远归不了零
     let body_from = skip_tag(haystack, open);
     let mut depth = 0usize;
     let mut at = body_from;
     loop {
         let next_open = find_tag(haystack, at, "markdown");
         let next_close = find_tag(haystack, at, "/markdown");
-        // 哪个先来就走哪个。分开写而不用一个带 `o < c` 的守卫，是为了让编译器
-        // 看得清「四种组合都覆盖了」—— 那种写法一旦漏一臂，错误信息很难懂。
+        // 哪个先来就走哪个。拆成四臂而不用 `o < c` 的守卫，是为了在错误信息里
+        // 看得清「四种组合都覆盖了」
         match (next_open, next_close) {
             (Some(o), Some(c)) if o < c => {
                 depth += 1;
@@ -197,7 +169,6 @@ fn find_close(haystack: &str, open: usize) -> Option<(usize, usize)> {
                 depth -= 1;
                 at = skip_tag(haystack, c);
             }
-            // 后面再没有标签了：没闭合，当作没有这一段
             (None, None) => return None,
         }
     }
@@ -339,10 +310,7 @@ fn stopped(why: &str) -> String {
 
 // ---------------------------------------------------------------- 白名单
 
-/// 全局都允许的那几个。
-///
-/// `class` 留着是刻意的：作者的模板要能挂自己那套样式（写在与正文同一层的 `::css`）。
-/// **`id` 不给** —— 调用方自己的锚点与查找用的是 `data-*` 与 class，`id` 撞了会串。
+/// 全局都允许的那几个。`class` 留着是刻意的：作者的模板要能挂自己那套样式。
 const COMMON: &[&str] = &["class", "title", "lang", "dir"];
 
 /// 布尔属性：只写名字、不带值。
@@ -353,9 +321,8 @@ const BOOLEAN: &[&str] = &["open", "controls", "loop", "muted", "reversed"];
 
 /// 白名单本体：`(标签, 它能带的属性)`。
 ///
-/// 属性是**逐标签**给的，通配一份 `*` 是最容易出事的地方：`img` 拿到 `href` 就成了
-/// 链接、`a` 拿到 `src` 就成了脚本载体、`td` 拿到 `srcset` 毫无意义。
-///
+/// 属性**逐标签**给：通配一份 `*` 是最容易出事的地方 —— `img` 拿到 `href` 就成了
+/// 链接、`a` 拿到 `src` 就成了脚本载体。
 /// 表里没有的标签 → 标签本身丢掉、内容留下（见 [`walk_node`]）。
 const RULES: &[(&str, &[&str])] = &[
     // —— 分块与分区
@@ -502,9 +469,8 @@ fn allowed(tag: &str) -> Option<&'static [&'static str]> {
 
 /// 这些标签**连内容一起**丢掉。
 ///
-/// 与「不认识」的分界在这里：上面那些是「标签没了、内容留下」，这里是「内容可能正是
-/// 危险的那一份」—— `<script>` 的内容是代码、`<style>` 的内容是能外联的 CSS、
-/// `<svg>`/`<math>` 有自己的命名空间规则。
+/// 与「不认识」的分界在这里：那边是「标签没了、内容留下」，这边是「内容可能正是危险
+/// 的那一份」—— `<script>` 的内容是代码、`<style>` 的内容是能外联的 CSS。
 fn skip_subtree(tag: &str) -> bool {
     matches!(
         tag,
@@ -562,16 +528,13 @@ fn is_void(tag: &str) -> bool {
     )
 }
 
-/// 属性留不留、拿什么值出去。`None` = 丢掉。
-///
-/// 返回的是**收拾过的值**：协议在这里验过，`target` 收窄过。要单独写出来而不是
-/// 让调用处自己拼，是因为「哪些属性需要特别看一眼」这件事，得在一处说得清。
+/// 属性留不留、拿什么值出去。`None` = 丢掉。返回的是**收拾过的值**：协议在这里验过，
+/// `target` 收窄过。
 fn keep_attribute(name: &str, rules: &[&str], value: &str) -> Option<String> {
     if !rules.contains(&name) {
         return None;
     }
-    // `style` 一律不留（模块头写了为什么）；`on*` 本来就不在表里，这里再兜一层，
-    // 免得以后往表里加属性时手滑加了 `onclick`
+    // `style` 不在表里，但 `on*` 更该在这儿再兜一层 —— 免得以后加属性时手滑
     if name == "style" || name.starts_with("on") {
         return None;
     }
@@ -579,7 +542,7 @@ fn keep_attribute(name: &str, rules: &[&str], value: &str) -> Option<String> {
         "href" | "src" | "srcset" | "cite" | "poster" | "download" => {
             safe_url(value).then(|| value.to_string())
         }
-        // 只认 `_blank` / `_self`：`_top` 与框架名能把人带走，而这里没有框架
+        // `_top` 与框架名能把人带走，而这里没有框架
         "target" => matches!(value, "_blank" | "_self").then(|| value.to_string()),
         "rel" => Some(value.to_string()),
         _ => Some(value.to_string()),
