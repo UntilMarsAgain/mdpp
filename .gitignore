@@ -1,2 +1,6 @@
 /target
+
+# 渲染产物。`out/` 是本地放生成结果的地方，不进版本库。
+/out
+
 Cargo.lock
