@@ -1,26 +1,35 @@
-//! 随库附带的东西：目前只有那份默认样式表。
+//! 随库附带的东西：默认样式表与那份最简的默认脚本。
 //!
-//! 样式**在库里**而不是在调用方那边，理由是 `::css` 注入的 CSS 要用
-//! `var(--mdpp-accent)` 取到本库的配色 —— 变量名与这份文件是同一件事，
-//! 拆到两个仓库里就会各自漂移。
+//! ## 为什么它们在库里
 //!
-//! 要换一份样式：复制 [`DEFAULT_CSS`] 那一段文字改，自己内联进页面。
+//! 这两样是**本库自己的输出**要用的：样式表的对象是本库渲染出来的那些 class，
+//! `::css` 注入的 CSS 要用 `var(--mdpp-accent)` 取配色 —— 变量名与这份文件是
+//! 同一件事，拆到两个地方就会各自漂移。
 //!
-//! ## 这里**没有**整页外壳
+//! **但本库从不注入它们。** 它只把内容给你（[`DEFAULT_CSS`] / [`DEFAULT_JS`]），
+//! 往哪放、要不要放，是**界面**那一层的事。`mdpp --full` 就是那份界面：它把两样
+//! 都内联进一个文档，于是拷走那个文件也还是那样。
 //!
-//! 「把片段套成一个页面、里面内联什么」是**界面**那一层的事，不是解析器的。
-//! 命令行那边有一份（`mdpp-cli` 的 `page.rs`），它同时内联了样式与那段让
-//! `::tabs` 切得动的脚本 —— 页面不只能看，还能用。
+//! ## 想换一份
+//!
+//! 复制 [`DEFAULT_CSS`] 那一段文字改；或者不复制，用
+//! `mdpp --css 你的.css` 在默认那份后面再附一份（后写的同优先级胜出）。
 
 /// 默认样式表（[`assets/mdpp.css`](../../assets/mdpp.css) 的内容）。
 ///
-/// 内联进文档就能用。`mdpp --full` 就是这么干的（它那边还多内联一段脚本，
-/// 好让页面不只能看、还能用）。
+/// 含打印规则（`@media print`）：屏幕上折叠的东西，打印时都展开。
 pub const DEFAULT_CSS: &str = include_str!("../assets/mdpp.css");
+
+/// 默认脚本（[`assets/mdpp.js`](../../assets/mdpp.js) 的内容）。
+///
+/// 只做一件事：让 `::tabs` 点得动。**刻意只有这一点** —— 方向键、动画、记住上次
+/// 选中的那一栏这些都属于各自的界面，官方工具替所有人定下来反而碍事；要加就自己
+/// 加，或者 `mdpp --js 你的.js` 附带进来。
+pub const DEFAULT_JS: &str = include_str!("../assets/mdpp.js");
 
 #[cfg(test)]
 mod tests {
-    use super::DEFAULT_CSS;
+    use super::{DEFAULT_CSS, DEFAULT_JS};
 
     #[test]
     fn the_stylesheet_is_embedded_and_not_empty() {
@@ -30,6 +39,12 @@ mod tests {
             DEFAULT_CSS.len()
         );
         assert!(DEFAULT_CSS.contains(".mdpp-content"), "正文那一层得有样式");
+    }
+
+    #[test]
+    fn the_script_is_embedded_and_not_empty() {
+        assert!(DEFAULT_JS.contains("tabs__tab--on"), "{}", DEFAULT_JS);
+        assert!(DEFAULT_JS.contains("DOMContentLoaded"), "{}", DEFAULT_JS);
     }
 
     /// 样式表里带变量 —— `::css` 注入的 CSS 靠 `var(--mdpp-…)` 取配色，
@@ -70,5 +85,27 @@ mod tests {
     #[test]
     fn printed_links_show_their_target() {
         assert!(DEFAULT_CSS.contains("attr(href)"), "打印时没写出地址");
+    }
+
+    /// 默认脚本只做**最小可用**的那点。它多带一样（方向键、动画、记忆…）就有人得
+    /// 自己去拆，而拆一段别人的行为比不写要费劲。
+    #[test]
+    fn the_default_script_stays_minimal() {
+        assert!(
+            DEFAULT_JS.contains("addEventListener(\"click\""),
+            "点击切换不能少"
+        );
+        assert!(
+            !DEFAULT_JS.contains("ArrowRight"),
+            "方向键不该由官方工具来定"
+        );
+        assert!(
+            !DEFAULT_JS.contains("localStorage"),
+            "记住上次选中那栏不该由官方工具来定"
+        );
+        assert!(
+            DEFAULT_JS.contains("data-mdpp-bound"),
+            "防重复绑定的标记不能少"
+        );
     }
 }

@@ -44,7 +44,7 @@ use crate::registry::BlockRegistry;
 use crate::slug;
 use crate::syntax;
 use crate::targets;
-use crate::telemetry::{debug, trace, Size};
+use crate::telemetry::{Size, debug, trace};
 
 /// 「在渲染途中再渲染一段 markdown」的能力。
 ///

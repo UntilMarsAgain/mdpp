@@ -18,8 +18,8 @@ use std::sync::Arc;
 
 use mdpp::markdown_it::{Node, Renderer};
 use mdpp::{
-    link::{LinkResolver, LinkTarget, NodeRenderer, ResolvedLink},
     Mdpp, RenderContext,
+    link::{LinkResolver, LinkTarget, NodeRenderer, ResolvedLink},
 };
 
 /// 一个说得清「哪些页存在」的假仓库

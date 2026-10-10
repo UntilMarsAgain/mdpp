@@ -60,8 +60,8 @@
 
 use std::fmt::Write;
 
-use html5ever::tendril::TendrilSink;
 use html5ever::ParseOpts;
+use html5ever::tendril::TendrilSink;
 use markup5ever_rcdom::{Handle, NodeData, RcDom};
 
 /// `<markdown>` 最多套这么多层。

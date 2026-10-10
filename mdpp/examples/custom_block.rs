@@ -9,7 +9,7 @@
 // 跑法：`cargo run -p mdpp --example custom_block`
 
 use mdpp::markdown_it::{Node, Renderer};
-use mdpp::{registry::BlockRegistry, ContentMode, Mdpp};
+use mdpp::{ContentMode, Mdpp, registry::BlockRegistry};
 
 /// `::倒计时 日期=2026-12-31` —— 一个 Raw 档的块。
 ///
