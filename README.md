@@ -179,10 +179,34 @@ markdown-it 默认开着、本库默认关掉四样，每一条的代价都写�
 「解析完再从树里取」是因为那等于让 HTML 解析器先把 markdown 当 HTML 过一遍 ——
 `&` 会被解成实体、`<div>` 会被当成标签吃掉。
 
+## 例子
+
+`examples/` 下的四个都是能跑的（`cargo run --example …`），对着三个扩展点各来一份：
+
+| 例子 | 讲什么 |
+|---|---|
+| `custom_block` | 注册自定义块，三种 `ContentMode` 各一个 |
+| `link_resolver` | `[[目标]]` 的三种结局：`Link` / `Node` / 认不出来 |
+| `template_pages` | 模板页的四种结局：可用、没参数、读不出来、不存在 |
+| `standalone_page` | 把片段套成能双击打开的 HTML 文件 |
+
+## 日志
+
+库**只发日志、不装订阅器** —— 装给谁、什么格式、过滤到哪一档，都是使用方的事。
+埋点按「作者大概知不知道」分档：`debug!` 是排查问题要看的（渲染规模、没注册的
+块名、读不出来的模板页），`trace!` 是逐块逐链接的（默认关着），`warn!` 只给两件
+作者多半不知道自己这么写了的事（嵌套超上限）。`info!` 库不发 —— 那是宿主的事。
+
+命令行那个 `--debug` 装一个 DEBUG 级的订阅器，写**标准错误**：
+
+```sh
+mdpp --debug 正文.md > 输出.html    # 输出.html 里没有一行日志
+```
+
 ## 开发
 
 ```sh
-cargo test           # 177 个测试（库 154、命令行 19、文档 4）
+cargo test               # 179 个测试（库 155、命令行 20、文档 4）
 cargo clippy --all-targets
 cargo doc --open
 ```
@@ -216,9 +240,14 @@ src/
 ├── slug.rs                  标题 id
 ├── targets.rs               链接目标里的空格补成 %20
 ├── assets.rs                内嵌样式表与完整文档
+├── telemetry.rs             发日志的地方，宏全部从这儿取
 ├── main.rs                  二进制入口（惯例位置）：读写、拼装
 └── bin/                     **只有**二进制用的那几个文件
     ├── mod.rs
     ├── options.rs           手写的参数解析与帮助
-    └── context.rs           链接前缀与模板页目录
+    ├── context.rs           链接前缀与模板页目录
+    └── telemetry.rs         装订阅器（--debug）
+
+examples/                   四个能跑的例子，对着三个扩展点各一份
+assets/mdpp.css             默认样式表（include_str! 进库）
 ```
