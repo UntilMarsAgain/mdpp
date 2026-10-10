@@ -1,67 +1,17 @@
-# mdpp —— Markdown++
+# mdpp 的 workspace 根。
 #
-# 一个包、两个 target：库 `mdpp` 与二进制 `mdpp`。
+# 这里**只有一个 [workspace]，没有 [package]** —— 这是「这两个是各干各的工具」
+# 的书面证据。库在 `mdpp/`，二进制在 `mdpp-cli/`，各自一份完整清单；
+# 根上只有一件事是共用的：`[profile]`。
 #
-# 为什么不是 workspace（原��是两个包，库 `mdpp` + CLI `mdpp-cli`）：那层间接带来的
-# 好处只有「库与二进制不能互相依赖」这一条，而那条在同一个包里**由 rustc 本身**保证
-# —— 二进制里的代码要用库的东西得写 `use mdpp::`，而库那边根本看不到二进制。
-# 为此多一个 `Cargo.toml`、多一层目录、少一次 `cargo` 参数，是划不来的。
+# 为什么共用的只有 profile：cargo 的 profile **只认 workspace 根**，
+# 写在 member 的清单里会被忽略（而且 cargo 会警告一次，看着像生效了）。
+# 除它之外，一个包该有什么就是什么 —— 没有共享的依赖表，没有共享的清单片段，
+# 也不存在「谁把谁带进来」的顺序问题。
 
-[package]
-name = "mdpp"
-version = "0.1.0"
-edition = "2021"
-rust-version = "1.85"
-license = "MIT"
-description = "Markdown++ —— markdown-it 之上的可扩展块级语法与链接解析库，附一个命令行"
-keywords = ["markdown", "html", "markdown-it", "cmark", "parser"]
-categories = ["text-processing", "template-engine", "command-line-utilities"]
-# 命令行自己的零件放在 `src/bin/`，而 `src/bin/` 是 cargo 的「自动发现二进制」
-# 目录 —— 不关掉的话 `options.rs` 与 `context.rs` 会各自变成一个叫 `options`、
-# `context` 的二进制（编译时直接报「crate 里找不到 main」）。关掉之后只剩下面
-# 显式声明的那一个。
-autobins = false
-
-[lib]
-# target 名与包名相同，这样库里的路径就是 `mdpp::Mdpp`，不必写 `mdpp_lib::`。
-# `path` 是默认的（`src/lib.rs`），写出来只是为了让两个 target 都摆在明面上。
-name = "mdpp"
-path = "src/lib.rs"
-
-[[bin]]
-# 二进制也叫 `mdpp`：命令行就该这么叫。
-# 入口是 `src/main.rs`（惯例位置）；写出来是为了让两个 target 在文件里都看得见。
-name = "mdpp"
-path = "src/main.rs"
-
-[dependencies]
-# 日志。只用**门面**（`tracing` 本身没有依赖，带实现的是 `tracing-subscriber`），
-# 库这一侧只 `debug!` / `trace!`，订阅器由二进制装 —— 于是「装不装、装哪个」是
-# 使用方的事，库永远不替它决定。
-#
-# 为什么不是可选依赖：那要在库里的每一处发日志都包一层 `#[cfg(feature = ...)]`，
-# 为的是省下三个 crate 的传递依赖 —— 而省下的那点还要由**每个发日志的地方**付一次
-# 编译期判断。不划算。
-tracing = "0.1"
-
-# 订阅器，**只有 `src/main.rs` 用**。二进制那侧要输出给人看的东西，必须有个格式，
-# 而这个格式不该由库来定。
-tracing-subscriber = { version = "0.3", features = ["fmt"] }
-
-# 正文解析。刻意关掉默认 features：里面带 `syntect`，它把代码高亮配色以内联
-# style 写死，跟随不了主题，而代码分词不该由一个后端库决定。
-markdown-it = { version = "0.6", default-features = false, features = ["linkify"] }
-# `::html` 的净化器：按 HTML5 规范解析后按白名单重建。
-#
-# 与 markdown-it 的渲染器无关（它输出原始 HTML），所以这两条是本 crate 里仅剩的
-# 「自己动手拼 HTML」的地方 —— 拼之前必须先按规范解析一遍，否则白名单就是一句空话。
-html5ever = "0.39"
-markup5ever_rcdom = "0.39.0"
-
-[dev-dependencies]
-# 只有二进制的测试用它（造临时目录）。库一个都不用，所以它是 dev-dependencies ——
-# 写成普通依赖会让库的使用者也拖上 tempfile。
-tempfile = "3"
+[workspace]
+members = ["mdpp", "mdpp-cli"]
+resolver = "2"
 
 # 库产物不带符号表、panic 时直接停 —— 两条对库和二进制都是纯收益。
 # `lto` 保持 `"thin"`：跨 crate 的块分发是间接调用，全量 LTO 在这里收益很小，
