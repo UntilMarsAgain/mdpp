@@ -19,6 +19,7 @@ use markdown_it::{Node, NodeValue, Renderer};
 
 use crate::block::Section;
 use crate::registry::{self as reg, Block};
+use crate::telemetry::debug;
 
 /// 一个 `::` 块节点。
 ///
@@ -37,7 +38,11 @@ impl NodeValue for BlockNode {
 pub fn render(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     match reg::lookup(&block.name) {
         Some(spec) => spec.render(block, node, fmt),
-        None => render_unknown(block, fmt),
+        None => {
+            // 这一条是最常被搜到的日志：「为什么我写的块没生效」—— 答案是它没注册
+            debug!(name = %block.name, "没注册这个块，渲染成未知块框");
+            render_unknown(block, fmt)
+        }
     }
 }
 

@@ -40,6 +40,7 @@ use markdown_it::MarkdownIt;
 
 use crate::block;
 use crate::context::{self, RenderContext};
+use crate::telemetry::{debug, trace, Size};
 use crate::registry::BlockRegistry;
 use crate::slug;
 use crate::syntax;
@@ -167,6 +168,7 @@ fn render_parts(
     let _context_guard = context::enter(context.clone());
     // 「再渲染一段」用的是**当次这一趟**的上下文与注册表，而不是新的空的一份 ——
     // 否则 `<markdown>` 里那段里的内部链接会一律变红链、`::html src=` 也取不到页。
+    trace!(depth = crate::context::depth(), "嵌套渲染：装上再渲染一段的能力");
     let _nested_guard = NestedGuard {
         previous: NESTED.with(|cell| {
             cell.borrow_mut().replace(Box::new({
@@ -178,7 +180,16 @@ fn render_parts(
         }),
     };
 
-    parser.parse(&prepared).render()
+    let started = std::time::Instant::now();
+    let html = parser.parse(&prepared).render();
+    let size = Size::measure(&prepared, started.elapsed(), &html);
+    debug!(
+        in_bytes = size.in_bytes,
+        out_bytes = size.out_bytes,
+        micros = size.micros,
+        "渲染一趟"
+    );
+    html
 }
 
 /// [`Mdpp`] 的构建器。
@@ -359,6 +370,14 @@ impl MdppBuilder {
         // `::` 块。挂载位置是刻意的：必须排在段落规则**之前**，否则 `::名字`
         // 会先被当成一行普通文字收走。
         block::add(&mut md);
+
+        // 建好之后报一句「这一份解析器带了什么」—— 排查「为什么这个块没生效」时，
+        // 第一件要确认的就是它到底注册上没有
+        debug!(
+            blocks = registry.len(),
+            names = ?registry.names(),
+            "解析器已建好"
+        );
 
         Mdpp {
             parser: Rc::new(md),

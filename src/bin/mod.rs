@@ -9,6 +9,10 @@
 
 mod context;
 mod options;
+mod telemetry;
 
 pub(crate) use context::{link_resolver, template_pages};
 pub(crate) use options::{help, version, BadUsage, Options, Wanted, NAME};
+pub(crate) use telemetry::install;
+
+pub(crate) use tracing::{debug, info};

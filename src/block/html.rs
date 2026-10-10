@@ -327,6 +327,7 @@ fn write_text(
 fn render_slot(body: &str, render: &dyn Fn(&str) -> String, out: &mut String) {
     // 层数上限：模板自己套自己时在这里停
     if crate::context::depth() >= MAX_NESTING {
+        crate::telemetry::warn!(limit = MAX_NESTING, "<markdown> 嵌套超过上限");
         out.push_str(&stopped(&format!(
             "&lt;markdown&gt; 套了超过 {MAX_NESTING} 层，已经停在这里（是不是自己套自己？）"
         )));

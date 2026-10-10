@@ -65,6 +65,9 @@ pub fn template_pages(dir: &Path) -> Result<TemplatePages, String> {
         pages.insert(stem.to_lowercase(), TemplatePage::Ready(text));
     }
 
+    // 这一条发 `info`：装上订阅器的人（`--debug`）正好想知道「模板页到底进了几页」
+    tracing::info!(dir = %dir.display(), pages = pages.len(), "模板页目录读完了");
+
     Ok(std::sync::Arc::new(MapPages(pages)))
 }
 

@@ -35,6 +35,19 @@ name = "mdpp"
 path = "src/main.rs"
 
 [dependencies]
+# 日志。只用**门面**（`tracing` 本身没有依赖，带实现的是 `tracing-subscriber`），
+# 库这一侧只 `debug!` / `trace!`，订阅器由二进制装 —— 于是「装不装、装哪个」是
+# 使用方的事，库永远不替它决定。
+#
+# 为什么不是可选依赖：那要在库里的每一处发日志都包一层 `#[cfg(feature = ...)]`，
+# 为的是省下三个 crate 的传递依赖 —— 而省下的那点还要由**每个发日志的地方**付一次
+# 编译期判断。不划算。
+tracing = "0.1"
+
+# 订阅器，**只有 `src/main.rs` 用**。二进制那侧要输出给人看的东西，必须有个格式，
+# 而这个格式不该由库来定。
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
+
 # 正文解析。刻意关掉默认 features：里面带 `syntect`，它把代码高亮配色以内联
 # style 写死，跟随不了主题，而代码分词不该由一个后端库决定。
 markdown-it = { version = "0.6", default-features = false, features = ["linkify"] }
