@@ -22,7 +22,9 @@ cargo run -p mdpp-cli -- --link-prefix /notes/ -T examples/templates examples/to
 cargo run -p mdpp-cli -- --full --theme light -T examples/templates examples/tour.mdpp
 ```
 
-输出默认是 HTML **片段**（像 `cmark` 那样）；要整页加 `--full`。
+输出默认是 HTML **片段**（像 `cmark` 那样）；要整页加 `--full`。整页那份内联了
+默认样式与 `mdpp-cli/assets/mdpp.js`，所以选项卡是能点的；打印（Ctrl+P）时折叠
+的也会展开。
 
 ## 模板页的后缀
 

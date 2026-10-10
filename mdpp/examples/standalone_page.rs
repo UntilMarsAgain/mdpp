@@ -2,15 +2,18 @@
 //
 //     cargo run -p mdpp --example standalone_page
 //
-// 库**不**管正文往哪去、外面套什么样式 —— 它给的是一段 HTML 片段。
-// `assets::full_document` 是库里唯一「自己套壳」的地方，套的是那份默认样式表：
-// 想换样式，复制 `assets::DEFAULT_CSS` 改，或者干脆自己写壳（那更常见）。
+// 库**不**管正文往哪去、外面套什么样式 —— 它给的是一段 HTML **片段**
+// （`Mdpp::render`）与那份默认样式表（`mdpp::assets::DEFAULT_CSS`）。
+// 「把片段套成一个页面」是**界面**那一层的事，所以这个例子自己动手套：
 //
-// 跑法：`cargo run -p mdpp --example standalone_page`（会在当前目录写出 out/）
+// - 想要开箱即用、还能点（选项卡切得动）的那份，用命令行：
+//   `cargo run -p mdpp-cli -- --full 正文.mdpp`；
+// - 想自己控制外壳的，就像这里这样，把 `DEFAULT_CSS` 内联进一个模板。
 
 use std::path::Path;
 
-use mdpp::{assets, Mdpp};
+use mdpp::assets::DEFAULT_CSS;
+use mdpp::Mdpp;
 
 const 标题: &str = "重逢笔记 · 一篇正文";
 
@@ -51,12 +54,28 @@ $$\\int_0^1 x^2 \\, dx = \\tfrac{1}{3}$$
 ";
 
 fn main() {
-    let mdpp = Mdpp::new();
-    let html = mdpp.render(正文);
+    let html = Mdpp::new().render(正文);
 
-    // `theme` 给 `Some` 时写 `<html data-mdpp-theme=…>`，于是 `::theme` 那两节
-    // 由它挑，而不是由系统偏好挑
-    let page = assets::full_document(标题, &html, Some("light"));
+    // 这一段是**本例自己写的**，不是库给的：库里没有「套外壳」这个函数，
+    // 因为那是界面那一层的事。`theme` 写死成 light，于是 `::theme` 的两节
+    // 由样式挑，而不是由系统偏好挑。
+    let page = format!(
+        "<!DOCTYPE html>\n\
+         <html lang=\"zh-Hans\" data-mdpp-theme=\"light\">\n\
+         <head>\n\
+         <meta charset=\"utf-8\">\n\
+         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
+         <title>{标题}</title>\n\
+         <style>\n{css}\n</style>\n\
+         </head>\n\
+         <body>\n\
+         <article class=\"mdpp-content\">\n{html}\n</article>\n\
+         </body>\n\
+         </html>\n",
+        标题 = 标题,
+        css = DEFAULT_CSS,
+        html = html,
+    );
 
     let out = Path::new("out");
     if let Err(error) = std::fs::create_dir_all(out) {
@@ -71,4 +90,7 @@ fn main() {
 
     println!("写了 {}（{} 字节）", path.display(), page.len());
     println!("把它拖进浏览器就能看。");
+    println!("注意选项卡点不动 —— 这个外壳没接那段脚本。");
+    println!("要一份能点的，用 `cargo run -p mdpp-cli -- --full …`，或者自己把");
+    println!("`mdpp-cli/assets/mdpp.js` 引进去。");
 }
