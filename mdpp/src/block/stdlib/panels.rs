@@ -88,7 +88,7 @@ pub(super) fn render_tabs(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
             ("role", "tabpanel".to_string()),
             ("data-panel", index.to_string()),
             // 屏幕上这一面是藏着的，名字已经写在标签上了；打印时全展开，
-            // 就得靠这个字段给每一节起名字（见 mdpp.css 里那段 `@media print`）。
+            // 就得靠这个字段给每一节起名字（见 `mdpp-cli/assets/print.css`）。
             // 缺了它，打印出来就是几段没有标题的正文。
             ("data-label", (*label).to_string()),
         ];

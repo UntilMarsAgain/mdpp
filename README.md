@@ -225,8 +225,17 @@ Rust 那四个：
 
 | | 内容 |
 |---|---|
-| 默认样式 | `mdpp/assets/mdpp.css`（13 KB）—— 也以 `mdpp::assets::DEFAULT_CSS` 公开，自己写外壳的人用得上 |
-| 默认脚本 | `mdpp-cli/assets/mdpp.js`（2.5 KB）—— 只做一件事：让 `::tabs` 切得动 |
+| 默认样式 | `mdpp-cli/assets/*.css`（七个文件，13 KB） |
+| 默认脚本 | `mdpp-cli/assets/mdpp.js`（2.5 KB）—— 只做一件事：点一下就切 `::tabs` |
+
+两者与库**同一个 MIT 许可，自取即可** —— 想改就复制一份去改。也可以用
+`--css 你的.css` / `--js 你的.js` 附上自己的，它们接在默认的**后面**
+（同优先级时后者胜出，所以「改一下」不必重写默认那份）。两个选项都要求 `--full`：
+片段里没有地方放它们。
+
+**库不带这些。** `mdpp` 是解析器，给的是 HTML 片段；样式、脚本、`<html>` 一概
+不提供。`mdpp/examples/standalone_page.rs` 演示的正是这件事 —— 它自己写了一份极简
+外壳，并告诉你官方那套在哪。
 
 为什么这两样归**二进制**而不是渲染器：渲染器吐的是结构（`role="tablist"` /
 `aria-selected` / `hidden`），它不该知道「点一下会发生什么」—— 那是界面那一层的
@@ -284,7 +293,6 @@ examples/                   用命令行跑的示例文件（.mdpp）
 
 mdpp/                       库
 ├── Cargo.toml
-├── assets/mdpp.css         默认样式表（include_str! 进库，含 @media print）
 ├── examples/               四个能跑的例子，对着三个扩展点各一份
 └── src/
     ├── lib.rs
@@ -304,16 +312,19 @@ mdpp/                       库
     │   └── stdlib/          22 个内置块，按内容怎么处理分五组
     ├── syntax/              行内：math.rs（$…$）、wikilink.rs（[[…]]）
     ├── slug.rs              标题 id
-    ├── targets.rs           链接目标里的空格补成 %20
-    └── assets.rs            默认样式表（DEFAULT_CSS）
+    └── targets.rs           链接目标里的空格补成 %20
 
 mdpp-cli/                   命令行
 ├── Cargo.toml              path + version 依赖库；唯一带 tracing-subscriber 的
-├── assets/mdpp.js          默认脚本：让 ::tabs 切得动
+├── assets/                 官方那套 CSS/JS，MIT 可自取
+│   ├── base.css            配色变量 + 通用排版 + 出错时那几框
+│   ├── callouts.css  text.css  media.css  panels.css  embeds.css
+│   ├── print.css           @media print：折叠的都展开
+│   └── mdpp.js             最简行为：点一下就切选项卡
 ├── tests/samples.rs        把 examples/ 每一份渲染一遍，断言一个错都没有
 └── src/
     ├── main.rs             入口：读写、拼装
-    ├── page.rs             整页外壳（--full）：内联 CSS 与那段 JS
+    ├── page.rs             整页外壳（--full）：把 assets/ 拼起来内联
     ├── options.rs          手写的参数解析与帮助
     ├── context.rs          链接前缀与模板页目录（两份 trait 实现各十几行）
     └── telemetry.rs        装订阅器（--debug）

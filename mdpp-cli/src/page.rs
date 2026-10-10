@@ -1,12 +1,22 @@
 //! 整页外壳：**这个二进制**的活，不是库的。
 //!
-//! ## 为什么在这儿
+//! ## 分工
 //!
-//! 库给的是 HTML **片段** —— 那段 HTML 往哪去、外面套什么样式、要不要接一段脚本
-//! 让它能点，都是**界面**那一层的事。所以外壳、默认样式表怎么内联、默认脚本怎么
-//! 内联，都住在 `mdpp-cli` 这边；库那边只留 [`mdpp::assets::DEFAULT_CSS`]（它样式
-//! 表的对象是库自己的输出，而 `::css` 注入的 CSS 要用 `var(--mdpp-…)` 取配色，
-//! 变量名与那份文件是同一件事）。
+//! 库（`mdpp`）给的是 HTML **片段**，「外面长什么样、点一下会发生什么」一概不问。
+//! 所以外壳、以及内联的那两样东西，都在 `mdpp-cli/assets/`：
+//!
+//! | 文件 | 是什么 |
+//! |---|---|
+//! | `base.css` | 配色变量 + 通用排版 + 出错时摆的那几个框 |
+//! | `callouts.css` `text.css` `media.css` `panels.css` `embeds.css` | 按块分的那几组 |
+//! | `print.css` | `@media print`：屏幕上折叠的，打印时都展开 |
+//! | `mdpp.js` | **最简**的默认行为：点一下就切选项卡 |
+//!
+//! 许可与库一样是 MIT，所以**自取即可** —— 想改就复制一份去改，不必来这边提
+//! 需求，也不用 `include_str!` 进库当常量（那会让「谁在用哪一份样式」变得不清楚）。
+//!
+//! `::css` 注入的 CSS 用 `var(--mdpp-accent)` 取配色，变量名与 `base.css` 是同一件事 ——
+//! 所以用了这两份样式的人正好能取到，而只用库、不用这两份的人本来也不该依赖它们。
 //!
 //! ## 两样都内联
 //!
@@ -16,6 +26,36 @@
 //! 代价是每个页面都带着那 ~13 KB 样式与 ~2 KB 脚本，而页面多半用不上每一行。
 //! 为此单开一个「不内联」开关不值当：想要自己控制外壳的人，本来就在写自己的外壳
 //! —— 或者用 `--css` / `--js` 附上自己那份，那两份会接在默认的**后面**。
+
+/// 默认样式表：`assets/` 下那几个按次序拼起来的。
+///
+/// 拼接在**编译期**完成（`concat!` 吃的就是 `include_str!` 展开的字面量），
+/// 所以运行时只是一次拷贝，读起来是一份样式表 —— 而在仓库里它是七个文件：
+/// 一份 603 行的样式表，改一行要在里面找半屏。
+///
+/// **次序有意义**：base 在前（它定义那组 `--mdpp-*` 变量，后面的都在用），
+/// print 在最后（打印规则是覆盖，得压过前面的）。
+pub const DEFAULT_CSS: &str = concat!(
+    include_str!("../assets/base.css"),
+    "\n",
+    include_str!("../assets/callouts.css"),
+    "\n",
+    include_str!("../assets/text.css"),
+    "\n",
+    include_str!("../assets/media.css"),
+    "\n",
+    include_str!("../assets/panels.css"),
+    "\n",
+    include_str!("../assets/embeds.css"),
+    "\n",
+    include_str!("../assets/print.css"),
+);
+
+/// 默认脚本（[`assets/mdpp.js`](../assets/mdpp.js) 的内容）。
+///
+/// 只做「点一下就切选项卡」这一件事 —— **刻意只有这一点**。方向键、动画、记住上次
+/// 选中的那一栏这些属于各自的界面，由 `--js` 附自己那份进来。
+pub const DEFAULT_JS: &str = include_str!("../assets/mdpp.js");
 
 /// 一个能直接看的完整 HTML 文档：正文 + 内联样式 + 内联脚本。
 ///
@@ -40,14 +80,14 @@ pub fn full_document(
         None => String::new(),
     };
     // 脚本里出现 `</script` 会提前闭合标签，后面的字会漏成正文。
-    // 用户附带的那几份更要处理 —— 它们是任���写来的。
-    let js = escape_script_end(mdpp::assets::DEFAULT_JS);
+    // 用户附带的那几份更要处理 —— 它们是任意写来的。
+    let js = escape_script_end(DEFAULT_JS);
     let js = std::iter::once(js)
         .chain(extra_js.iter().map(|s| escape_script_end(s)))
         .collect::<Vec<_>>()
         .join("\n");
     // 同理，样式里出现 `</style` 会提前闭合
-    let css = escape_style_end(mdpp::assets::DEFAULT_CSS);
+    let css = escape_style_end(DEFAULT_CSS);
     let css = std::iter::once(css)
         .chain(extra_css.iter().map(|s| escape_style_end(s)))
         .collect::<Vec<_>>()
@@ -185,6 +225,81 @@ mod tests {
         assert_eq!(escape_script_end("plain"), "plain");
         // 只去掉闭合标签，别的原样
         assert_eq!(escape_script_end("x</script>y"), "xy");
+    }
+
+    #[test]
+    fn the_stylesheet_is_embedded_and_not_empty() {
+        assert!(DEFAULT_CSS.len() > 500, "{}", DEFAULT_CSS.len());
+        assert!(DEFAULT_CSS.contains(".mdpp-content"), "正文那一层得有样式");
+    }
+
+    /// 七个文件按次序拼成一份 —— 次序错了会静悄悄地看起来对：
+    /// 变量那层必须在前（后面都在 `var(--mdpp-…)`），打印那层必须在最后（它是覆盖）。
+    #[test]
+    fn the_pieces_are_concatenated_in_the_right_order() {
+        let base = DEFAULT_CSS.find(":root").expect("变量那层");
+        let callout = DEFAULT_CSS.find(".callout {").expect("提示框");
+        let tabs = DEFAULT_CSS.find(".tabs__bar").expect("选项卡");
+        let print = DEFAULT_CSS.find("@media print").expect("打印");
+        assert!(base < callout, "变量要在用它的那些之前");
+        assert!(callout < tabs, "按注册次序");
+        assert!(tabs < print, "打印规则是覆盖，要压过前面的");
+    }
+
+    /// 每个文件都得真的被拼进去 —— 漏一个 `include_str!` 是静默的：页面少几样样式，
+    /// 而编译不报错。
+    #[test]
+    fn every_asset_file_reaches_the_stylesheet() {
+        for (file, needle) in [
+            ("base.css", "--mdpp-accent"),
+            ("callouts.css", "callout--warning"),
+            ("text.css", "title-block"),
+            ("media.css", "figcaption"),
+            ("panels.css", "theme__part--dark"),
+            ("embeds.css", "math--display"),
+            ("print.css", "attr(data-label)"),
+        ] {
+            assert!(
+                DEFAULT_CSS.contains(needle),
+                "{file} 没被拼进去（少 {needle}）"
+            );
+        }
+    }
+
+    /// `::css` 注入的 CSS 靠 `var(--mdpp-…)` 取配色，变量名要与 `base.css` 对得上
+    #[test]
+    fn the_palette_variables_are_all_there() {
+        for name in [
+            "--mdpp-accent",
+            "--mdpp-text",
+            "--mdpp-text-dim",
+            "--mdpp-link",
+            "--mdpp-border",
+            "--mdpp-surface",
+            "--mdpp-danger",
+        ] {
+            assert!(DEFAULT_CSS.contains(name), "少了 {name}");
+        }
+    }
+
+    #[test]
+    fn the_script_is_embedded_and_does_the_minimum() {
+        assert!(DEFAULT_JS.contains("tabs__tab--on"), "{}", DEFAULT_JS);
+        assert!(DEFAULT_JS.contains("DOMContentLoaded"), "{}", DEFAULT_JS);
+        assert!(
+            DEFAULT_JS.contains("addEventListener(\"click\""),
+            "点击切换不能少"
+        );
+        // 默认脚本多带一样（方向键、动画、记忆…）就有人得自己去拆，
+        // 而拆一段别人的行为比不写要费劲
+        assert!(
+            !DEFAULT_JS.contains("ArrowRight"),
+            "方向键不该由官方工具来定"
+        );
+        assert!(
+            !DEFAULT_JS.contains("localStorage"),
+            "记住上次那栏不该由官方工具来定"
+        );
     }
 
     /// 附带的那些接在默认的**后面** —— 同优先级时后者胜出，

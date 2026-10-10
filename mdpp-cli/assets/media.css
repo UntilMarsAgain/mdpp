@@ -1,0 +1,36 @@
+/* ---- 媒体 --------------------------------------------------------- */
+
+.mdpp-content figure {
+  margin: var(--mdpp-gap) 0;
+}
+
+.mdpp-content figure img,
+.mdpp-content figure video {
+  display: block;
+}
+
+.mdpp-content figure audio {
+  width: 100%;
+}
+
+.mdpp-content .image--center img,
+.mdpp-content .media--center {
+  margin-inline: auto;
+}
+
+.mdpp-content .image--left img,
+.mdpp-content .media--left {
+  margin-inline: 0 auto;
+}
+
+.mdpp-content .image--right img,
+.mdpp-content .media--right {
+  margin-inline: auto 0;
+}
+
+.mdpp-content figcaption {
+  margin-top: 0.4em;
+  text-align: center;
+  font-size: 0.88em;
+  color: var(--mdpp-text-dim);
+}

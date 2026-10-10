@@ -23,8 +23,12 @@ cargo run -p mdpp-cli -- --full --theme light -T examples/templates examples/tou
 ```
 
 输出默认是 HTML **片段**（像 `cmark` 那样）；要整页加 `--full`。整页那份内联了
-默认样式与 `mdpp-cli/assets/mdpp.js`，所以选项卡是能点的；打印（Ctrl+P）时折叠
-的也会展开。
+`mdpp-cli/assets/` 下的官方 CSS 与 JS，所以选项卡是能点的；打印（Ctrl+P）时折叠的
+也会展开。那套资源与库同一个 MIT 许可，可以复制去改：
+
+```sh
+mdpp --full --css 我的.css --js 我的.js examples/tour.mdpp
+```
 
 ## 模板页的后缀
 
