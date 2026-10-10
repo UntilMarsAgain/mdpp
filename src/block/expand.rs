@@ -16,6 +16,7 @@ use crate::block::fill;
 use crate::block::template::{self, page_key, TemplatePage};
 use crate::context::{self, MAX_TEMPLATE_DEPTH};
 use crate::registry::Block;
+use crate::telemetry::{debug, trace, warn};
 use crate::syntax::wikilink;
 
 /// 展开一个**用户自定义块**：模板页的正文 → 填 `{{参数}}` → 解析成节点。
@@ -30,11 +31,19 @@ pub(crate) fn expand_user_block(
 ) -> Option<Node> {
     // 转圈的保护要在**取到正文之后**查：取不到就没有「套」这回事
     let source = match template::page_for(name)? {
-        TemplatePage::Ready(text) => text,
-        TemplatePage::Unreadable { reason } => return Some(unreadable_node(name, &reason)),
+        TemplatePage::Ready(text) => {
+            trace!(name, bytes = text.len(), "展开用户块");
+            text
+        }
+        TemplatePage::Unreadable { reason } => {
+            debug!(name, %reason, "模板页在，但这一刻读不出来");
+            return Some(unreadable_node(name, &reason));
+        }
     };
 
     if context::depth() >= MAX_TEMPLATE_DEPTH {
+        // warn 而不是 debug：作者多半不知道自己写了个转圈的块，而这件事值得吵一下
+        warn!(name, limit = MAX_TEMPLATE_DEPTH, "块嵌套超过上限，多半是自嵌");
         return Some(reported_node(
             "块嵌套太深",
             "template--problem",

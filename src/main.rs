@@ -10,7 +10,10 @@ use std::process::ExitCode;
 
 use mdpp::{Mdpp, RenderContext};
 
-use bin::{help, link_resolver, template_pages, version, BadUsage, Options, Wanted, NAME};
+use bin::{
+    debug, help, info, install, link_resolver, template_pages, version, BadUsage, Options, Wanted,
+    NAME,
+};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -31,6 +34,9 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+
+    // 订阅器在解析之后才装：否则连「这组参数是不是错的」都还没定，就已经打了一堆日志
+    install(options.debug);
 
     match run(&options) {
         Ok(()) => ExitCode::SUCCESS,
@@ -58,12 +64,18 @@ fn run(options: &Options) -> Result<(), String> {
 
     let parser = build(options);
     let context = build_context(options)?;
+    debug!(
+        full = options.full,
+        theme = ?options.theme,
+        "配置就绪，开始渲染"
+    );
 
     let mut out = std::io::stdout().lock();
     let mut total = Stats::default();
     let multiple = options.inputs.len() > 1;
 
     for (name, text) in &sources {
+        info!(name, bytes = text.len(), "渲染这一个");
         let html = parser.render_with(text, &context);
         total.add(name, text, &html);
 

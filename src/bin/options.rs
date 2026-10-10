@@ -40,6 +40,8 @@ pub struct Options {
     pub list_blocks: bool,
     /// 把统计写到标准错误
     pub stats: bool,
+    /// 装一个 DEBUG 级的日志订阅器（写标准错误）
+    pub debug: bool,
 }
 
 /// 解析失败。消息直接就是给人看的那一句。
@@ -76,6 +78,7 @@ impl Options {
                 "--no-wikilink" => options.no_wikilink = true,
                 "-L" | "--list-blocks" => options.list_blocks = true,
                 "-s" | "--stats" => options.stats = true,
+                "-d" | "--debug" => options.debug = true,
                 other if other.starts_with("--") && other.contains('=') => {
                     // `--opt=值`：拆开之后当作 `--opt 值` 走一遍，
                     // 免得每个选项都写两份解析（漏一份就有一个不认 `=` 形式）
@@ -171,6 +174,7 @@ pub fn help() -> String {
                            于是 ::名字 能取到它
   -L, --list-blocks       列出这一版带的块名，然后退出
   -s, --stats             把统计写到标准错误
+  -d, --debug             装一个 DEBUG 级的日志订阅器（写标准错误）
   -h, --help              显示这一段
   -V, --version           显示版本
 
@@ -223,6 +227,15 @@ mod tests {
         assert_eq!(options.inputs.len(), 2);
         assert!(options.inputs[0].ends_with("甲.md"));
         assert!(options.inputs[1].ends_with("乙.md"));
+    }
+
+    /// 没有 `--debug` 就什么日志都不打 —— 一次性的事不该在正常输出旁边多出字
+    #[test]
+    fn logging_is_off_unless_it_is_asked_for() {
+        assert!(!parse(&[]).debug);
+        assert!(!parse(&["-s"]).debug);
+        assert!(parse(&["--debug"]).debug);
+        assert!(parse(&["-d"]).debug);
     }
 
     #[test]
@@ -322,6 +335,7 @@ mod tests {
             "--template-dir",
             "--list-blocks",
             "--stats",
+            "--debug",
             "--help",
             "--version",
         ] {

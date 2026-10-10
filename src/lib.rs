@@ -66,6 +66,7 @@ pub mod registry;
 pub mod slug;
 pub mod syntax;
 pub mod targets;
+pub mod telemetry;
 
 /// 重导出：写块渲染器要用的 `Node` / `Renderer` / `NodeValue` 就在这里，
 /// 使用方不必自己往 `Cargo.toml` 里加一条 `markdown-it` 就能对上版本。

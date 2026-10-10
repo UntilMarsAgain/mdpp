@@ -14,6 +14,7 @@
 
 use crate::context;
 use crate::link::ResolvedLink;
+use crate::telemetry::trace;
 use markdown_it::parser::inline::{InlineRule, InlineState, Text};
 use markdown_it::{MarkdownIt, Node, NodeValue, Renderer};
 
@@ -78,6 +79,11 @@ pub fn add(md: &mut MarkdownIt) {
 pub fn link_node(doc: &str, text: &str) -> Node {
     // 与扫描器同口径：有当次渲染递进来的解析器才判得出目标在不在
     let resolved = context::links().and_then(|resolver| resolver.resolve(doc));
+    // 认不出来的目标走 `trace` 而不是 `debug`：一篇正文里认不出来的链接可能有几百条，
+    // 而那在多半情况下是正常的（正文提到一个还没写的页面）
+    if resolved.is_none() {
+        trace!(doc, "这个内部链接认不出来，留作字面文本");
+    }
     let mut node = Node::new(WikiLink {
         doc: doc.to_owned(),
         resolved,
