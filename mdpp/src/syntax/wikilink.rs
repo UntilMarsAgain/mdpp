@@ -3,18 +3,34 @@
 //! 顺序遵循 MediaWiki：**目标在前、显示文字在后**，`|显示文字` 可以省略
 //! （省略时显示文字就是目标本身）。注意别写反成 `[[显示文字|目标]]`。
 //!
-//! ## 渲染成什么由外部决定
+//! ## 三种结局，第三种是**红链**
 //!
-//! 这一层只负责**认**出链接、把目标递给 [`crate::link::LinkResolver`]，然后按递回来的
-//! 东西渲染（见 [`ResolvedLink`] 的两个变体）。
+//! 这一层只负责**认**出链接、把目标递给 [`crate::link::LinkResolver`]，然后按递回来
+//! 的东西渲染：
 //!
-//! **解析器没递进来**（[`crate::context::links`] 是 `None`）时落成
-//! `<a class="wikilink" data-doc="目标">显示文字</a>` —— **故意不带 `href`**。
-//! 理由见 `link` 模块：带上了浏览器就会自己走，接单击处理的一方再也轮不到。
+//! | 情形 | 渲染成 |
+//! |---|---|
+//! | 解析器给了 [`ResolvedLink::Link`] | `<a href=… class="wikilink">` —— 有地址的正常链 |
+//! | 解析器给了 [`ResolvedLink::Node`] | 整个节点归那个函数写（连 `<a>` 都由它决定） |
+//! | 解析器说 `None`，**或压根没递解析器** | `<a class="wikilink wikilink--missing" data-missing="true">` —— **红链** |
+//!
+//! ## 为什么「没递解析器」也算红链
+//!
+//! 「不认得这个目标」与「压根没人去认」在这里是同一件事：调用方**不知道**
+//! `[[某页]]` 存不存在。渲染成一条看起来正常的链，等于替它宣称「这一页存在」——
+//! 而那是它没说过、也没法说的事。
+//!
+//! 所以默认是红链，读者一眼看见「这一页还没接上」。想让它看起来正常，递一个解析器
+//! 进去即可；想让红链有别的样子（加个 ✗、换种下划线），要么递 [`ResolvedLink::Node`]
+//! 自己画，要么用自己那份样式 —— `wikilink--missing` 与 `data-missing="true"`
+//! 就是留给这件事的两个钩子。
+//!
+//! 红链**故意不带 `href`**：理由见 `link` 模块 —— 带上了浏览器就会自己走，
+//! 接单击处理的一方再也轮不到，那正好是「这一页还没有」最需要有人接手的时候。
 
 use crate::context;
 use crate::link::ResolvedLink;
-use crate::telemetry::trace;
+use crate::telemetry::{debug, trace};
 use markdown_it::parser::inline::{InlineRule, InlineState, Text};
 use markdown_it::{MarkdownIt, Node, NodeValue, Renderer};
 
@@ -38,20 +54,33 @@ impl NodeValue for WikiLink {
             return;
         }
 
+        // 认不出来 —— 解析器说没有，或压根没有解析器。两种情形渲染成同一样东西，
+        // 理由在模块头。
+        let Some(ResolvedLink::Link(target)) = &self.resolved else {
+            fmt.open(
+                "a",
+                &[
+                    ("class", "wikilink wikilink--missing".to_string()),
+                    ("data-doc", self.doc.clone()),
+                    ("data-missing", "true".to_string()),
+                ],
+            );
+            fmt.contents(&node.children);
+            fmt.close("a");
+            return;
+        };
+
         // `class` 单独攒着最后合并 —— HTML 里**一个元素只能有一个 class 属性**，
         // 写两个的话浏览器取第一个，而那会正好把解析器给的那几个类名丢掉。
         let mut classes: Vec<&str> = vec!["wikilink"];
         let mut attrs: Vec<(&str, String)> = Vec::new();
-
-        if let Some(ResolvedLink::Link(target)) = &self.resolved {
-            attrs.push(("href", target.url.clone()));
-            for (key, value) in &target.attrs {
-                if key == "class" {
-                    classes.extend(value.split_whitespace());
-                } else {
-                    // 借用一下这个 String：它活到这次 render 结束，够 fmt 用
-                    attrs.push((key.as_str(), value.clone()));
-                }
+        attrs.push(("href", target.url.clone()));
+        for (key, value) in &target.attrs {
+            if key == "class" {
+                classes.extend(value.split_whitespace());
+            } else {
+                // 借用一下这个 String：它活到这次 render 结束，够 fmt 用
+                attrs.push((key.as_str(), value.clone()));
             }
         }
 
@@ -79,10 +108,15 @@ pub fn add(md: &mut MarkdownIt) {
 pub fn link_node(doc: &str, text: &str) -> Node {
     // 与扫描器同口径：有当次渲染递进来的解析器才判得出目标在不在
     let resolved = context::links().and_then(|resolver| resolver.resolve(doc));
-    // 认不出来的目标走 `trace` 而不是 `debug`：一篇正文里认不出来的链接可能有几百条，
-    // 而那在多半情况下是正常的（正文提到一个还没写的页面）
+    // 红链的分两档，因为它们要查的东西不是一件：
+    // - `debug`：**压根没递解析器** —— 那一篇里每一个链接都会红，那多半是没配好，
+    //   而不是「这一页还没写」。这值得说一句。
+    // - `trace`：递了解析器而它说没有 —— 一篇正文里几百个是常事（写到还没写的页面）。
     if resolved.is_none() {
-        trace!(doc, "这个内部链接认不出来，留作字面文本");
+        match context::links() {
+            Some(_) => trace!(doc, "解析器说没有这个目标，红链"),
+            None => debug!(doc, "没有链接解析器，这个链接按红链渲染"),
+        }
     }
     let mut node = Node::new(WikiLink {
         doc: doc.to_owned(),
@@ -155,11 +189,51 @@ mod tests {
     fn target_first_display_second() {
         // [[目标文档|显示文字]]
         let html = render("[[目标文档|显示文字]]\n");
-        assert!(html.contains(r#"class="wikilink""#), "{html}");
         assert!(html.contains(r#"data-doc="目标文档""#), "{html}");
         assert!(html.contains(">显示文字</a>"), "{html}");
-        // 没递解析器时不能带 href：带上了浏览器就会自己走
+    }
+
+    /// **压根没递解析器 → 每一个内链都是红链。**
+    ///
+    /// 钉的是这一条而不是「渲染得出来」：渲染成一条看起来正常的链，等于替调用方
+    /// 宣称「这一页存在」，而那是它没说过、也没法说的事。
+    #[test]
+    fn with_no_resolver_every_link_is_a_red_link() {
+        let html = render("[[甲]] 与 [[乙]]\n");
+        assert_eq!(
+            html.matches(r#"class="wikilink wikilink--missing""#)
+                .count(),
+            2,
+            "{html}"
+        );
+        assert_eq!(html.matches(r#"data-missing="true""#).count(), 2, "{html}");
+        assert!(!html.contains("href="), "红链不该有 href：{html}");
+    }
+
+    /// 解析器说没有 → 也是红链。与「压根没递解析器」**渲染成完全一样的东西**。
+    #[test]
+    fn a_resolver_saying_no_gives_the_same_red_link() {
+        #[derive(Debug)]
+        struct FindsNothing;
+        impl LinkResolver for FindsNothing {
+            fn resolve(&self, _target: &str) -> Option<ResolvedLink> {
+                None
+            }
+        }
+
+        let with = render_with(FindsNothing, "[[甲]]\n");
+        let without = Mdpp::new().render("[[甲]]\n");
+        assert_eq!(with, without, "「说没有」与「没问」不该长得不一样");
+        assert!(with.contains("wikilink--missing"), "{with}");
+    }
+
+    /// 红链**不带 href**：带上���浏览器就会自己走，接单击处理的一方再也轮不到 ——
+    /// 而那正是「这一页还没有」最需要有人接手的时候。
+    #[test]
+    fn a_red_link_carries_no_href() {
+        let html = render("[[目标]]\n");
         assert!(!html.contains(r#"href="#), "{html}");
+        assert!(html.contains(r#"data-doc="目标""#), "{html}");
     }
 
     #[test]
@@ -241,12 +315,16 @@ mod tests {
         assert!(!html.contains("data-doc"), "{html}");
     }
 
-    /// 解析器认不出来 → 只留 `data-doc`，不标红也不标蓝
+    /// 解析器认得的那几条 → **不带**红链的记号，两者不会混
     #[test]
-    fn an_unresolved_target_stays_unmarked() {
-        let html = render_with(Targets(vec!["存在的条目".into()]), "[[没有的条目]]\n");
-        assert!(html.contains(r#"data-doc="没有的条目""#), "{html}");
-        assert!(!html.contains("href="), "{html}");
+    fn a_known_target_is_not_marked_missing() {
+        let html = render_with(Targets(vec!["存在的条目".into()]), "[[存在的条目]]\n");
+        assert!(html.contains(r#"href="/page/存在的条目""#), "{html}");
+        assert!(
+            !html.contains("data-missing"),
+            "认得的链接不该标成没找到：{html}"
+        );
+        assert!(!html.contains("wikilink--missing"), "{html}");
     }
 
     /// 渲染状态必须是「每次调用各自一份」：并行渲染时不能互相干扰。
