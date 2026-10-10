@@ -2,18 +2,25 @@
 //
 //     cargo run -p mdpp --example standalone_page
 //
-// 库**不**管正文往哪去、外面套什么样式 —— 它给的是一段 HTML **片段**
-// （`Mdpp::render`）与那份默认样式表（`mdpp::assets::DEFAULT_CSS`）。
-// 「把片段套成一个页面」是**界面**那一层的事，所以这个例子自己动手套：
+// ## 这一份演示的是「库给的是片段，外壳是你的事」
 //
-// - 想要开箱即用、还能点（选项卡切得动）的那份，用命令行：
-//   `cargo run -p mdpp-cli -- --full 正文.mdpp`；
-// - 想自己控制外壳的，就像这里这样，把 `DEFAULT_CSS` 内联进一个模板。
+// `Mdpp::render` 给的是 HTML **片段**。样式表、脚本、`<html>` 这些本库一概不提供 ——
+// 它是解析器，不是界面。
+//
+// 想要开箱即用、还能点的整页，用官方二进制：
+//
+// ```sh
+// cargo run -p mdpp-cli -- --full 正文.mdpp
+// ```
+//
+// 它内联的那套 CSS/JS 在 `mdpp-cli/assets/`，**同一个 MIT 许可，自取即可** ——
+// 想改就复制一份去改，`--css 你的.css` / `--js 你的.js` 也能接在默认的后面。
+//
+// 这个例子自己写一份极简的外壳：它想说明的就是「没有样式表也能用，你自己决定」。
 
 use std::path::Path;
 
 use mdpp::Mdpp;
-use mdpp::assets::DEFAULT_CSS;
 
 const 标题: &str = "重逢笔记 · 一篇正文";
 
@@ -48,32 +55,45 @@ $$\\int_0^1 x^2 \\, dx = \\tfrac{1}{3}$$
 
 ---
 
-`::mermaid` 与 `::math` 渲染出的是**原文**加几个 `data-*` 提示：排版是前端的事
-（KaTeX / mermaid 是 JS 库，库这一侧不引 JS 引擎）。取不到它们时看到的是原文，
-而不是一片空白。
+`::mermaid` 与 `::math` 渲染出的是**原文**加几个 `data-*` 提示：排版是界面那一层的
+事（KaTeX / mermaid 是 JS 库）。取不到它们时看到的是原文，而不是一片空白。
+";
+
+/// 一份**极简**的样式：只够让上面那些块看起来还是块。
+///
+/// 认真排版的话去拿 `mdpp-cli/assets/` 那份 —— 它更全，而且可以被 `--css` 附带进来。
+const 一点样式: &str = "\
+body { margin: 0 auto; padding: 2rem 1.5rem; max-width: 44rem;
+       font-family: system-ui, 'Noto Sans CJK SC', sans-serif; line-height: 1.7; }
+a { color: #1f5fb0; }
+pre { background: #f6f7f9; padding: .8rem 1rem; overflow-x: auto; }
+.callout { background: #eaf1fb; border-left: 4px solid #4a7fd0; padding: .7rem 1rem; }
+.banner { background: #f6f7f9; padding: .7rem 1rem; text-align: center; }
+.tabs__bar { border-bottom: 2px solid #d8dce1; }
+.tabs__tab { border: 0; background: none; padding: .4em .9em; cursor: pointer; }
+.tabs__tab--on { font-weight: 700; border-bottom: 2px solid #2f6fd0; }
+.template--unknown, .template--problem { border: 1px dashed #b4302a; padding: .7rem 1rem; }
 ";
 
 fn main() {
     let html = Mdpp::new().render(正文);
 
-    // 这一段是**本例自己写的**，不是库给的：库里没有「套外壳」这个函数，
-    // 因为那是界面那一层的事。`theme` 写死成 light，于是 `::theme` 的两节
-    // 由样式挑，而不是由系统偏好挑。
+    // 这一段是**本例自己写的**，不是库给的
     let page = format!(
         "<!DOCTYPE html>\n\
-         <html lang=\"zh-Hans\" data-mdpp-theme=\"light\">\n\
+         <html lang=\"zh-Hans\">\n\
          <head>\n\
          <meta charset=\"utf-8\">\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
          <title>{标题}</title>\n\
-         <style>\n{css}\n</style>\n\
+         <style>\n{样式}\n</style>\n\
          </head>\n\
          <body>\n\
-         <article class=\"mdpp-content\">\n{html}\n</article>\n\
+         {html}\n\
          </body>\n\
          </html>\n",
         标题 = 标题,
-        css = DEFAULT_CSS,
+        样式 = 一点样式,
         html = html,
     );
 
@@ -89,8 +109,10 @@ fn main() {
     }
 
     println!("写了 {}（{} 字节）", path.display(), page.len());
-    println!("把它拖进浏览器就能看。");
-    println!("注意选项卡点不动 —— 这个外壳没接那段脚本。");
-    println!("要一份能点的，用 `cargo run -p mdpp-cli -- --full …`，或者自己把");
-    println!("`mdpp-cli/assets/mdpp.js` 引进去。");
+    println!();
+    println!("这份外壳是自己写的，只够「看起来还是块」。");
+    println!("官方那套更全，在 `mdpp-cli/assets/`（MIT，可自取）：");
+    println!("  cargo run -p mdpp-cli -- --full 正文.mdpp        # 内联官方 CSS+JS，选项卡能点");
+    println!("  mdpp --css 你的.css --js 你的.js --full …      # 接在默认的后面");
+    println!("注意这一份选项卡点不动 —— 它没接那段脚本，那正是库不负责的事。");
 }

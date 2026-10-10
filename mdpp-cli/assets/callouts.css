@@ -1,0 +1,35 @@
+/* ---- 提示框 ------------------------------------------------------- */
+
+.mdpp-content .callout {
+  margin: var(--mdpp-gap) 0;
+  padding: 0.7rem 1rem;
+  border-left: 4px solid currentColor;
+  border-radius: var(--mdpp-radius);
+  background: var(--mdpp-surface);
+}
+
+.mdpp-content .callout > :first-child {
+  margin-top: 0;
+}
+
+.mdpp-content .callout > :last-child {
+  margin-bottom: 0;
+}
+
+.mdpp-content .callout__title {
+  display: flex;
+  gap: 0.5em;
+  align-items: baseline;
+  margin: 0 0 0.4em;
+  font-weight: 600;
+}
+
+.mdpp-content .callout__mark {
+  font-weight: 400;
+}
+
+.mdpp-content .callout--note { background: var(--mdpp-note-bg); color: var(--mdpp-note-fg); }
+.mdpp-content .callout--tip { background: var(--mdpp-tip-bg); color: var(--mdpp-tip-fg); }
+.mdpp-content .callout--warning { background: var(--mdpp-warning-bg); color: var(--mdpp-warning-fg); }
+.mdpp-content .callout--danger { background: var(--mdpp-danger-bg); color: var(--mdpp-danger-fg); }
+.mdpp-content .callout--error { background: var(--mdpp-error-bg); color: var(--mdpp-error-fg); }

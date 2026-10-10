@@ -1,0 +1,49 @@
+/* ---- 选项卡与深浅色 ------------------------------------------------ */
+
+.mdpp-content .tabs__bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25em;
+  border-bottom: 2px solid var(--mdpp-border);
+}
+
+.mdpp-content .tabs__tab {
+  padding: 0.4em 0.9em;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  background: transparent;
+  color: var(--mdpp-text-dim);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mdpp-content .tabs__tab--on {
+  border-bottom-color: var(--mdpp-accent);
+  color: var(--mdpp-text);
+  font-weight: 600;
+}
+
+/* 没接线时（就一份 HTML 丢进浏览器）第一节照样显示得出来 */
+.mdpp-content .tabs__panel[hidden] {
+  display: none;
+}
+
+/* 两节默认都藏着：显示哪一节由下面两条按主题挑。
+ * 「两边都显示」那一节（没有 light/dark 档的）不受这两条影响。 */
+.mdpp-content .theme__part--light { display: none; }
+.mdpp-content .theme__part--dark { display: none; }
+
+/* 页面没有明确指定主题时，跟随系统。
+ * `:not([data-mdpp-theme='…'])` 是为了让「明确说了 light 就别再被深色那条拿走」。 */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mdpp-theme='light']) .mdpp-content .theme__part--dark { display: block; }
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-mdpp-theme='dark']) .mdpp-content .theme__part--light { display: block; }
+}
+
+/* 页面明确指定了主题：它说了算，且写在最后 —— 同优先级时后者胜出。 */
+:root[data-mdpp-theme='dark'] .mdpp-content .theme__part--dark { display: block; }
+:root[data-mdpp-theme='light'] .mdpp-content .theme__part--light { display: block; }

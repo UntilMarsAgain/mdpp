@@ -1,0 +1,83 @@
+/* ---- 标题带与大标题 ------------------------------------------------ */
+
+.mdpp-content .banner {
+  margin: var(--mdpp-gap) 0;
+  padding: 0.7rem 1rem;
+  border-radius: var(--mdpp-radius);
+  background: var(--mdpp-surface);
+  text-align: center;
+}
+
+.mdpp-content .banner--sized {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mdpp-content .banner--square {
+  border-radius: 0;
+}
+
+.mdpp-content .title-block {
+  margin: 1.6em 0 0.6em;
+  text-align: center;
+  font-size: 1.6em;
+  font-weight: 700;
+}
+
+/* ---- 信息栏 / 落款 / 属性表 --------------------------------------- */
+
+.mdpp-content .aside {
+  float: right;
+  width: 18rem;
+  max-width: 100%;
+  margin: 0 0 var(--mdpp-gap) var(--mdpp-gap);
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--mdpp-border);
+  border-radius: var(--mdpp-radius);
+  background: var(--mdpp-surface);
+  font-size: 0.94em;
+}
+
+.mdpp-content .aside__title {
+  margin: 0 0 0.4em;
+  font-weight: 600;
+}
+
+/* 窄屏上取消浮动：正文会绕着一条窄栏走，那在手机上没法读 */
+@media (max-width: 40em) {
+  .mdpp-content .aside {
+    float: none;
+    width: auto;
+    margin: var(--mdpp-gap) 0;
+  }
+}
+
+.mdpp-content .signature {
+  margin: 2em 0 1em;
+  text-align: right;
+  color: var(--mdpp-text-dim);
+  /* 硬换行在落款里是有意义的：「名字一行、日期一行」 */
+  white-space: pre-line;
+}
+
+.mdpp-content table.fields th,
+.mdpp-content table.fields td {
+  padding: 0.3em 0.9em;
+  border-bottom: 1px solid var(--mdpp-border);
+  text-align: left;
+  font-weight: 400;
+}
+
+.mdpp-content table.fields th {
+  white-space: nowrap;
+  color: var(--mdpp-text-dim);
+}
+
+/* `::quote` 的署名（作者给了 `origin=` 时） */
+.mdpp-content blockquote.quote__origin,
+.mdpp-content p.quote__origin {
+  margin-top: 0.5rem;
+  font-size: 0.9em;
+  color: var(--mdpp-text-dim);
+}

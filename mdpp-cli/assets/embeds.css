@@ -1,0 +1,28 @@
+/* ---- 图与公式 ----------------------------------------------------- */
+
+/* 没接 mermaid / KaTeX 时看到的是原文 —— 所以给个能读的样子，别留一片空白 */
+.mdpp-content .diagram pre.mermaid {
+  text-align: center;
+}
+
+.mdpp-content .math {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.mdpp-content .math--inline {
+  white-space: nowrap;
+}
+
+.mdpp-content .math--display {
+  display: block;
+  margin: var(--mdpp-gap) 0;
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+/* ---- `::code` ------------------------------------------------------ */
+
+/* 行号列与强调色带由界面那一层落地，这里只保证提示在（那一块要给它留出位置） */
+.mdpp-content pre.template-code[data-lines='on'] {
+  padding-left: 3.2rem;
+}
