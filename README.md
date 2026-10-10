@@ -17,7 +17,12 @@ cargo build --release
 | target | 路径 | 是什么 |
 |---|---|---|
 | 库 `mdpp` | `src/lib.rs` | `markdown → HTML`。**不知道文件系统、终端、仓库的任何事** |
-| 二进制 `mdpp` | `src/bin/mdpp/main.rs` | 命令行。库唯一的消费者 |
+| 二进制 `mdpp` | `src/main.rs` | 命令行。库唯一的消费者 |
+
+命令行是个薄壳，它自己的零件（参数解析、模板页目录）在 `src/bin/` —— 那是它
+**独占**的目录，`src/` 根是两个 target 共用的。（`Cargo.toml` 里那行
+`autobins = false` 是配套的：不关掉的话 `src/bin/*.rs` 会被 cargo 当成
+「这里还有一个二进制」。）
 
 那条边界不用 workspace 来守 —— **rustc 自己就守着**：二进制里的代码要用库的东西
 得写 `use mdpp::`，而库那边根本看不到二进制。为此多一个 `Cargo.toml`、多一层
@@ -211,8 +216,9 @@ src/
 ├── slug.rs                  标题 id
 ├── targets.rs               链接目标里的空格补成 %20
 ├── assets.rs                内嵌样式表与完整文档
-└── bin/mdpp/
-    ├── main.rs              读写、拼装
+├── main.rs                  二进制入口（惯例位置）：读写、拼装
+└── bin/                     **只有**二进制用的那几个文件
+    ├── mod.rs
     ├── options.rs           手写的参数解析与帮助
     └── context.rs           链接前缀与模板页目录
 ```
