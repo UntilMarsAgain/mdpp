@@ -1,0 +1,27 @@
+# mdpp 项目的配置。这一层只管「东西在哪」与「站点叫什么」——
+# 正文怎么写见仓库的 examples/，其中 tour.mdpp 是一个块的巡览。
+
+# 站点名。整页的 <title> 是「页面名 —— 站点名」
+site_name = "{{站点名}}"
+
+# 一句话说明
+site_description = ""
+
+# 正文在哪。mdpp build 递归扫这个目录，.md 与 .mdpp 都算页面
+pages_dir = "pages"
+
+# 模板页在哪。<目录>/<名字>.mdpp 是一页，正文里 ::名字 从这里取
+templates_dir = "templates"
+
+# 站点输出到哪。mdpp build 写在这里
+site_dir = "build"
+
+# 整页的主题：light 或 dark。不写就是 light
+theme = "light"
+
+# <html lang>
+lang = "zh-Hans"
+
+# 附加的 CSS 与 JS，按给定次序接在默认的之后。路径相对本文件
+extra_css = []
+extra_js = []
