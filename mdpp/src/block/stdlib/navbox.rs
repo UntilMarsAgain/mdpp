@@ -44,13 +44,15 @@
 //!
 //! **不做 `[分组名 [[链接]]]` 那种写法**，理由见 [`group_label_html`]。
 //!
-//! ## 三个颜色参数
+//! ## 三个底色参数
 //!
-//! `group-color=` 每一栏标题的字色、`title-color=` 大标题的字色、`header-bg=`
-//! 通栏底色；都只认 `#rgb` / `#rrggbb`，与 `::banner` 的 `color=` 同一条规矩。
-//! 它们落成**自定义属性**（`--navbox-group-fg` / `--navbox-title-fg` /
-//! `--navbox-head-bg`），样式表那几处各自带默认值，所以「不给」与「给了」走的
-//! 是同一段 CSS。
+//! `group-bg=` 每一栏标题的底色、`title-bg=` 标题栏的底色、`header-bg=` 通栏底色；
+//! 都只认 `#rgb` / `#rrggbb`，与 `::banner` 的 `color=` 同一条规矩。
+//!
+//! **字色不给作者写**：底色定了之后字色由 [`super::text_on`] 按亮度算出来（深底配
+//! 浅字），与 `::banner`、提示框同一套 —— 深底配深字是最常见的自挖坑。两者都落成
+//! **自定义属性**（`--navbox-group-bg` / `--navbox-group-fg` 等），样式表那几处各自
+//! 带默认值，所以「不给」与「给了」走的是同一段 CSS，而字色仍可以用 `::css` 改。
 //!
 //! ## 三处保留的名字
 //!
@@ -233,46 +235,53 @@ fn group_label_html(label: &str) -> Result<String, String> {
     Ok(inline_html(&format!("[[{page}]]")))
 }
 
-/// 那三个颜色参数。只认 `#rgb` / `#rrggbb` —— 与 [`::banner`](super::text) 的
+/// 那三个**底色**参数。只认 `#rgb` / `#rrggbb` —— 与 [`::banner`](super::text) 的
 /// `color=` 是同一条规矩：值要写进 `style` 属性，宽松了就等于允许往里塞任意声明。
 struct Palette {
-    /// `group-color=` —— 每一栏标题的字色
-    group_fg: Option<String>,
-    /// `title-color=` —— 大标题的字色
-    title_fg: Option<String>,
+    /// `group-bg=` —— 每一栏标题的底色
+    group_bg: Option<String>,
+    /// `title-bg=` —— 标题栏的底色
+    title_bg: Option<String>,
     /// `header-bg=` —— 通栏的底色
     head_bg: Option<String>,
 }
 
 impl Palette {
     /// 落成一条 `style`。一个都没给时不写这个属性 —— 多余的 `style=""` 是噪音。
+    ///
+    /// **每个底色连字色一起给**：字色由 [`super::text_on`] 按亮度算出来。深底配深字
+    /// 是最常见的「自己给自己挖坑」，而 `::banner` 与提示框那一族都是这么做的，
+    /// 这里跟着同一条。字色也落成自定义属性，所以谁想改仍然可以用 `::css` 改。
     fn style(&self) -> Option<String> {
         let mut out = String::new();
-        for (name, value) in [
-            ("--navbox-group-fg", &self.group_fg),
-            ("--navbox-title-fg", &self.title_fg),
-            ("--navbox-head-bg", &self.head_bg),
+        for (background, foreground, value) in [
+            ("--navbox-group-bg", "--navbox-group-fg", &self.group_bg),
+            ("--navbox-title-bg", "--navbox-title-fg", &self.title_bg),
+            ("--navbox-head-bg", "--navbox-head-fg", &self.head_bg),
         ] {
             if let Some(value) = value {
-                out.push_str(&format!("{name}: {value};"));
+                out.push_str(&format!(
+                    "{background}: {value}; {foreground}: {};",
+                    super::text_on(value)
+                ));
             }
         }
         (!out.is_empty()).then_some(out)
     }
 }
 
-/// 认那三个颜色参数。错的值**整块拒掉** —— 与 `size_rule` / `normalize_hex` 的
+/// 认那三个底色参数。错的值**整块拒掉** —— 与 `size_rule` / `normalize_hex` 的
 /// 用法一致：渲染一半才发现颜色非法，那一半已经是错的了。
 fn palette_of(block: &Block) -> Result<Palette, String> {
     Ok(Palette {
-        group_fg: hex_of(block, "group-color")?,
-        title_fg: hex_of(block, "title-color")?,
-        head_bg: hex_of(block, "header-bg")?,
+        group_bg: bg_of(block, "group-bg")?,
+        title_bg: bg_of(block, "title-bg")?,
+        head_bg: bg_of(block, "header-bg")?,
     })
 }
 
-/// 取一个颜色参数，认不出就说明它该长什么样
-fn hex_of(block: &Block, key: &str) -> Result<Option<String>, String> {
+/// 取一个底色参数，认不出就说明它该长什么样
+fn bg_of(block: &Block, key: &str) -> Result<Option<String>, String> {
     match block.param(key) {
         None => Ok(None),
         Some(value) => super::normalize_hex(value)
@@ -866,17 +875,17 @@ mod tests {
         );
     }
 
-    /// 三个颜色参数落成自定义属性，交给样式表去用
+    /// 三个**底色**参数落成自定义属性，交给样式表去用；**字色一并给出**
     #[test]
-    fn the_palette_becomes_custom_properties() {
+    fn the_three_backgrounds_become_custom_properties() {
         let html = render(
-            "::navbox title=x group-color=#0055a4 title-color=#ffe680 header-bg=#123456\n  [分类]\n  甲\n",
+            "::navbox title=x group-bg=#0055a4 title-bg=#123456 header-bg=#0af\n  [分类]\n  甲\n",
         );
         assert!(!html.contains("template--problem"), "{html}");
         for (name, value) in [
-            ("--navbox-group-fg", "#0055a4"),
-            ("--navbox-title-fg", "#ffe680"),
-            ("--navbox-head-bg", "#123456"),
+            ("--navbox-group-bg", "#0055a4"),
+            ("--navbox-title-bg", "#123456"),
+            ("--navbox-head-bg", "#00aaff"),
         ] {
             assert!(
                 html.contains(&format!("{name}: {value};")),
@@ -884,13 +893,32 @@ mod tests {
             );
         }
         // `#rgb` 那种简写要规范成六位，与 `::banner` 同一套
-        let short = render("::navbox title=x group-color=#0af\n  [分类]\n  甲\n");
-        assert!(short.contains("--navbox-group-fg: #00aaff;"), "{short}");
+        let short = render("::navbox title=x group-bg=#0af\n  [分类]\n  甲\n");
+        assert!(short.contains("--navbox-group-bg: #00aaff;"), "{short}");
     }
 
-    /// 一个颜色都没给时**不写** `style` —— 多余的 `style=""` 是噪音
+    /// **深底自动配浅字、浅底自动配深字** —— 与 `::banner`、提示框同一套。
+    ///
+    /// 作者只管给底色；深底配深字是最常见的「自己给自己挖坑」，而底色定了之后
+    /// 字色就该由这里算，而不是让作者自己配一遍。
     #[test]
-    fn no_colour_means_no_style_attribute() {
+    fn the_text_colour_follows_the_background_brightness() {
+        let dark = render("::navbox title=x group-bg=#0055a4\n  [分类]\n  甲\n");
+        assert!(
+            dark.contains("--navbox-group-bg: #0055a4; --navbox-group-fg: #f5f5f5;"),
+            "深底该配浅字：{dark}"
+        );
+
+        let light = render("::navbox title=x title-bg=#ffe680\n  [分类]\n  甲\n");
+        assert!(
+            light.contains("--navbox-title-bg: #ffe680; --navbox-title-fg: #101010;"),
+            "浅底该配深字：{light}"
+        );
+    }
+
+    /// 一个底色都没给时**不写** `style` —— 多余的 `style=""` 是噪音
+    #[test]
+    fn no_background_means_no_style_attribute() {
         let html = render("::navbox title=x\n  [分类]\n  甲\n");
         assert!(!html.contains("style="), "{html}");
         // 给了别的属性也不该冒出 style
@@ -898,12 +926,12 @@ mod tests {
         assert!(!nested.contains("style="), "{nested}");
     }
 
-    /// 颜色值只认十六进制 —— 它要写进 `style` 属性，宽松了就等于允许塞任意声明
+    /// 底色值只认十六进制 —— 它要写进 `style` 属性，宽松了就等于允许塞任意声明
     #[test]
-    fn a_bad_colour_is_refused() {
+    fn a_bad_background_is_refused() {
         for (param, value) in [
-            ("group-color", "red"),
-            ("title-color", "#12345"),
+            ("group-bg", "red"),
+            ("title-bg", "#12345"),
             ("header-bg", "#fff; position: fixed"),
         ] {
             let html = render(&format!(
