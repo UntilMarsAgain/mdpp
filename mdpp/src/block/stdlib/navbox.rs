@@ -35,6 +35,23 @@
 //! （「基本原则 / 收录标准 / 格式手册」那一组在每个分组下重复，正是维基那些「方针类」
 //! 导航框的样子）。标签是**显示用的字**，不是标识，所以重复不构成冲突。
 //!
+//! ## `[link 页面]`：分组名指向一条内部链接
+//!
+//! ```text
+//! [link 桥梁]           → 分组名是一条指向「桥梁」的链接
+//! [link 道路|路这一类]   → 同上，显示的文字换成「路这一类」
+//! ```
+//!
+//! **不做 `[分组名 [[链接]]]` 那种写法**，理由见 [`group_label_html`]。
+//!
+//! ## 三个颜色参数
+//!
+//! `group-color=` 每一栏标题的字色、`title-color=` 大标题的字色、`header-bg=`
+//! 通栏底色；都只认 `#rgb` / `#rrggbb`，与 `::banner` 的 `color=` 同一条规矩。
+//! 它们落成**自定义属性**（`--navbox-group-fg` / `--navbox-title-fg` /
+//! `--navbox-head-bg`），样式表那几处各自带默认值，所以「不给」与「给了」走的
+//! 是同一段 CSS。
+//!
 //! ## 三处保留的名字
 //!
 //! - `[above]` / `[below]` —— 维基的那两行通栏，位置固定：一条紧贴标题栏之下，
@@ -189,6 +206,81 @@ fn inline_html(text: &str) -> String {
     }
 }
 
+/// 分组名那一格里写什么。
+///
+/// **`[link 页面]`** 让分组名变成一条指向内部链接的链。走的是 markdown 的
+/// `[[…]]`（交给 `inline_html` 再渲染一次），所以**链接解析器是同一个**：递了解析器
+/// 就出 `href`，没递或解析器说没有就落成红链 —— 与正文里的 `[[…]]` 一模一样。
+///
+/// 为什么不给 `[分组名 [[链接]]]` 那种写法：分节那一步只认「整行一对方括号」
+/// （见 `block::scanner` 的 `section_label`），而它为了不把 `[[甲]]` 认成标签，
+/// 会把**任何含方括号**的标签都退回去。放开它就得去数嵌套的方括号——而一个写错
+/// 半边的 `[a [b]` 会让整个分节错位，页面从此莫名其妙。分开写没这个风险。
+fn group_label_html(label: &str) -> Result<String, String> {
+    let Some(rest) = label.strip_prefix("link") else {
+        return Ok(inline_html(label));
+    };
+    // `linkage` / `linked` 那些是普通分组名，不是链接写法
+    if !rest.is_empty() && !rest.starts_with(char::is_whitespace) {
+        return Ok(inline_html(label));
+    }
+    let page = rest.trim();
+    if page.is_empty() {
+        return Err(format!(
+            "[{label}] 后面没写页面名：写 [link 某页]，也可以写 [link 某页|显示的字]"
+        ));
+    }
+    Ok(inline_html(&format!("[[{page}]]")))
+}
+
+/// 那三个颜色参数。只认 `#rgb` / `#rrggbb` —— 与 [`::banner`](super::text) 的
+/// `color=` 是同一条规矩：值要写进 `style` 属性，宽松了就等于允许往里塞任意声明。
+struct Palette {
+    /// `group-color=` —— 每一栏标题的字色
+    group_fg: Option<String>,
+    /// `title-color=` —— 大标题的字色
+    title_fg: Option<String>,
+    /// `header-bg=` —— 通栏的底色
+    head_bg: Option<String>,
+}
+
+impl Palette {
+    /// 落成一条 `style`。一个都没给时不写这个属性 —— 多余的 `style=""` 是噪音。
+    fn style(&self) -> Option<String> {
+        let mut out = String::new();
+        for (name, value) in [
+            ("--navbox-group-fg", &self.group_fg),
+            ("--navbox-title-fg", &self.title_fg),
+            ("--navbox-head-bg", &self.head_bg),
+        ] {
+            if let Some(value) = value {
+                out.push_str(&format!("{name}: {value};"));
+            }
+        }
+        (!out.is_empty()).then_some(out)
+    }
+}
+
+/// 认那三个颜色参数。错的值**整块拒掉** —— 与 `size_rule` / `normalize_hex` 的
+/// 用法一致：渲染一半才发现颜色非法，那一半已经是错的了。
+fn palette_of(block: &Block) -> Result<Palette, String> {
+    Ok(Palette {
+        group_fg: hex_of(block, "group-color")?,
+        title_fg: hex_of(block, "title-color")?,
+        head_bg: hex_of(block, "header-bg")?,
+    })
+}
+
+/// 取一个颜色参数，认不出就说明它该长什么样
+fn hex_of(block: &Block, key: &str) -> Result<Option<String>, String> {
+    match block.param(key) {
+        None => Ok(None),
+        Some(value) => super::normalize_hex(value)
+            .map(Some)
+            .ok_or_else(|| format!("{key}= 只认 #rgb 或 #rrggbb 这两种写法，比如 {key}=#0055a4")),
+    }
+}
+
 /// `::navbox` —— 见模块头。
 pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     // 没有 `title=` 就是**嵌进去的样子**：没有标题栏、没有边框、没有开关。
@@ -214,6 +306,14 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
         );
         return;
     }
+
+    let palette = match palette_of(block) {
+        Ok(palette) => palette,
+        Err(why) => {
+            render_problem(block, fmt, &why);
+            return;
+        }
+    };
 
     // 先**整块**认一遍再渲染：标签写错了就整块报出来，免得渲染半截
     let mut above: Option<&Node> = None;
@@ -299,11 +399,16 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     if title.is_none() {
         class.push_str(" navbox--nested");
     }
+    let mut root: Vec<(&str, String)> =
+        vec![("class", class), ("data-state", state.attr().to_string())];
+    // 颜色落成**自定义属性**而不是直接给元素上色：样式表那几处各自带默认值
+    // （`var(--navbox-group-fg, var(--mdpp-text-dim))`），于是「不给」与「给了」
+    // 走的是同一段 CSS，不必在这里分叉
+    if let Some(style) = palette.style() {
+        root.push(("style", style));
+    }
     fmt.cr();
-    fmt.open(
-        "div",
-        &[("class", class), ("data-state", state.attr().to_string())],
-    );
+    fmt.open("div", &root);
 
     // 标题栏：标题是标题，开关是**另一个**写着字的小按钮
     if let Some(title) = title {
@@ -360,6 +465,13 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
             Segment::Header(section) => full_row(fmt, "navbox__head", section),
             // 分组名就是标签本身
             Segment::Group(name, section) => {
+                let label = match group_label_html(&groups[*name]) {
+                    Ok(label) => label,
+                    Err(why) => {
+                        render_problem(block, fmt, &why);
+                        return;
+                    }
+                };
                 fmt.cr();
                 fmt.open("tr", &[]);
                 fmt.open(
@@ -370,7 +482,7 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
                         ("scope", "row".to_string()),
                     ],
                 );
-                fmt.text_raw(&inline_html(&groups[*name]));
+                fmt.text_raw(&label);
                 fmt.close("th");
                 fmt.open("td", &[("class", "navbox__cell".to_string())]);
                 fmt.contents(&section.children);
@@ -670,6 +782,141 @@ mod tests {
             assert!(html.contains(known), "提示里该说得出 {known}：{html}");
         }
         assert!(!html.contains(r#"class="navbox""#), "不渲染半截：{html}");
+    }
+
+    /// **`[link 页面]` 让分组名变成一条内部链接。**
+    ///
+    /// 走的是 markdown 的 `[[…]]`，所以**链接解析器是同一个**：递了解析器就出 `href`，
+    /// 没递就落成红链 —— 与正文里的 `[[…]]` 一模一样。
+    #[test]
+    fn a_group_label_can_be_an_internal_link() {
+        use crate::RenderContext;
+        use crate::link::{LinkResolver, LinkTarget, ResolvedLink};
+        use std::sync::Arc;
+
+        struct Vault;
+        impl LinkResolver for Vault {
+            fn resolve(&self, target: &str) -> Option<ResolvedLink> {
+                Some(ResolvedLink::Link(LinkTarget::new(format!(
+                    "/notes/{target}"
+                ))))
+            }
+        }
+        let html = Mdpp::new().render_with(
+            "::navbox title=x\n  [link 桥梁]\n  内容\n",
+            &RenderContext::new(),
+        );
+        // 标签格里是一条 `<a>`，不是文字
+        let row = html.find("navbox__group").expect("要有标签");
+        let row = &html[row..row + 200];
+        assert!(row.contains("<a "), "分组名该是链接：{row}");
+        assert!(row.contains(">桥梁</a>"), "{row}");
+
+        // 递了解析器就出地址
+        let resolver: Arc<dyn LinkResolver> = Arc::new(Vault);
+        let with = Mdpp::new().render_with(
+            "::navbox title=x\n  [link 桥梁]\n  内容\n",
+            &RenderContext::new().with_links(resolver),
+        );
+        assert!(with.contains(r#"href="/notes/桥梁""#), "{with}");
+
+        // `|` 那一半换显示文字
+        let alias = Mdpp::new().render_with(
+            "::navbox title=x\n  [link 桥梁|拱桥一览]\n  内容\n",
+            &RenderContext::new(),
+        );
+        assert!(alias.contains(">拱桥一览</a>"), "{alias}");
+        assert!(alias.contains(r#"data-doc="桥梁""#), "{alias}");
+    }
+
+    /// `[linkage]` 之类是**普通分组名** —— 不能因为开头那几个字母就当成链接写法
+    #[test]
+    fn only_the_bare_word_link_starts_a_link() {
+        for label in ["linkage", "linked", "links"] {
+            let html = render(&format!("::navbox title=x\n  [{label}]\n  甲\n"));
+            assert!(!html.contains("template--problem"), "{label}: {html}");
+            assert!(html.contains(label), "{label}");
+            assert!(!html.contains("<a "), "{label} 不该是链接：{html}");
+        }
+    }
+
+    /// `[link]` 没写页面名：说清要什么，而不是画一个空格子
+    #[test]
+    fn a_link_label_needs_a_page() {
+        for label in ["link", "link "] {
+            let html = render(&format!("::navbox title=x\n  [{label}]\n  甲\n"));
+            assert!(html.contains("template--problem"), "{label:?} -> {html}");
+            assert!(html.contains("没写页面名"), "{html}");
+        }
+    }
+
+    /// **`[分组名 [[链接]]]` 那种写法不做**，而且是有理由的不做。
+    ///
+    /// 分节只认「整行一对方括号」，而它为了不把 `[[甲]]` 认成标签，把**任何含方括号**
+    /// 的标签都退回去。放开就得去数嵌套方括号 —— 一个写错半边的 `[a [b]` 会让整个
+    /// 分节错位。分开写没这个风险。
+    #[test]
+    fn brackets_inside_a_label_are_not_a_link() {
+        let html = render("::navbox title=x\n  [分组 [[甲]]]\n  内容\n");
+        // 不是链接，而是「标签写歪了」的那一类
+        assert!(!html.contains(r#"<a href"#), "不该认成链接：{html}");
+        assert!(
+            html.contains("template--problem") || html.contains("分组"),
+            "{html}"
+        );
+    }
+
+    /// 三个颜色参数落成自定义属性，交给样式表去用
+    #[test]
+    fn the_palette_becomes_custom_properties() {
+        let html = render(
+            "::navbox title=x group-color=#0055a4 title-color=#ffe680 header-bg=#123456\n  [分类]\n  甲\n",
+        );
+        assert!(!html.contains("template--problem"), "{html}");
+        for (name, value) in [
+            ("--navbox-group-fg", "#0055a4"),
+            ("--navbox-title-fg", "#ffe680"),
+            ("--navbox-head-bg", "#123456"),
+        ] {
+            assert!(
+                html.contains(&format!("{name}: {value};")),
+                "少了 {name}：{html}"
+            );
+        }
+        // `#rgb` 那种简写要规范成六位，与 `::banner` 同一套
+        let short = render("::navbox title=x group-color=#0af\n  [分类]\n  甲\n");
+        assert!(short.contains("--navbox-group-fg: #00aaff;"), "{short}");
+    }
+
+    /// 一个颜色都没给时**不写** `style` —— 多余的 `style=""` 是噪音
+    #[test]
+    fn no_colour_means_no_style_attribute() {
+        let html = render("::navbox title=x\n  [分类]\n  甲\n");
+        assert!(!html.contains("style="), "{html}");
+        // 给了别的属性也不该冒出 style
+        let nested = render("::navbox\n  [分类]\n  甲\n");
+        assert!(!nested.contains("style="), "{nested}");
+    }
+
+    /// 颜色值只认十六进制 —— 它要写进 `style` 属性，宽松了就等于允许塞任意声明
+    #[test]
+    fn a_bad_colour_is_refused() {
+        for (param, value) in [
+            ("group-color", "red"),
+            ("title-color", "#12345"),
+            ("header-bg", "#fff; position: fixed"),
+        ] {
+            let html = render(&format!(
+                "::navbox title=x {param}={value}\n  [分类]\n  甲\n"
+            ));
+            assert!(
+                html.contains("template--problem"),
+                "{param}={value}: {html}"
+            );
+            assert!(html.contains("#rgb"), "{html}");
+            // 整块拒掉，不渲染半截
+            assert!(!html.contains(r#"class="navbox""#), "{html}");
+        }
     }
 
     /// 一个分组都没有
