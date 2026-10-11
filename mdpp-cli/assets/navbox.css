@@ -44,9 +44,14 @@
 .mdpp-content .navbox__bar {
   position: relative;
   padding: 0.5em 4em;
-  background: var(--mdpp-surface);
+  background: var(--navbox-bar-bg, var(--mdpp-surface));
   text-align: center;
   font-weight: 600;
+}
+
+/* 大标题的颜色由 `--navbox-title-fg` 给（渲染器把 `title-color=` 落成它） */
+.mdpp-content .navbox__title {
+  color: var(--navbox-title-fg, inherit);
 }
 
 .mdpp-content .navbox__toggle {
@@ -78,8 +83,12 @@
 }
 
 /* ---- 表 ------------------------------------------------------------- */
-/* 两列：左边分组名、右边内容。与 `.fields` 一样把表的边距抹掉 —— 外边距由
- * `.navbox__body` 给一次就够。 */
+/* 两列：左边分组名、右边内容。
+ *
+ * **不抄 `::fields`** —— 那边是随正文宽度走的，而导航框要的是「标签有多宽就多宽、
+ * 内容占剩下的」。所以下面那条 `width: 1%` 是这里的关键：浏览器把标签列当最小宽，
+ * 富余的全给内容列。不写的话内容少的时候，标签列会被撑到与内容差不多宽 —— 那正是
+ * 嵌在别人格子里时最难看的样子（三个字的标签占了半个格子）。 */
 
 .mdpp-content table.navbox__table {
   width: 100%;
@@ -103,39 +112,45 @@
   border-bottom: 0;
 }
 
-/* 分组名：一行都不折（`::fields` 也是这么写的） */
+/* 分组名：**只占它自己那么宽**（`1%` 是「最小宽」的写法，靠 `nowrap` 定住实际宽度），
+ * 一行都不折（`::fields` 也是 `nowrap`，但那边没有这条 `width`） */
 .mdpp-content .navbox__group {
+  width: 1%;
   white-space: nowrap;
-  color: var(--mdpp-text-dim);
+  color: var(--navbox-group-fg, var(--mdpp-text-dim));
   font-weight: 600;
 }
 
 /* ---- 通栏：above / below / [headerN] ------------------------------- */
 /* 三者横跨两列，但**不是一回事**：`[headerN]` 是下面几行的分组标题，
- * above/below 是两句内容。所以前者的底色深一些、居中，后者更淡。 */
+ * above/below 是两句内容。所以前者的底色深一些、居中，后者更淡。
+ *
+ * 选择器**必须带上 `.navbox__table`**：上面那条 `.navbox__table td` 是 (0,2,1)，
+ * 而 `.navbox__head` 只有 (0,2,0) —— 少一个类，居中就被那条 `text-align: left`
+ * 压过去了。这不是猜测：实测 `getComputedStyle(head).textAlign` 是 `left`。 */
 
-.mdpp-content .navbox__head {
-  background: var(--mdpp-surface);
+.mdpp-content .navbox__table .navbox__head {
+  background: var(--navbox-head-bg, var(--mdpp-surface));
   text-align: center;
   font-weight: 600;
 }
 
-.mdpp-content .navbox__above,
-.mdpp-content .navbox__below {
+.mdpp-content .navbox__table .navbox__above,
+.mdpp-content .navbox__table .navbox__below {
   color: var(--mdpp-text-dim);
   text-align: center;
   font-size: 0.94em;
 }
 
-.mdpp-content .navbox__head > :first-child,
-.mdpp-content .navbox__above > :first-child,
-.mdpp-content .navbox__below > :first-child {
+.mdpp-content .navbox__table .navbox__head > :first-child,
+.mdpp-content .navbox__table .navbox__above > :first-child,
+.mdpp-content .navbox__table .navbox__below > :first-child {
   margin-top: 0;
 }
 
-.mdpp-content .navbox__head > :last-child,
-.mdpp-content .navbox__above > :last-child,
-.mdpp-content .navbox__below > :last-child {
+.mdpp-content .navbox__table .navbox__head > :last-child,
+.mdpp-content .navbox__table .navbox__above > :last-child,
+.mdpp-content .navbox__table .navbox__below > :last-child {
   margin-bottom: 0;
 }
 
