@@ -67,23 +67,32 @@ impl Project {
 
     /// 正文目录
     pub fn pages_dir(&self) -> PathBuf {
-        self.config.under(&self.root, &self.config.pages_dir)
+        under(&self.root, &self.config.pages_dir)
     }
 
     /// 模板页目录
     pub fn templates_dir(&self) -> PathBuf {
-        self.config.under(&self.root, &self.config.templates_dir)
+        under(&self.root, &self.config.templates_dir)
     }
 
     /// 站点输出目录
     pub fn site_dir(&self) -> PathBuf {
-        self.config.under(&self.root, &self.config.site_dir)
+        under(&self.root, &self.config.site_dir)
     }
 
     /// `<title>` 里站点名那一半（没写站点名就当没有那一半）
     pub fn title_suffix(&self) -> Option<&str> {
         let name = self.config.site_name.trim();
         (!name.is_empty()).then_some(name)
+    }
+}
+
+/// 把配置里的一个相对路径接到项目根下。绝对路径原样留着
+pub fn under(root: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
     }
 }
 
@@ -178,11 +187,27 @@ mod tests {
     fn an_empty_site_name_contributes_nothing_to_the_title() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         std::fs::write(dir.path().join("mdpp.toml"), "site_name = \"\"\n").expect("写得下");
-        assert_eq!(Project::load(dir.path()).expect("读得动").title_suffix(), None);
+        assert_eq!(
+            Project::load(dir.path()).expect("读得动").title_suffix(),
+            None
+        );
         std::fs::write(dir.path().join("mdpp.toml"), "site_name = \"甲\"\n").expect("写得下");
         assert_eq!(
             Project::load(dir.path()).expect("读得动").title_suffix(),
             Some("甲")
+        );
+    }
+
+    /// 绝对路径原样留着，相对路径接到项目根下 —— 配置里写 `/pages` 与 `pages` 要两样
+    #[test]
+    fn relative_paths_hang_off_the_project_root() {
+        assert_eq!(
+            under(Path::new("/项目"), Path::new("pages")),
+            PathBuf::from("/项目/pages")
+        );
+        assert_eq!(
+            under(Path::new("/项目"), Path::new("/别处/pages")),
+            PathBuf::from("/别处/pages")
         );
     }
 
