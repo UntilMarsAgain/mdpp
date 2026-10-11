@@ -7,27 +7,75 @@
  */
 
 .mdpp-content .navbox {
-  margin: 1.6em 0;
+  /* 原 1.6em -> 0.5em，减小外框上下间距 */
+  margin: 0.5em 0;
   border: 1px solid var(--mdpp-border);
   border-radius: var(--mdpp-radius);
   background: var(--mdpp-bg);
   overflow: hidden;
 }
 
+/* 嵌套层级：子 navbox 完全贴紧父级，去除外边距 */
+.mdpp-content .navbox .navbox {
+  margin: 0;
+}
+
 /* 嵌进去的没有标题栏也没有外框，只是一条竖线分出层次 */
 .mdpp-content .navbox--nested {
-  margin: 0.5em 0 0;
+  margin: 0;
   border: 0;
   border-left: 2px solid var(--mdpp-border);
   border-radius: 0;
+  background: transparent;
 }
 
-.mdpp-content .navbox__body {
-  padding: 0.5em 0.9em 0.7em;
+/* 嵌套导航框：完全紧凑，行间无间隙 */
+.mdpp-content .navbox--nested {
+  margin: 0;
+  border: 0;
+  border-left: 2px solid var(--mdpp-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.mdpp-content .navbox__cell > .navbox--nested {
+  margin: 0; /* 父 cell 已清零 padding，不再需要负边距 */
 }
 
 .mdpp-content .navbox--nested .navbox__body {
-  padding: 0.2em 0 0.2em 0.7em;
+  padding: 0;
+  background: transparent;
+}
+
+.mdpp-content .navbox--nested .navbox__table {
+  border: none;
+}
+
+.mdpp-content .navbox--nested .navbox__table th,
+.mdpp-content .navbox--nested .navbox__table td {
+  border-bottom: none;
+  padding: 0.125em 0.35em; /* 极紧凑 */
+}
+
+.mdpp-content .navbox--nested .navbox__group {
+  padding: 0.125em 0.35em;
+  font-size: 0.9em;
+}
+
+.mdpp-content .navbox--nested .navbox__cell {
+  padding: 0.125em 0.35em;
+}
+
+/* 嵌套导航框的列表也紧凑 */
+.mdpp-content .navbox--nested .navbox__cell > ul,
+.mdpp-content .navbox--nested .navbox__cell > ol {
+  gap: 0.25em;
+}
+
+/* 嵌套 Group 的左侧竖线调整 */
+.mdpp-content .navbox .navbox .navbox__group {
+  border-left: 1px solid var(--mdpp-border);
+  padding-left: 0.6em;
 }
 
 /* 没接线时（就一份 HTML 丢进浏览器）折起来的那一框照样藏着 */
@@ -90,11 +138,13 @@
   width: 100%;
   /* 默认 auto：列宽随内容自动计算，不再强制平分 */
   border-collapse: collapse;
+  /* 原浏览器默认 16px -> 0，消除表格上下边距 */
+  margin: 0 !important;
 }
 
 .mdpp-content .navbox__table th,
 .mdpp-content .navbox__table td {
-  padding: 0.5em 0.8em;
+  padding: 0.25em 0.5em;
   border-bottom: 1px solid var(--mdpp-border);
   font-weight: 400;
   vertical-align: middle;
@@ -126,14 +176,21 @@
   background: var(--navbox-group-bg, var(--mdpp-surface));
   color: var(--navbox-group-fg, var(--mdpp-text-dim));
   font-weight: 600;
-  padding: 0.5em 0.8em;
+  padding: 0.25em 0.5em;
   box-sizing: border-box;
 }
 
-/* 内容列：不设宽度，自动拿走剩余宽度 */
+/* 嵌套时：父单元格减少内边距，子导航框体零内边距，行间无间隙 */
 .mdpp-content .navbox__cell {
+  /* 清零父单元格 padding，让子表格能够贴边 */
+  padding: 0;
+}
+
+/* 正常情况下的单元格 padding */
+.mdpp-content .navbox__table th.navbox__group,
+.mdpp-content .navbox__table td.navbox__cell {
+  padding: 0.4em 0.8em;
   vertical-align: middle;
-  padding: 0.5em 0.8em;
 }
 
 /* ---- 通栏：above / below / [headerN] ------------------------------- */
