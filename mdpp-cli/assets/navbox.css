@@ -113,7 +113,14 @@
  * 一行都不折（`::fields` 也是 `nowrap`，但那边没有这条 `width`） */
 .mdpp-content .navbox__group {
   width: 1%;
-  white-space: nowrap;
+  /* 文字过长换行，但要保持「有多宽就多宽」的上限：给个合理的最大宽，超了折行 */
+  max-width: 18em;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  /* 垂直居中：标签列是 flex，内容列也可能很高，让标签始终在行中间 */
+  display: flex;
+  align-items: center;
   /* 底色来自 `group-bg=`；不给就是那一档淡底，与通栏、标题栏同一个颜色 */
   background: var(--navbox-group-bg, var(--mdpp-surface));
   color: var(--navbox-group-fg, var(--mdpp-text-dim));
