@@ -115,21 +115,10 @@ impl Config {
     pub fn check(&self) -> Result<(), String> {
         if let Some(theme) = &self.theme {
             if !THEMES.contains(&theme.as_str()) {
-                return Err(format!(
-                    "theme 只能是 light 或 dark，写成了「{theme}」"
-                ));
+                return Err(format!("theme 只能是 light 或 dark，写成了「{theme}」"));
             }
         }
         Ok(())
-    }
-
-    /// 把项目根下的一个相对路径变成能直接用的路径
-    pub fn under(&self, root: &Path, path: &Path) -> PathBuf {
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            root.join(path)
-        }
     }
 }
 
@@ -219,25 +208,13 @@ mod tests {
         };
         assert!(config.check().is_err());
         assert!(Config::default().check().is_ok(), "不写主题该是好的");
-        assert!(Config {
-            theme: Some("dark".into()),
-            ..Config::default()
-        }
-        .check()
-        .is_ok());
-    }
-
-    /// 绝对路径原样留着，相对路径接到项目根下 —— 配置里写 `./pages` 与 `pages` 要一样
-    #[test]
-    fn paths_are_resolved_against_the_project_root() {
-        let config = Config::default();
-        assert_eq!(
-            config.under(Path::new("/项目"), Path::new("pages")),
-            PathBuf::from("/项目/pages")
-        );
-        assert_eq!(
-            config.under(Path::new("/项目"), Path::new("/别处/pages")),
-            PathBuf::from("/别处/pages")
+        assert!(
+            Config {
+                theme: Some("dark".into()),
+                ..Config::default()
+            }
+            .check()
+            .is_ok()
         );
     }
 }

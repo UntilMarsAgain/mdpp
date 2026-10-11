@@ -161,7 +161,7 @@ fn read_all(paths: &[PathBuf], root: &Path) -> Result<Vec<String>, String> {
     paths
         .iter()
         .map(|path| {
-            let full = project::Config::default().under(root, path);
+            let full = project::under(root, path);
             std::fs::read_to_string(&full)
                 .map_err(|error| format!("读不了 {}：{error}", shown(&full)))
         })
