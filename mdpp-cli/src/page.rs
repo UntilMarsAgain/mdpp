@@ -30,6 +30,8 @@
 //! | `{{lang}}` | `<html lang>`，如 `zh-Hans` |
 //! | `{{theme_attr}}` | 主题属性，如 ` data-mdpp-theme="dark"`；没主题就是空 |
 //! | `{{title}}` | `<title>` 的内容 |
+//! | `{{icons}}` | `<link rel="icon">`；没配 favicon 就是空 |
+//! | `{{meta}}` | `<meta name="description">` 与 `<link rel="canonical">`；**哪样没配就没有哪样** |
 //! | `{{styles}}` | 样式：要么一段内联的 `<style>`，要么一串 `<link>` |
 //! | `{{scripts}}` | 脚本：要么一段内联的 `<script>`，要么一串 `<script src>` |
 //! | `{{bar}}` | 顶上那一条，**连标签一起**；站点名空就没有 |
@@ -143,12 +145,37 @@ impl Assets {
 pub struct Chrome {
     /// 顶栏左边的站点名。**空的就是没有顶栏**
     pub name: String,
-    /// 顶栏上那句说明
+    /// 顶栏上那句说明。顺带进 `<meta name="description">`
     pub description: String,
     /// 顶栏右端那个仓库链接（只给 http/https）
     pub repo_url: String,
     /// 底栏那句话。空的就是没有底栏
     pub copyright: String,
+}
+
+/// 这一页的绝对地址（`<link rel="canonical">`）。没配 `site_url` 就是 `None`
+///
+/// **页面内那些链接一律仍是相对的** —— 相对地址让整站能挂在任意子路径下；
+/// `canonical` 只回答「你在网上是哪一个」那一个问题（给搜索引擎、给分享）。
+#[derive(Debug, Clone, Default)]
+pub struct Canonical {
+    /// 站点根的绝对地址，末尾一定有 `/`。`None` 就是没配 `site_url`
+    pub root: Option<String>,
+    /// 这一页在站点里的相对路径（`指南/安装/`，首页是空串）
+    pub path: String,
+}
+
+impl Canonical {
+    /// 这一页的完整地址。`None` 表示没配 `site_url`，于是没有那个 `<link>`
+    pub fn url(&self) -> Option<String> {
+        // 空串当没配 —— 与顶栏那几个字段一个规矩。少了这一层，「配了但写空了」
+        // 会产出一条指向 `/` 的 canonical，那是在告诉搜索引擎「全站只有一页」
+        let root = self.root.as_deref()?.trim().trim_end_matches('/');
+        if root.is_empty() {
+            return None;
+        }
+        Some(format!("{root}/{}", self.path))
+    }
 }
 
 /// 一个页面要填进模板的那几样
@@ -162,6 +189,8 @@ pub struct Page<'a> {
     pub theme: Option<&'a str>,
     /// 顶栏与底栏那几个字段。`render --full` 那条路给默认的一份（全空，于是两样都不出）
     pub chrome: Chrome,
+    /// `<link rel="canonical">` 那个绝对地址。`render --full` 给默认的一份（于是没有那个 `<link>`）
+    pub canonical: Canonical,
     /// 标签页上那个小图标的地址（已经带好 `assets/` 前缀与文件名）。
     /// `None` 就没有那个 `<link>`，浏览器自己画一个
     pub favicon: Option<&'a str>,
@@ -212,6 +241,7 @@ pub fn document(page: &Page) -> String {
             ("title", &escape(page.title)),
             ("styles", &styles),
             ("icons", &icons(page.favicon)),
+            ("meta", &meta(&page.chrome, &page.canonical)),
             ("scripts", &scripts),
             ("bar", &top_bar(&page.chrome)),
             ("foot", &bottom_bar(&page.chrome)),
@@ -227,6 +257,25 @@ fn icons(favicon: Option<&str>) -> String {
         return String::new();
     };
     format!("<link rel=\"icon\" href=\"{}\">", escape(href))
+}
+
+/// `<head>` 里那两样与「这一页是谁」有关的东西。**哪样没配就没有哪样**
+///
+/// 空字符串的 `content=""` 与一条指向 `/` 的 canonical 都是**有害的**：前者让搜索引擎
+/// 拿一句空话当摘要，后者告诉它「全站只有一页」。所以是「有才写」，不是「写个空的」。
+fn meta(chrome: &Chrome, canonical: &Canonical) -> String {
+    let mut lines = Vec::new();
+    let description = chrome.description.trim();
+    if !description.is_empty() {
+        lines.push(format!(
+            "<meta name=\"description\" content=\"{}\">",
+            escape(description)
+        ));
+    }
+    if let Some(url) = canonical.url() {
+        lines.push(format!("<link rel=\"canonical\" href=\"{}\">", escape(&url)));
+    }
+    lines.join("\n")
 }
 
 /// 顶上那一条。**站点名空就没有顶栏** —— 判据是内容而不是「用哪种资源」，
@@ -424,6 +473,7 @@ mod tests {
             lang: "zh-Hans",
             theme: None,
             chrome: Chrome::default(),
+            canonical: Canonical::default(),
             favicon: None,
             body,
             extra_css: &[],
@@ -657,6 +707,80 @@ mod tests {
             ..site_page("x")
         });
         assert!(!hostile.contains("onload=\"alert"), "{hostile}");
+    }
+
+    /// `<meta name="description">` 与 `<link rel="canonical">` 各按各的来
+    #[test]
+    fn the_description_and_the_canonical_are_written_out() {
+        let html = document(&Page {
+            canonical: Canonical {
+                root: Some("https://x.github.io/repo/".into()),
+                path: "指南/安装/".into(),
+            },
+            ..site_page("x")
+        });
+        assert!(
+            html.contains(r#"<meta name="description" content="一句话说明">"#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"<link rel="canonical" href="https://x.github.io/repo/指南/安装/">"#),
+            "{html}"
+        );
+    }
+
+    /// **哪样没配就没有哪样** —— 空字符串的 `content=""` 与指向 `/` 的 canonical
+    /// 都是有害的：前者让搜索引擎拿一句空话当摘要，后者告诉它「全站只有一页」
+    #[test]
+    fn neither_tag_appears_without_the_thing_it_describes() {
+        // 两样都没配
+        let html = document(&page("x", Assets::Inline));
+        assert!(!html.contains("name=\"description"), "没配就不该有：{html}");
+        assert!(!html.contains("rel=\"canonical"), "没配就不该有：{html}");
+
+        // 配了站点名但没配说明 —— 顶栏在，`<meta>` 不该在
+        let html = document(&Page {
+            chrome: Chrome {
+                name: "某站点".into(),
+                ..Chrome::default()
+            },
+            ..site_page("x")
+        });
+        assert!(html.contains("某站点"), "{html}");
+        assert!(!html.contains("name=\"description"), "{html}");
+
+        // 空串也当没配 —— 与顶栏那几个字段一个规矩
+        let html = document(&Page {
+            canonical: Canonical {
+                root: Some(String::new()),
+                path: String::new(),
+            },
+            ..site_page("x")
+        });
+        assert!(!html.contains("rel=\"canonical"), "{html}");
+    }
+
+    /// 首页的 canonical 就是站点根本身（末尾那个 `/` 不该有两个）
+    #[test]
+    fn a_canonical_is_the_site_root_plus_the_page() {
+        let cases = [
+            (Some("https://x.github.io/repo/"), "", "https://x.github.io/repo/"),
+            // 没写末尾那个 `/` 也认 —— 而拼接时不会漏也不会多
+            (Some("https://x.github.io/repo"), "指南/", "https://x.github.io/repo/指南/"),
+            (None, "指南/", ""),
+        ];
+        for (root, path, expected) in cases {
+            let url = Canonical {
+                root: root.map(String::from),
+                path: path.to_string(),
+            }
+            .url();
+            if expected.is_empty() {
+                assert_eq!(url, None, "没配 site_url 就没有 canonical");
+            } else {
+                assert_eq!(url.as_deref(), Some(expected), "root={root:?} path={path:?}");
+            }
+        }
     }
 
     /// 那几句话是**纯文本**：转义之后原样进页面，不会变成标签或链接
