@@ -82,25 +82,24 @@
 /* ---- 表 ------------------------------------------------------------- */
 /* 两列：左边分组名、右边内容。
  *
- * **不抄 `::fields`** —— 那边是随正文宽度走的，而导航框要的是「标签有多宽就多宽、
- * 内容占剩下的」。所以下面那条 `width: 1%` 是这里的关键：浏览器把标签列当最小宽，
- * 富余的全给内容列。不写的话内容少的时候，标签列会被撑到与内容差不多宽 —— 那正是
- * 嵌在别人格子里时最难看的样子（三个字的标签占了半个格子）。 */
+ * **关键**：`table-layout: fixed` + `width: 0` + `white-space: normal`
+ * 这一套让标签列「有多宽就多宽、但不超 18em」，剩余宽度全给内容列。
+ * 以前抄 `::fields` 是错的，那边没有 max-width 这种需求。 */
 
 .mdpp-content table.navbox__table {
   width: 100%;
   margin: 0;
   border-collapse: collapse;
-  table-layout: auto;
+  /* fixed 才让 width: 0 生效：让标签列只按内容宽，内容列拿走剩余 */
+  table-layout: fixed;
 }
 
 .mdpp-content .navbox__table th,
 .mdpp-content .navbox__table td {
   padding: 0.3em 0.6em;
   border-bottom: 1px solid var(--mdpp-border);
-  text-align: left;
   font-weight: 400;
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 /* 最后一行不用再画一条线（外面已经有边框了） */
@@ -109,22 +108,27 @@
   border-bottom: 0;
 }
 
-/* 分组名：**只占它自己那么宽**（`1%` 是「最小宽」的写法，靠 `nowrap` 定住实际宽度），
- * 一行都不折（`::fields` 也是 `nowrap`，但那边没有这条 `width`） */
+/* 标签列：宽度 = 内容宽度，上限 18em，超了换行。
+ * `width: 0` 告诉 fixed 布局「这列不要宽度」，`normal` + `max-width` 限住上限。 */
 .mdpp-content .navbox__group {
-  width: 1%;
-  /* 文字过长换行，但要保持「有多宽就多宽」的上限：给个合理的最大宽，超了折行 */
+  width: 0;
   max-width: 18em;
   white-space: normal;
   word-break: keep-all;
   overflow-wrap: anywhere;
-  /* 垂直居中：标签列是 flex，内容列也可能很高，让标签始终在行中间 */
+  /* 垂直居中：单元格高度由内容列决定时，标签始终在行中间 */
   display: flex;
   align-items: center;
   /* 底色来自 `group-bg=`；不给就是那一档淡底，与通栏、标题栏同一个颜色 */
   background: var(--navbox-group-bg, var(--mdpp-surface));
   color: var(--navbox-group-fg, var(--mdpp-text-dim));
   font-weight: 600;
+}
+
+/* 内容列：不设宽度，fixed 布局下自动拿走剩余宽度 */
+.mdpp-content .navbox__cell {
+  /* 让内容列也能垂直居中（可选，只是看着舒服） */
+  vertical-align: middle;
 }
 
 /* ---- 通栏：above / below / [headerN] ------------------------------- */
