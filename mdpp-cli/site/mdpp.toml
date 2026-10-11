@@ -4,8 +4,14 @@
 # 站点名。它出现在每一页顶上那条的左边
 site_name = "{{站点名}}"
 
-# 一句话说明。它出现在顶栏里，站点名右边
+# 一句话说明。它出现在顶栏里，站点名右边，也进每一页的 <meta name="description">
 site_description = ""
+
+# 站点在网上的绝对地址，如 https://example.github.io/repo/。
+# 写了每一页就多一条 <link rel="canonical">，告诉搜索引擎「你在网上是哪一个」。
+# 页内链接一律仍是相对的 —— 整站能挂在任意子路径下，site_url 只回答那一个问题。
+# 本地预览不必写它。
+# site_url = "https://example.github.io/repo/"
 
 # 顶栏右端那个仓库链接。只认 http/https
 repo_url = ""

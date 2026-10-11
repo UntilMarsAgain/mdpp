@@ -32,6 +32,9 @@ use crate::project::{self, Project, ensure_dir, shown, under};
 use mdpp::{Mdpp, RenderContext};
 use tracing::{debug, info};
 
+/// 让 GitHub Pages 跳过 Jekyll 的那个空文件的名字
+const NOJEKYLL: &str = ".nojekyll";
+
 /// 渲染时数出来的块问题
 #[derive(Debug, Default, Clone)]
 struct Broken {
@@ -139,6 +142,13 @@ pub fn build_into(
     // 页面上的地址按各自的深度加前缀，所以这里存的是**相对站点根**的那一份
     let favicon = favicon(project, site_dir)?;
 
+    // 一个空文件，作用是让 GitHub Pages **别跑 Jekyll**。
+    //
+    // Jekyll 把 `_` 开头或叫 `.git` 的目录当内部数据结构处理，**静默丢掉**它们 ——
+    // 于是 `pages/_草稿/某页.mdpp` 出了 `build/_草稿/某页/index.html`，推上去却
+    // 404，而且没有任何报错。别的静态托管不认这个文件，多这一个字节无害。
+    project::write_file(&site_dir.join(NOJEKYLL), "")?;
+
     // 已经拷过的资源，记着，免得几十页引同一张图时拷几十回
     let mut copied: Vec<std::path::PathBuf> = Vec::new();
     // 被引用而进了 `assets/` 的那些（相对 pages/），只为最后那句报告
@@ -193,6 +203,10 @@ pub fn build_into(
             lang: &project.config.lang,
             theme: project.config.theme.as_deref(),
             chrome: chrome(project),
+            canonical: page::Canonical {
+                root: project.config.site_url.clone(),
+                path: page.url_path(),
+            },
             // 嵌套页里的图标地址也要数对层数（`../../assets/favicon.svg`）——
             // `favicon` 存的是相对站点根的那一份
             favicon: favicon

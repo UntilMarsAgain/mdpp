@@ -43,6 +43,17 @@ impl Page {
     pub fn stem(&self) -> &str {
         self.key.rsplit('/').next().unwrap_or(&self.key)
     }
+
+    /// 这一页在站点里的**地址路径**（`指南/入门/`，以 `/` 结尾；首页是空串）
+    ///
+    /// 与 [`href`] 一样是目录式的：产物是 `<键>/index.html`，于是地址是 `<键>/`。
+    /// 首页落在站点根上，没有自己那一层，所以是空串。
+    pub fn url_path(&self) -> String {
+        if self.key == INDEX_KEY {
+            return String::new();
+        }
+        format!("{}/", encode_href(&self.key))
+    }
 }
 
 /// 一处红链：**哪一页**的哪个目标，以及**为什么**没落到某一页
@@ -446,6 +457,16 @@ mod tests {
             site.by_key("index").map(|page| page.output.clone()),
             Some(PathBuf::from("index.html"))
         );
+    }
+
+    /// 一页的**地址**是目录式的，而首页落在站点根上（没有自己那一层）
+    #[test]
+    fn a_pages_url_is_the_directory_it_was_written_to() {
+        let (_dir, site) = site_of(&["index.mdpp", "指南/入门.mdpp", "我的 页.mdpp"]);
+        assert_eq!(site.by_key("index").expect("有首页").url_path(), "");
+        assert_eq!(site.by_key("指南/入门").expect("有那一页").url_path(), "指南/入门/");
+        // 键里那点碍事的字符要编码，中文原样留着
+        assert_eq!(site.by_key("我的 页").expect("有那一页").url_path(), "我的%20页/");
     }
 
     /// 普通 markdown 也是页面 —— `.mdpp` 是本方言的写法，不是唯一被认的

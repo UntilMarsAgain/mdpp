@@ -146,6 +146,19 @@ impl Config {
                 return Err(format!("theme 只能是 light 或 dark，写成了「{theme}」"));
             }
         }
+        // 协议只认 http/https —— 配错了的话 canonical 就是一个坏地址，
+        // 而这类错误在产物里完全看不出来（只是搜索引擎不认）
+        if let Some(url) = &self.site_url {
+            let trimmed = url.trim();
+            if !trimmed.is_empty()
+                && !trimmed.starts_with("http://")
+                && !trimmed.starts_with("https://")
+            {
+                return Err(format!(
+                    "site_url 要以 http:// 或 https:// 开头，写成了「{trimmed}」"
+                ));
+            }
+        }
         Ok(())
     }
 }
@@ -203,6 +216,48 @@ mod tests {
         assert!(
             Config {
                 theme: Some("dark".into()),
+                ..Config::default()
+            }
+            .check()
+            .is_ok()
+        );
+    }
+
+    /// `site_url` 只认 http/https —— 写别的那个地址在产物里完全看不出来
+    #[test]
+    fn site_url_takes_http_or_https() {
+        assert!(
+            Config {
+                site_url: Some("ftp://x/".into()),
+                ..Config::default()
+            }
+            .check()
+            .is_err()
+        );
+        assert!(
+            Config {
+                site_url: Some("/repo/".into()),
+                ..Config::default()
+            }
+            .check()
+            .is_err()
+        );
+        for good in ["https://x.github.io/repo/", "http://127.0.0.1:8080/"] {
+            assert!(
+                Config {
+                    site_url: Some(good.into()),
+                    ..Config::default()
+                }
+                .check()
+                .is_ok(),
+                "{good} 该被接受"
+            );
+        }
+        // 不写（本地预览）与写空串都该过
+        assert!(Config::default().check().is_ok());
+        assert!(
+            Config {
+                site_url: Some(String::new()),
                 ..Config::default()
             }
             .check()

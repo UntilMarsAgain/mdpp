@@ -93,6 +93,80 @@ fn a_page_links_to_another_one_and_a_missing_one_stays_red() {
     assert!(report.contains("根本没有这一页"), "{report}");
 }
 
+/// 产物里那个 `.nojekyll` 不能少：GitHub Pages 少了它就跑 Jekyll，而 Jekyll 把 `_`
+/// 开头的目录**静默丢掉** —— `pages/_草稿/` 出了页面，推上去却 404，**且不报错**
+#[test]
+fn the_build_stops_github_pages_from_running_jekyll() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    let draft = root.join("pages/_草稿");
+    std::fs::create_dir_all(&draft).expect("建得出");
+    std::fs::write(draft.join("某页.mdpp"), "# 草稿\n").expect("写得下");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "{}", stderr_of(&out));
+    assert!(
+        root.join("build/.nojekyll").exists(),
+        "少了 .nojekyll：带 _ 的目录推上去会被丢掉"
+    );
+    // 而那一页确实出了（`.nojekyll` 是让服务端别丢，不是让 mdpp 别出）
+    assert!(root.join("build/_草稿/某页/index.html").exists());
+}
+
+/// 配了 `site_url` 才有 canonical，而**页内链接仍然是相对的**
+#[test]
+fn site_url_gives_a_canonical_and_leaves_the_links_alone() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    std::fs::write(
+        root.join("pages/甲.mdpp"),
+        "# 甲\n\n一句话说明\n\n看 [[乙]]。\n",
+    )
+    .expect("写得下");
+    std::fs::write(root.join("pages/乙.mdpp"), "# 乙\n").expect("写得下");
+
+    // 没配 `site_url`：没有 canonical
+    assert!(mdpp(&root, &["build"]).status.success());
+    let plain = std::fs::read_to_string(root.join("build/甲/index.html")).expect("读得动");
+    assert!(!plain.contains("rel=\"canonical"), "{plain}");
+
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(
+        &config,
+        text
+            .replace(
+                "site_description = \"\"",
+                "site_description = \"一句话说明\"",
+            )
+            .replace(
+                "site_name =",
+                "site_url = \"https://x.github.io/repo\"\nsite_name =",
+            ),
+    )
+    .expect("改得下");
+    assert!(mdpp(&root, &["build"]).status.success());
+
+    let html = std::fs::read_to_string(root.join("build/甲/index.html")).expect("读得动");
+    assert!(
+        html.contains(r#"<link rel="canonical" href="https://x.github.io/repo/甲/">"#),
+        "{html}"
+    );
+    assert!(
+        html.contains(r#"<meta name="description" content="一句话说明">"#),
+        "{html}"
+    );
+    // 页内链接仍是相对的 —— 那才是整站能挂在子路径下的原因
+    assert!(html.contains(r#"href="../乙/""#), "canonical 不该把相对链接也变成绝对的：{html}");
+
+    // 首页的 canonical 是站点根本身
+    let home = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(
+        home.contains(r#"<link rel="canonical" href="https://x.github.io/repo/">"#),
+        "{home}"
+    );
+}
+
 /// 产物里的地址得真的指得到 —— 少退一层是「看着对、点不动」
 #[test]
 fn every_link_in_the_built_site_points_at_a_page_that_exists() {

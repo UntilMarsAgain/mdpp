@@ -64,6 +64,8 @@ pub fn run(options: &Render) -> Result<(), String> {
                 theme: options.theme.as_deref(),
                 // 单篇没有「站点」这一说：没有站点名，于是没有顶栏也没有底栏
                 chrome: page::Chrome::default(),
+                // 单篇没有「站点」这一说：它不在某个站点上，于是没有 canonical
+                canonical: page::Canonical::default(),
                 favicon: None,
                 body: &html,
                 extra_css: &extra_css,

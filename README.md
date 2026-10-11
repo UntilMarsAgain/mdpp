@@ -118,11 +118,16 @@ cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 
 ```toml
 site_name = "桥梁笔记"                        # 顶栏左边
-site_description = "十四座桥，与它们的记述"    # 顶栏右边
+site_description = "十四座桥，与它们的记述"    # 顶栏右边，也进 <meta name="description">
+site_url = "https://x.github.io/repo/"        # 站点在网上的地址；配了才有 canonical
 repo_url = "https://example.com/notes"        # 顶栏右端那个链接（只认 http/https）
 copyright = "© 某人"                          # 底栏那句；空的就是没有底栏
 favicon = "assets/icon.svg"                   # 标签页上那个小图标；相对项目根
 ```
+
+`site_url` 只回答「你在网上是哪一个」那一个问题：配了，每一页就多一条
+`<link rel="canonical">`。**页内链接一律仍是相对的** —— 相对地址让整站能拷到任何
+地方、挂在任意子路径下，而 canonical 是给搜索引擎看的。本地预览不必写它。
 
 正文里**引用的本地文件会被拷进 `build/assets/`**，地址改成指到那儿去 —— 产物是
 目录式的，而页面自己比源文件深了一层，正文里那个相对地址到了产物里会指错地方：
@@ -133,6 +138,10 @@ favicon = "assets/icon.svg"                   # 标签页上那个小图标；�
 
 只拷**被引用**的那些；引了而 `pages/` 里没有的会逐条报出来（`--strict` 下算失败）。
 跑出 `pages/` 的不拷 —— 那是一条 `../../../etc/passwd`。
+
+产物根上总有一个空的 `.nojekyll`：GitHub Pages 少了它就会跑 Jekyll，而 Jekyll 把 `_`
+开头的目录当内部数据结构**静默丢掉** —— `pages/_草稿/某页.mdpp` 出了页面，推上去
+却 404，而且没有任何报错。别的静态托管不认这个文件。
 
 ## 本地预览
 
