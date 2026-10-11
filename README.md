@@ -85,7 +85,7 @@ cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 
 一个项目就是一个目录：
 
-```
+```text
 我的站点/
   mdpp.toml     站点叫什么、东西都在哪
   pages/        正文，一页一个文件；子目录就是路径
