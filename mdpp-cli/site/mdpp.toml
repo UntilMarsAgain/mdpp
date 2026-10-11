@@ -40,3 +40,6 @@ lang = "zh-Hans"
 # 附加的 CSS 与 JS，按给定次序接在默认的之后。路径相对本文件
 extra_css = []
 extra_js = []
+
+# 覆盖层目录：build 完成后把这个目录里的东西原样拷到产物里，重复就覆盖
+override_dir = "override"

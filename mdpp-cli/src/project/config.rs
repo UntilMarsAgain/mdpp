@@ -78,6 +78,12 @@ pub struct Config {
     /// 附加的 JS，按给定次序接在默认脚本之后
     #[serde(default)]
     pub extra_js: Vec<PathBuf>,
+
+    /// **覆盖层目录**：build 完成后，把这个目录里的东西原样拷到产物里。
+    /// 重复就覆盖 —— 可以往里放 `CNAME`、自定义 `robots.txt`、把某页换成手写的 HTML……
+    /// 不写就没有这一层。相对项目根，默认 `override`。
+    #[serde(default = "default_override_dir")]
+    pub override_dir: PathBuf,
 }
 
 /// `Default` 与 serde 的那些 `default = …` 是**同一批**函数 ——
@@ -99,6 +105,7 @@ impl Default for Config {
             lang: default_lang(),
             extra_css: Vec::new(),
             extra_js: Vec::new(),
+            override_dir: default_override_dir(),
         }
     }
 }
@@ -121,6 +128,10 @@ fn default_site_dir() -> PathBuf {
 
 fn default_lang() -> String {
     "zh-Hans".to_string()
+}
+
+fn default_override_dir() -> PathBuf {
+    PathBuf::from("override")
 }
 
 /// 认这两个主题，与 `render --theme` 同一套取值

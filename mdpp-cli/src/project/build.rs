@@ -222,6 +222,9 @@ pub fn build_into(
         debug!(page = %page.key, out = %page.output.display(), "一页");
     }
 
+    // 覆盖层：把 `override/` 里的东西原样拷到产物里，重复就覆盖
+    copy_override(&project.config.override_dir, &project.root, site_dir)?;
+
     let links: Vec<String> = missing
         .lock()
         .map(|list| {
@@ -335,6 +338,35 @@ fn read_all(paths: &[PathBuf], root: &Path) -> Result<Vec<String>, String> {
                 .map_err(|error| format!("读不了 {}：{error}", shown(&full)))
         })
         .collect()
+}
+
+/// build 完成后，把 `override_dir` 里的东西原样拷到 `site_dir` 里。
+/// 目录不存在就算了（默认配置里也写着 `override`，但用户未必建那个目录）。
+/// 重复就覆盖 —— 可以往里放 `CNAME`、自定义 `robots.txt`、把某页换成手写的 HTML……
+fn copy_override(override_dir: &Path, root: &Path, site_dir: &Path) -> Result<(), String> {
+    let from = project::under(root, override_dir);
+    if !from.exists() {
+        return Ok(());
+    }
+    copy_dir_all(&from, site_dir).map_err(|error| format!("拷不了 override：{error}"))
+}
+
+/// 递归把一个目录里的所有文件拷到另一个目录里（保留目录结构，重复就覆盖）
+fn copy_dir_all(from: &Path, to: &Path) -> std::io::Result<()> {
+    if !to.exists() {
+        std::fs::create_dir_all(to)?;
+    }
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let src = entry.path();
+        let dst = to.join(entry.file_name());
+        if src.is_dir() {
+            copy_dir_all(&src, &dst)?;
+        } else {
+            std::fs::copy(&src, &dst)?;
+        }
+    }
+    Ok(())
 }
 
 /// `<title>`：页面里第一个 ATX 一级标题，没有就退回文件名。
