@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex};
 use crate::context::template_pages;
 use crate::options::Build;
 use crate::page;
-use crate::project::site::{Links, Missing, Site};
+use crate::project::site::{Links, Missing, Site, assets_href};
 use crate::project::{self, Project, ensure_dir, shown};
 
 use mdpp::{Mdpp, RenderContext};
@@ -97,15 +97,24 @@ fn build(project: &Project, options: &Build) -> Result<(), String> {
         let html = parser.render_with(&source, &context);
         broken.add(page, &html);
 
+        // 页首页尾也是 markdown，走**同一个上下文** —— 于是 `[[首页]]` 在页首里
+        // 指的同样是站内那一页，相对地址也是按本页算的
+        let header = parser.render_with(&project.config.header, &context);
+        let footer = parser.render_with(&project.config.footer, &context);
+
         let title = document_title(project, &source, page.stem());
         let document = page::document(&page::Page {
             title: &title,
             lang: &project.config.lang,
             theme: project.config.theme.as_deref(),
+            site_name: &project.config.site_name,
+            site_description: &project.config.site_description,
             body: &html,
+            header: &header,
+            footer: &footer,
             extra_css: &extra_css,
             extra_js: &extra_js,
-            assets: page::Assets::Linked(page::ASSET_DIR),
+            assets: page::Assets::Linked(assets_href(&page.key)),
         });
         project::write_file(&site_dir.join(&page.output), &document)?;
         debug!(page = %page.key, out = %page.output.display(), "一页");
@@ -511,6 +520,82 @@ mod tests {
         assert!(message.contains("根本没有这个"), "{message}");
     }
 
+    /// 站点页面的外壳：顶栏（站点名 + 那句话说明）、正文卡片、页首页尾。
+    /// 顶栏是**主题写死**的，内容由配置里那几个键填
+    #[test]
+    fn a_built_page_gets_the_site_shell() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let root = dir.path().join("站点");
+        crate::project::init::run(&crate::options::Init {
+            dir: Some(root.clone()),
+            name: Some(TEST_SITE.to_string()),
+        })
+        .expect("建得出");
+        std::fs::write(root.join("pages/乙.mdpp"), "# 乙\n").expect("写得下");
+        std::fs::write(
+            root.join("mdpp.toml"),
+            "site_name = \"测试站点\"\nsite_description = \"桥梁与河\"\nheader = \"抬头 **加粗**，见 [[乙]]\"\nfooter = \"页脚\"\n",
+        )
+        .expect("改得下");
+        let project = Project::load(&root).expect("读得动");
+
+        build_ok(&project).expect("出得来");
+        let html = output_of(&project, "index");
+
+        // 顶栏：站点名 + 说明
+        assert!(html.contains("<span class=\"mdpp-bar__title\">测试站点</span>"), "{html}");
+        assert!(html.contains("<span class=\"mdpp-bar__desc\">桥梁与河</span>"), "{html}");
+        // 页首与页尾
+        assert!(html.contains("<header class=\"mdpp-header\">"), "{html}");
+        assert!(
+            html.contains("抬头 <strong>加粗</strong>"),
+            "页首没按 markdown 渲染：{html}"
+        );
+        // 页首里的站内链接指到那一页，且是**相对**地址（首页 → 同级）
+        assert!(
+            html.contains(r#"<a class="wikilink" data-doc="乙" href="乙/""#),
+            "{html}"
+        );
+        assert!(html.contains("<footer class=\"mdpp-footer\">"), "{html}");
+        assert!(html.contains("页脚"), "{html}");
+    }
+
+    /// 没配页首页尾时就不该有那两段 —— 空标签是噪音
+    #[test]
+    fn no_configured_header_means_no_header() {
+        let (_dir, project) = project_with(&[]);
+        build_ok(&project).expect("出得来");
+        let html = output_of(&project, "index");
+        assert!(!html.contains("mdpp-header"), "{html}");
+        assert!(!html.contains("mdpp-footer"), "{html}");
+    }
+
+    /// 站点那份外壳样式只在 build 里 —— 单文件页面里不该有那一列
+    #[test]
+    fn the_built_site_is_the_only_one_with_the_shell() {
+        let (_dir, project) = project_with(&[("指南/安装.mdpp", "# 安装\n")]);
+        build_ok(&project).expect("出得来");
+
+        let html = output_of(&project, "index");
+        assert!(html.contains(r#"href="assets/site.css""#), "{html}");
+        let css = std::fs::read_to_string(project.site_dir().join("assets/site.css"))
+            .expect("资源没拷出来");
+        assert!(css.contains("max-width: 1080px"), "限宽不见了：{css}");
+        assert!(css.contains(".mdpp-bar"), "顶栏不见了：{css}");
+
+        // 深层页的资源路径要**数对层数** —— 少一个 `../`，浏览器会把 404 的样式
+        // 当成空样式，页面于是光着身子出来，而且**不报错**
+        let nested = output_of(&project, "指南/安装");
+        assert!(
+            nested.contains(r#"href="../../assets/base.css""#),
+            "深层页的资源路径不对：{nested}"
+        );
+        assert!(
+            nested.contains(r#"src="../../assets/mdpp.js""#),
+            "深层页的脚本路径不对：{nested}"
+        );
+    }
+
     /// 产物是**能直接部署**的一堆文件：页面外链资源，而资源真的在那儿
     #[test]
     fn the_output_is_a_deployable_directory() {
@@ -521,6 +606,7 @@ mod tests {
         assert!(html.starts_with("<!DOCTYPE html>"), "{html}");
         // 页面外链资源，样式不进页面
         assert!(html.contains(r#"href="assets/base.css""#), "{html}");
+        assert!(html.contains("<div class=\"mdpp-bar\">"), "{html}");
         assert!(!html.contains(".mdpp-content {"), "样式不该内联：{html}");
         // 而资源确实被拷到了产物里
         let css = std::fs::read_to_string(project.site_dir().join("assets/base.css"))

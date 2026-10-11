@@ -261,6 +261,20 @@ pub fn is_template_target(target: &str) -> bool {
         .is_some_and(|(prefix, _)| prefix.trim().eq_ignore_ascii_case("template"))
 }
 
+/// 从一页走到站点根的资源目录：`../` × (键的段数) + `assets`。
+///
+/// 与 [`href`] 同样要数层数：产物是目录式地址，`示例/` 里写 `assets/base.css` 会解析到
+/// `/示例/assets/base.css` —— 那里没有东西，于是**样式与脚本全丢，而且不报错**
+/// （页面照出得来，只是光着身子）。
+pub fn assets_href(key: &str) -> String {
+    // 首页是特例：它落在站点根（`build/index.html`），不走那一层
+    if key == INDEX_KEY {
+        return crate::page::ASSET_DIR.to_string();
+    }
+    let depth = key.split('/').filter(|segment| !segment.is_empty()).count();
+    format!("{}{}", "../".repeat(depth), crate::page::ASSET_DIR)
+}
+
 /// 从 `from`（一页的键）走到 `to` 的地址。
 ///
 /// **页与页之间是相对的**，每退一层加一个 `../`，目标总是以 `/` 结尾 —— 产物是
@@ -472,6 +486,16 @@ mod tests {
         assert!(is_template_target("Template: 卡片"));
         assert!(!is_template_target("卡片"));
         assert!(!is_template_target("帮助:入门"));
+    }
+
+    /// 资源前缀要数对层数 —— 少一个 `../`，浏览器会把 404 的样式当成空样式，
+    /// 页面于是光着身子出来，而且**不报错**
+    #[test]
+    fn the_asset_prefix_counts_the_depth_of_the_page() {
+        assert_eq!(assets_href("index"), "assets");
+        assert_eq!(assets_href("示例"), "../assets");
+        assert_eq!(assets_href("指南/安装"), "../../assets");
+        assert_eq!(assets_href("指南/深入/安装"), "../../../assets");
     }
 
     /// 页与页之间是相对的，每退一层加一个 `../`，目标总是以 `/` 结尾

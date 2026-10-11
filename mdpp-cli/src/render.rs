@@ -62,7 +62,12 @@ pub fn run(options: &Render) -> Result<(), String> {
                 title: name,
                 lang: DEFAULT_LANG,
                 theme: options.theme.as_deref(),
+                // 单篇没有「站点」这一说：没有站点名，于是没有顶栏
+                site_name: "",
+                site_description: "",
                 body: &html,
+                header: "",
+                footer: "",
                 extra_css: &extra_css,
                 extra_js: &extra_js,
                 // 一个文件就是整个页面：样式与脚本全内联，拷走还能看

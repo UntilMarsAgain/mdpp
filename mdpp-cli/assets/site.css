@@ -1,0 +1,142 @@
+/* mdpp **站点模式**的那一层外壳。
+ *
+ * 单独一个文件、**只在 `mdpp build` 出的页面里引** —— `render --full` 要的是一个
+ * 自足的单文件页面（样式全内联），而这一份是给整站用的：顶栏、那一列的限宽与卡片、
+ * 页首页尾。放进默认样式表里，单文件页面也会带上它，而它对单文件页面没有意义。
+ *
+ * ## 这一份的来历
+ *
+ * 照着 Material for MkDocs 那个样子来的：顶上��条、正中一列、底下收个尾。
+ * 但有几处**故意不一样**，免得看着像换了层皮的 mkdocs：
+ *
+ * - 那一列是一张**卡片**（圆角 + 一圈边 + 一层影），摆在比正文浅一号的底上；
+ *   mkdocs 那边是白底平铺，列与页没有边界。
+ * - 顶栏是**贴着顶**的（`sticky`）而不是 `fixed` —— 不用给正文留一段魔法偏移。
+ * - 页首页尾**在卡片之外**，是那一列上的两段小字；mkdocs 那边是内容底下的 prev/next。
+ *
+ * 这些都是写死的：**这一层不提供开关**。配色仍取自 `base.css` 的 `:root`，
+ * 改配色不用动这里；想改版式就复制一份 `site.css` 去改（`--css` 那条路）。
+ */
+
+/* ---- 那一列 ---------------------------------------------------------- */
+
+/* 正文、顶栏内容、页首页尾共用一列的宽度。窄屏上那一列就是整屏。 */
+.mdpp-main,
+.mdpp-bar__inner {
+  max-width: 1080px;
+  margin-inline: auto;
+}
+
+.mdpp-main {
+  padding: 1.5rem 1.5rem 3rem;
+}
+
+/* ---- 顶栏 ------------------------------------------------------------- */
+
+/* 贴着顶：往上滚时它留在那儿，像一个真站点 */
+.mdpp-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--mdpp-surface);
+  border-bottom: 1px solid var(--mdpp-border);
+}
+
+.mdpp-bar__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.8rem;
+  padding: 0.65rem 1.5rem;
+}
+
+.mdpp-bar__title {
+  font-weight: 600;
+  font-size: 1.05em;
+  color: var(--mdpp-accent);
+}
+
+.mdpp-bar__desc {
+  color: var(--mdpp-text-dim);
+  font-size: 0.92em;
+}
+
+/* ---- 卡片 ------------------------------------------------------------- */
+
+/* 页面底色比正文浅一号的，整张卡片才浮得起来。深色主题下同理。 */
+body {
+  background: var(--mdpp-surface);
+  color: var(--mdpp-text);
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif;
+}
+
+.mdpp-content {
+  border: 1px solid var(--mdpp-border);
+  border-radius: var(--mdpp-radius);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+}
+
+/* ---- 页首与页尾 ------------------------------------------------------- */
+
+/* 它们在**卡片之外**：是这一列上下的两段小字，不占正文的地方 */
+.mdpp-header,
+.mdpp-footer {
+  padding-inline: 1.5rem;
+  color: var(--mdpp-text-dim);
+}
+
+.mdpp-header {
+  padding-bottom: 1rem;
+}
+
+.mdpp-footer {
+  padding-top: 1.25rem;
+  font-size: 0.94em;
+}
+
+.mdpp-header > *:first-child,
+.mdpp-footer > *:first-child {
+  margin-top: 0;
+}
+
+.mdpp-header > *:last-child,
+.mdpp-footer > *:last-child {
+  margin-bottom: 0;
+}
+
+/* 页首页尾里的标题不该有正文那么大的字号 —— 它们是抬头与落款，不是章节 */
+.mdpp-header :is(h1, h2, h3),
+.mdpp-footer :is(h1, h2, h3) {
+  font-size: 1.15em;
+  margin: 0.6em 0 0.2em;
+}
+
+/* ---- 打印 ------------------------------------------------------------- */
+
+/* 打印时没有「站点」这一说：顶栏粘着、卡片浮着、列限宽，都撤掉 */
+@media print {
+  .mdpp-main,
+  .mdpp-bar__inner {
+    max-width: none;
+  }
+
+  .mdpp-bar {
+    position: static;
+    background: transparent;
+    border-bottom: 1px solid var(--mdpp-border);
+  }
+
+  .mdpp-main {
+    padding: 0;
+  }
+
+  .mdpp-content {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  body {
+    background: #fff;
+  }
+}

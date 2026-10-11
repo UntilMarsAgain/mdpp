@@ -39,6 +39,14 @@ pub struct Config {
     #[serde(default = "default_site_dir")]
     pub site_dir: PathBuf,
 
+    /// 页首。markdown，渲染在每页正文之上（在卡片之外）。不写就没有
+    #[serde(default)]
+    pub header: String,
+
+    /// 页尾。markdown，渲染在每页正文之下（在卡片之外）。不写就没有
+    #[serde(default)]
+    pub footer: String,
+
     /// 整页的主题：`light` 或 `dark`。不写就是默认的 `light`
     #[serde(default)]
     pub theme: Option<String>,
@@ -67,6 +75,8 @@ impl Default for Config {
             pages_dir: default_pages_dir(),
             templates_dir: default_templates_dir(),
             site_dir: default_site_dir(),
+            header: String::new(),
+            footer: String::new(),
             theme: None,
             lang: default_lang(),
             extra_css: Vec::new(),
