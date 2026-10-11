@@ -120,7 +120,18 @@ site_name = "桥梁笔记"                        # 顶栏左边
 site_description = "十四座桥，与它们的记述"    # 顶栏右边
 repo_url = "https://example.com/notes"        # 顶栏右端那个链接（只认 http/https）
 copyright = "© 某人"                          # 底栏那句；空的就是没有底栏
+favicon = "assets/icon.svg"                   # 标签页上那个小图标；相对项目根
 ```
+
+正文里**引用的本地文件会被拷进 `build/assets/`**，地址改成指到那儿去 —— 产物是
+目录式的，而页面自己比源文件深了一层，正文里那个相对地址到了产物里会指错地方：
+
+```markdown
+![桥](桥.png)          <!-- pages/指南/桥.png → build/assets/指南/桥.png -->
+```
+
+只拷**被引用**的那些；引了而 `pages/` 里没有的会逐条报出来（`--strict` 下算失败）。
+跑出 `pages/` 的不拷 —— 那是一条 `../../../etc/passwd`。
 
 `mdpp serve` 还没实现 —— 先 `mdpp build`，再用任意静态服务器托管 `build/`。
 

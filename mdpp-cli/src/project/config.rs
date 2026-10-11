@@ -47,6 +47,11 @@ pub struct Config {
     #[serde(default)]
     pub repo_url: String,
 
+    /// 标签页上那个小图标（favicon）。**相对项目根**，不是相对 pages/。
+    /// 不写就没有那个 `<link>`，浏览器自己画一个
+    #[serde(default)]
+    pub favicon: Option<PathBuf>,
+
     /// 整页的主题：`light` 或 `dark`。不写就是默认的 `light`
     #[serde(default)]
     pub theme: Option<String>,
@@ -77,6 +82,7 @@ impl Default for Config {
             site_dir: default_site_dir(),
             copyright: String::new(),
             repo_url: String::new(),
+            favicon: None,
             theme: None,
             lang: default_lang(),
             extra_css: Vec::new(),
