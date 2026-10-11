@@ -12,6 +12,9 @@ use std::io::{Read, Write};
 use mdpp::{Mdpp, RenderContext};
 use tracing::{debug, info};
 
+/// 没给语言时的 `<html lang>`。`--lang` 这一版还没有，用配置里那一份（站点模式）
+pub const DEFAULT_LANG: &str = "zh-Hans";
+
 pub fn run(options: &Render) -> Result<(), String> {
     if options.list_blocks {
         let mut out = std::io::stdout().lock();
@@ -55,7 +58,16 @@ pub fn run(options: &Render) -> Result<(), String> {
         // 片段是常态（像 cmark 那样），`--full` 才套外壳 —— 外面套什么、内联什么，是界面
         // 那一层的事
         let chunk = if options.full {
-            page::full_document(name, &html, options.theme.as_deref(), &extra_css, &extra_js)
+            page::document(&page::Page {
+                title: name,
+                lang: DEFAULT_LANG,
+                theme: options.theme.as_deref(),
+                body: &html,
+                extra_css: &extra_css,
+                extra_js: &extra_js,
+                // 一个文件就是整个页面：样式与脚本全内联，拷走还能看
+                assets: page::Assets::Inline,
+            })
         } else {
             html
         };
