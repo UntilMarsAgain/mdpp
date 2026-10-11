@@ -15,6 +15,44 @@ use std::sync::Arc;
 
 use markdown_it::{Node, Renderer};
 
+/// 把头里的 token 收成 `key=value` 参数。
+///
+/// 两种写法都认：
+///
+/// - `key=value`（等号贴着）—— 按**第一个**切：`key="a=b"` 的值就是 `a=b`；
+/// - `key = value`（等号两侧留白）—— 两边的空白本来就被 [`tokenize`] 吃掉了，
+///   所以这里只需要把落单的 `=` 与它前后两个 token 拼回去。
+///
+/// 第二种是**必须**认的，不是顺手加的：`key = value` 会被切成 `key` / `=` / `value`
+/// 三个 token，而不带 `=` 的 token 算「开关式参数」，于是 `key` 静悄悄变成一个空值、
+/// 值整个丢掉 —— 写的人看到的是「参数没生效」，查不到是哪个字被吃掉了。
+fn pairs(tokens: &[String]) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    let mut index = 0;
+    while let Some(token) = tokens.get(index) {
+        // `key = value`：等号是**下一个** token
+        if tokens.get(index + 1).is_some_and(|next| next == "=") {
+            // 再往后没有 token 时给空串：`key =` 是空值，不是「参数没给」
+            let value = tokens.get(index + 2).cloned().unwrap_or_default();
+            out.push((token.clone(), value));
+            index += 3;
+            continue;
+        }
+        // 落单的 `=`：没有键可配，它自己就是个开关式参数
+        if token == "=" {
+            out.push((token.clone(), String::new()));
+            index += 1;
+            continue;
+        }
+        match token.split_once('=') {
+            Some((key, value)) => out.push((key.to_string(), value.to_string())),
+            None => out.push((token.clone(), String::new())),
+        }
+        index += 1;
+    }
+    out
+}
+
 /// 写出一个 `::` 块：块的头、已解析好的子节点（形状由 [`ContentMode`] 决定）、渲染器。
 ///
 /// 三个生命周期显式写成高阶的，不能省成 `Fn(&Block, &Node, &mut dyn Renderer)`：
@@ -61,19 +99,13 @@ impl Block {
     /// 认出一个坏块比退回普通段落更糟。
     pub fn parse_header(line: &str) -> Option<(String, Vec<(String, String)>)> {
         let rest = line.trim_start().strip_prefix("::")?;
-        let mut tokens = tokenize(rest)?.into_iter();
-        let name = tokens.next()?;
+        let tokens = tokenize(rest)?;
+        let name = tokens.first()?;
         if name.is_empty() || name.contains('=') || name.contains(':') {
             return None;
         }
-        // `=` 按**第一个**切：`key="a=b"` 的值就是 `a=b`。
-        let params = tokens
-            .map(|token| match token.split_once('=') {
-                Some((key, value)) => (key.to_string(), value.to_string()),
-                None => (token.to_string(), String::new()),
-            })
-            .collect();
-        Some((name, params))
+        let params = pairs(&tokens[1..]);
+        Some((name.clone(), params))
     }
 
     /// 取一个参数
@@ -445,6 +477,82 @@ mod tests {
     fn backslash_outside_quotes_is_literal() {
         let (_, params) = Block::parse_header(r"::note path=C:\笔记").unwrap();
         assert_eq!(params, vec![("path".to_string(), r"C:\笔记".to_string())]);
+    }
+
+    /// 等号两侧留白也认 —— `key = value` 与 `key=value` 是同一个意思。
+    ///
+    /// 这条是**必须**的：`tokenize` 按空白切，而不带 `=` 的 token 算「开关式参数」，
+    /// 所以修复之前 `title = 提醒` 会变成一个空的 `title` 加一个叫「提醒」的开关，
+    /// 而值整个丢掉 —— 写的人只看到「参数没生效」，查不出是哪个字被吃掉了。
+    #[test]
+    fn spaces_around_the_equals_are_fine() {
+        let (name, params) = Block::parse_header("::note title = 提醒 color = #0af").unwrap();
+        assert_eq!(name, "note");
+        assert_eq!(
+            params,
+            vec![
+                ("title".to_string(), "提醒".to_string()),
+                ("color".to_string(), "#0af".to_string())
+            ]
+        );
+
+        // 两种写法混着写也一样
+        let (_, mixed) = Block::parse_header("::note a = 1 b=2 c = 3").unwrap();
+        assert_eq!(
+            mixed,
+            vec![
+                ("a".to_string(), "1".to_string()),
+                ("b".to_string(), "2".to_string()),
+                ("c".to_string(), "3".to_string())
+            ]
+        );
+    }
+
+    /// 引号里的空格仍然由引号保护 —— 等号两侧留白这条不该把它带跑
+    #[test]
+    fn spaces_around_the_equals_keep_quoted_spaces_safe() {
+        let (_, params) = Block::parse_header(r#"::note 标题 = "含 空格 的 标题""#).unwrap();
+        assert_eq!(
+            params,
+            vec![("标题".to_string(), "含 空格 的 标题".to_string())]
+        );
+    }
+
+    /// `key =` 后面空了是**空值**，不是「参数没给」—— 两种写法一致
+    #[test]
+    fn a_trailing_equals_is_an_empty_value() {
+        let (_, with_space) = Block::parse_header("::note title =").unwrap();
+        let (_, without) = Block::parse_header("::note title=").unwrap();
+        assert_eq!(with_space, without);
+        assert_eq!(with_space, vec![("title".to_string(), String::new())]);
+    }
+
+    /// 落单的 `=` 不该把后一个参数吃掉：它是开关，不是分隔符
+    #[test]
+    fn a_lone_equals_does_not_swallow_the_next_parameter() {
+        let (_, params) = Block::parse_header("::note = flag title=提醒").unwrap();
+        assert_eq!(
+            params,
+            vec![
+                ("=".to_string(), String::new()),
+                ("flag".to_string(), String::new()),
+                ("title".to_string(), "提醒".to_string())
+            ]
+        );
+    }
+
+    /// 开关式参数照旧认得：写成 `key = flag` 时，`flag` 是**值**
+    #[test]
+    fn an_equals_with_a_space_still_takes_the_next_token_as_its_value() {
+        let (_, params) = Block::parse_header("::note title = flag").unwrap();
+        assert_eq!(params, vec![("title".to_string(), "flag".to_string())]);
+    }
+
+    /// 值里带 `=` 的按**第一个**切，与留白那条是同一个规则的两面
+    #[test]
+    fn only_the_first_equals_splits() {
+        let (_, params) = Block::parse_header(r#"::note 标题 = "a=b=c""#).unwrap();
+        assert_eq!(params, vec![("标题".to_string(), "a=b=c".to_string())]);
     }
 
     #[test]
