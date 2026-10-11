@@ -23,9 +23,20 @@ pub struct Config {
     #[serde(default = "default_site_name")]
     pub site_name: String,
 
-    /// 一句话说明，给未来的 `<meta name="description">` 留着
+    /// 一句话说明，进 `<meta name="description">`（也是搜索结果里那段话）
     #[serde(default)]
     pub site_description: String,
+
+    /// 站点在网上的**绝对**地址，如 `https://example.github.io/repo/`。
+    ///
+    /// 写了就出 `<link rel="canonical">`，而**页内链接一律仍是相对的** ——
+    /// 相对地址让整站能挂到任意子路径下；`site_url` 只回答「你在网上哪儿」那
+    /// 一件事（给搜索引擎、给分享用的那个绝对地址）。
+    ///
+    /// 末尾那个 `/` 会在需要时补上。不写就没有 `canonical` —— 本地预览、
+    /// 或者只是想 `build` 出来看看的人，不必先想这件事。
+    #[serde(default)]
+    pub site_url: Option<String>,
 
     /// 正文在哪：扫描这个目录，`.md` 与 `.mdpp` 都算页面
     #[serde(default = "default_pages_dir")]
@@ -77,6 +88,7 @@ impl Default for Config {
         Config {
             site_name: default_site_name(),
             site_description: String::new(),
+            site_url: None,
             pages_dir: default_pages_dir(),
             templates_dir: default_templates_dir(),
             site_dir: default_site_dir(),

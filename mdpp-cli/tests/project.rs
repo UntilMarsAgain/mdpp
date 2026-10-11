@@ -82,7 +82,7 @@ fn a_page_links_to_another_one_and_a_missing_one_stays_red() {
     assert!(out.status.success());
     let html = std::fs::read_to_string(root.join("build/甲/index.html")).expect("读得动");
 
-    assert!(html.contains(r#"href="乙/""#), "站内链接没指到那一页：{html}");
+    assert!(html.contains(r#"href="../乙/""#), "站内链接没指到那一页：{html}");
     assert!(
         html.contains(r#"class="wikilink wikilink--missing""#),
         "指不到的那一页该是红链：{html}"
@@ -91,6 +91,84 @@ fn a_page_links_to_another_one_and_a_missing_one_stays_red() {
     let report = stderr_of(&out);
     assert!(report.contains("甲"), "{report}");
     assert!(report.contains("根本没有这一页"), "{report}");
+}
+
+/// 产物里的地址得真的指得到 —— 少退一层是「看着对、点不动」
+#[test]
+fn every_link_in_the_built_site_points_at_a_page_that_exists() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    // 三层深浅各一页，外加根上那一页
+    for (at, body) in [
+        ("乙", "# 乙\n\n回 [[index]]。\n"),
+        ("指南/入门", "# 入门\n\n看 [[手册]]，看 [[乙]]。\n"),
+        ("指南/深入/安装", "# 安装\n\n回 [[入门]]。\n"),
+        ("手册", "# 手册\n\n看 [[指南/深入/安装]]。\n"),
+    ] {
+        let path = root.join(format!("pages/{at}.mdpp"));
+        std::fs::create_dir_all(path.parent().expect("有上一层")).expect("建得出");
+        std::fs::write(&path, body).expect("写得下");
+    }
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "{}", stderr_of(&out));
+
+    // 把每个产物页面当成它在自己那个地址上打开，逐条解析它里面的链接
+    for page in ["index", "乙", "指南/入门", "指南/深入/安装", "手册"] {
+        // 首页落在站点根上（`build/index.html`），不在 `build/index/` 那个目录里
+        let at = if page == "index" {
+            "build/index.html".to_string()
+        } else {
+            format!("build/{page}/index.html")
+        };
+        let html = std::fs::read_to_string(root.join(&at)).expect("读得动");
+        // 首页的地址就是站点根 `/`，其余每一页是 `/键/`
+        let address = if page == "index" {
+            String::from("/")
+        } else {
+            format!("/{page}/")
+        };
+        for target in links_in(&html) {
+            let landed = normalize(&address, &target);
+            // 样式与脚本落在 `assets/`，那是另一条管线验的
+            if landed.starts_with("/assets/") {
+                continue;
+            }
+            let exists = root.join(format!("build{landed}index.html")).exists();
+            assert!(exists, "{address} 里的 {target} 落到了 {landed}，那儿没有页面");
+        }
+    }
+}
+
+/// 页面里所有 `href="…"`（站内那些相对地址）
+fn links_in(html: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = html;
+    while let Some(at) = rest.find("href=\"") {
+        rest = &rest[at + "href=\"".len()..];
+        let Some(end) = rest.find('"') else { break };
+        out.push(rest[..end].to_string());
+        rest = &rest[end + 1..];
+    }
+    out
+}
+
+/// 一个相对地址从 `from`（一个以 `/` 开头、以 `/` 结尾的目录式地址）出发落到哪儿
+///
+/// 手写而不是引库：规则就「退一层吃掉一段、然后顺着拼」，十来行，而这一条
+/// 恰恰是**最该有个独立实现来对着看**的
+fn normalize(from: &str, target: &str) -> String {
+    let mut stack: Vec<&str> = from.split('/').filter(|one| !one.is_empty()).collect();
+    for part in target.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                stack.pop();
+            }
+            other => stack.push(other),
+        }
+    }
+    format!("/{}/", stack.join("/"))
 }
 
 /// `--strict` 把红链变成非零退出码 —— 这是给 CI 用的
