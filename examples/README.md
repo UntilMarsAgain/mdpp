@@ -14,18 +14,24 @@ API，这边演示写出来的东西长什么样。
 
 ```sh
 # tour 里的用户块要模板页目录才渲染得出来
-cargo run -p mdpp-cli -- --link-prefix /notes/ -T examples/templates examples/tour.mdpp
+cargo run -p mdpp-cli -- render --link-prefix /notes/ -T examples/templates examples/tour.mdpp
 
 # 整个文件变成一个能双击打开的页面
-cargo run -p mdpp-cli -- --full --theme light -T examples/templates examples/tour.mdpp
+cargo run -p mdpp-cli -- render --full --theme light -T examples/templates examples/tour.mdpp
 
 # 用自己那份样式与脚本（两者都要求 --full）
-mdpp --full --css 我的.css --js 我的.js examples/tour.mdpp
+mdpp render --full --css 我的.css --js 我的.js examples/tour.mdpp
 ```
 
 输出默认是 HTML **片段**（像 `cmark` 那样）；`--full` 才输出整页，并内联
 `mdpp-cli/assets/` 下的 CSS 与 JS，所以选项卡可点、打印时折叠的会展开。那套资源与
 库同一个 MIT 许可，可以复制去改。
+
+## 这些示例放在项目里
+
+`examples/` 也可以整个当 `pages/` 用 —— `mdpp init` 之后把 `templates/` 与这几个
+文件拷进去，`mdpp build` 就出得来一个站点。链接那一份里的 `[[…]]` 在站点里会指向
+站内页面；写出来却还没有的那一页会落成红链。
 
 ## 模板页的后缀
 

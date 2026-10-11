@@ -50,22 +50,60 @@
 
 块一共 22 个，覆盖引用、提示框、信息栏、选项卡、深浅色主题、图片音视频、代码块、
 公式、mermaid 图、内联样式与原始 HTML。完整的巡览见
-[`examples/tour.mdpp`](examples/tour.mdpp)，块名清单见 `mdpp --list-blocks`。
+[`examples/tour.mdpp`](examples/tour.mdpp)，块名清单见 `mdpp render --list-blocks`。
 
-## 用起来
+## 命令行
+
+命令分两拨。**文件**那一拨把一个文件渲染成 HTML 往标准输出写，像 `cmark` 那样；
+**项目**那一拨把一个目录里的许多页渲染成一个可静态部署的站点。
 
 ```sh
 cargo build --release
 
-./target/release/mdpp 正文.md          # HTML 片段，写到标准输出
-./target/release/mdpp --full 正文.md   # 完整文档，内联默认样式与脚本
-cargo install --path mdpp-cli          # 装进 PATH（程序名仍是 mdpp）
+# 文件：HTML 片段
+./target/release/mdpp render 正文.md
+
+# 文件：一个能双击打开的整页，内联默认样式与脚本
+./target/release/mdpp render --full 正文.md > 输出.html
+
+# 项目
+mdpp init 我的站点          # 建骨架：mdpp.toml、pages/、templates/、build/
+cd 我的站点
+mdpp new 指南/安装           # 在 pages/ 下新建一页
+mdpp build                  # 扫 pages/，出站点到 build/
+
+cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 ```
 
 `--help` 有全部选项。加 `--full` 得到的页面可以直接双击打开，选项卡可点、打印时
 折叠的内容会展开。
 
-当库用：
+**产物走标准输出，其余消息走标准错误** —— 于是 `mdpp render 正文.md > 输出.html`
+出来的文件里只有 HTML。
+
+### 项目
+
+一个项目就是一个目录：
+
+```
+我的站点/
+  mdpp.toml     站点叫什么、东西都在哪
+  pages/        正文，一页一个文件；子目录就是路径
+  templates/    模板页，::名字 从这里取
+  build/        产物，不进版本库
+```
+
+`mdpp build` 递归扫 `pages/`（`.md` 与 `.mdpp` 都算页面），每一页渲染成一个整页，
+落在 `build/<路径>/index.html`。站内链接是**相对**的，所以整个 `build/` 拷到任何
+地方、挂在子路径下，链接都还对。
+
+内部链接 `[[目标]]` 在这里才真正有意义：`pages/` 就是全部的真相，指得到就带上地址，
+指不到就是一条**红链**（不带 `href`，一眼看得出），并在 build 结束时逐条报出来。
+`mdpp build --strict` 让红链与写坏的块变成非零退出码，好挂进 CI。
+
+`mdpp serve` 还没实现 —— 先 `mdpp build`，再用任意静态服务器托管 `build/`。
+
+## 当库用
 
 ```rust
 let html = mdpp::Mdpp::new().render("::note\n  这里可以写 **markdown**。\n");

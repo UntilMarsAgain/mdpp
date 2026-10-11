@@ -1,8 +1,17 @@
-//! 命令行的参数。
+//! 命令行的参数：**子命令**与各自的选项。
+//!
+//! 命令分两拨：
+//!
+//! - **文件**（[`Render`]）：把一个或几个文件渲染成 HTML，往标准输出写。
+//! - **项目**（[`Init`] / [`New`] / [`Build`]）：一个目录里有 `mdpp.toml`、`pages/`、
+//!   `templates/` 与 `build/`，能整站出静态页面。
+//!
+//! `--debug` / `--help` / `--version` 是**全局的**（`global = true`）—— 它们与「干什么」
+//! 无关，写在子命令上会让人以为 `mdpp -d build` 不行。
 
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 
 /// 命令名（错误信息里用它）
 pub const NAME: &str = "mdpp";
@@ -15,13 +24,73 @@ pub const NAME: &str = "mdpp";
     about,
     long_about = None,
     after_help = HELP_NOTE,
-    next_help_heading = "选项",
-    help_template = HELP_TEMPLATE,
-    override_usage = "mdpp [选项] [文件]...",
+    help_template = TOP_HELP_TEMPLATE,
+    override_usage = "mdpp <子命令> [选项]",
     disable_help_flag = true,
     disable_version_flag = true,
+    // 全局的 `-V` 会被递到每个子命令上，子命令自己也得有个版本号可报，
+    // 否则 `mdpp render -V` 与 `Cli::command().debug_assert()` 都会炸
+    propagate_version = true,
+    // `mdpp help build` 里那句说明是 clap 写死的英文，而 `-h` 在每个子命令上都管用
+    disable_help_subcommand = true,
+    subcommand_required = true,
+    arg_required_else_help = true,
 )]
 pub struct Cli {
+    /// 干什么
+    #[command(subcommand)]
+    pub command: Command,
+
+    /// 启用 DEBUG 级日志（标准错误）
+    #[arg(short, long, global = true)]
+    pub debug: bool,
+
+    /// 显示帮助
+    #[arg(short = 'h', long, action = clap::ArgAction::Help, global = true)]
+    pub help: Option<bool>,
+
+    /// 显示版本
+    #[arg(short = 'V', long, action = clap::ArgAction::Version, global = true)]
+    pub version: Option<bool>,
+}
+
+/// 子命令。名字就是命令行的那个词（`mdpp render`），因此这一层不加 `#[command(name)]`。
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// 渲染文件，HTML 写到标准输出
+    Render(Render),
+
+    /// 建一个新项目：mdpp.toml 与 pages/、templates/、build/
+    Init(Init),
+
+    /// 在 pages/ 下新建一页
+    New(New),
+
+    /// 把 pages/ 渲染成一个可静态部署的站点，写进 site_dir
+    Build(Build),
+
+    /// 本地预览这个站点（还没实现）
+    #[command(
+        disable_help_flag = true,
+        disable_version_flag = true,
+        help_template = HELP_TEMPLATE_BARE,
+        override_usage = "mdpp serve"
+    )]
+    Serve,
+}
+
+/// `mdpp render` —— 渲染文件。
+///
+/// 这一组选项**原样**是从过去的顶层命令搬过来的：一个都没改语义，只是换了个位置。
+#[derive(Args, Debug)]
+#[command(
+    next_help_heading = "选项",
+    disable_help_flag = true,
+    disable_version_flag = true,
+    help_template = HELP_TEMPLATE,
+    override_usage = "mdpp render [选项] [文件]..."
+)]
+pub struct Render {
     /// 要渲染的文件；不给则从标准输入读
     #[arg(value_name = "文件", help_heading = "参数")]
     pub inputs: Vec<PathBuf>,
@@ -87,21 +156,9 @@ pub struct Cli {
     /// 把统计写到标准错误
     #[arg(short, long)]
     pub stats: bool,
-
-    /// 启用 DEBUG 级日志（标准错误）
-    #[arg(short, long)]
-    pub debug: bool,
-
-    /// 显示帮助
-    #[arg(short = 'h', long, action = clap::ArgAction::Help)]
-    pub help: Option<bool>,
-
-    /// 显示版本
-    #[arg(short = 'V', long, action = clap::ArgAction::Version)]
-    pub version: Option<bool>,
 }
 
-impl Cli {
+impl Render {
     /// `<title>`：没给就用第一个输入的文件名；再没有就叫「未命名」。
     /// 不能是空串 —— 那会渲染出一个空的 `<title>`。
     pub fn title_or(&self) -> String {
@@ -116,15 +173,96 @@ impl Cli {
     }
 }
 
-/// `--help` 的版式。clap 把 `Usage:` / `Options:` / `Print help` 写死成英文，
-/// 用 `override_usage` 与这个模板替掉；参数表的内容仍由 clap 排。
+/// `mdpp init` —— 建项目骨架。
+#[derive(Args, Debug)]
+#[command(
+    next_help_heading = "选项",
+    disable_help_flag = true,
+    disable_version_flag = true,
+    help_template = HELP_TEMPLATE,
+    override_usage = "mdpp init [选项] [目录]"
+)]
+pub struct Init {
+    /// 项目目录；不给就是当前目录
+    #[arg(value_name = "目录", help_heading = "参数")]
+    pub dir: Option<PathBuf>,
+
+    /// 站点名（写进 mdpp.toml 的 site_name）
+    #[arg(long, value_name = "名字")]
+    pub name: Option<String>,
+}
+
+/// `mdpp new` —— 新建一页。
+#[derive(Args, Debug)]
+#[command(
+    next_help_heading = "选项",
+    disable_help_flag = true,
+    disable_version_flag = true,
+    help_template = HELP_TEMPLATE,
+    override_usage = "mdpp new [选项] <页名>"
+)]
+pub struct New {
+    /// 页名；带 `指南/入门` 这样的子目录也行，目录会自动建
+    #[arg(value_name = "页名", help_heading = "参数")]
+    pub name: String,
+
+    /// 这一页的标题（默认取页名的最后一段）
+    #[arg(short, long, value_name = "标题")]
+    pub title: Option<String>,
+}
+
+/// `mdpp build` —— 整站。
+#[derive(Args, Debug)]
+#[command(
+    next_help_heading = "选项",
+    disable_help_flag = true,
+    disable_version_flag = true,
+    help_template = HELP_TEMPLATE_BARE,
+    override_usage = "mdpp build [选项]"
+)]
+pub struct Build {
+    /// 输出之前先清空 site_dir（默认不清 —— 清错了不好找回来）
+    #[arg(long)]
+    pub clean: bool,
+
+    /// 有红链就算失败（退出码非零）
+    #[arg(long)]
+    pub strict: bool,
+}
+
+/// 顶层 `--help` 的版式。
+///
+/// `{options}` / `{positionals}` / `{subcommands}` **各自不带英文小标题**（`{all-args}`
+/// 才带，而那一半是 clap 写死的）—— 所以「子命令：」这几个字得自己写上去。
 ///
 /// 换 clap 版本时要复查这一段 —— 模板里的占位符是它的内部约定。
+const TOP_HELP_TEMPLATE: &str = "\
+{about-with-newline}
+用法：{usage}
+
+{options}
+
+子命令：
+{subcommands}{after-help}";
+
+/// 子命令 `--help` 的版式：参数在前、选项在后，**没有子命令**。
+///
+/// 那几个占位符都不带行尾换行，所以两段之间的空行得写在模板里 —— 而 `{positionals}`
+/// 为空时（`build` / `serve`）会多出两个空行，那种命令要用下面那份。
 const HELP_TEMPLATE: &str = "\
 {about-with-newline}
 用法：{usage}
 
-{all-args}{after-help}";
+{positionals}
+
+{options}{after-help}";
+
+/// 没有位置参数的子命令用的那份（见 [`HELP_TEMPLATE`] 为什么非得有两份）
+const HELP_TEMPLATE_BARE: &str = "\
+{about-with-newline}
+用法：{usage}
+
+{options}{after-help}";
 
 /// `--help` 末尾那一段：块怎么写。
 ///
@@ -155,6 +293,14 @@ mod tests {
             .to_string()
     }
 
+    /// 子命令各自的参数，从顶层解析进去
+    fn render(args: &[&str]) -> Render {
+        match parse(args).command {
+            Command::Render(render) => render,
+            other => panic!("要的是 render，给的是 {other:?}"),
+        }
+    }
+
     /// derive 出来的命令定义自洽 —— 少一个 `id`、写重一个短选项，clap 会在启动时炸。
     /// 这一条让那种炸法在 `cargo test` 里就发生。
     #[test]
@@ -162,53 +308,85 @@ mod tests {
         Cli::command().debug_assert();
     }
 
+    /// 少一个子命令就打印帮助 —— 「不知道该敲什么」时不该只回一句错误
     #[test]
-    fn no_arguments_means_standard_input() {
-        let cli = parse(&[]);
-        assert!(cli.inputs.is_empty());
-        assert!(!cli.full);
+    fn no_subcommand_prints_the_help() {
+        let cli = Cli::try_parse_from(["mdpp"]).expect_err("本该报「缺子命令」");
+        assert_eq!(
+            cli.kind(),
+            clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+        );
+    }
+
+    /// 一个字不认的东西要说清是**哪个字**不认，并给出「你是不是想写什么」
+    #[test]
+    fn an_unknown_subcommand_is_refused_by_name() {
+        let message = fail(&["buidl"]);
+        assert!(message.contains("buidl"), "{message}");
+    }
+
+    /// 全局选项在子命令**前后**都能写：`mdpp -d build` 与 `mdpp build -d` 是一回事
+    #[test]
+    fn the_global_flags_work_on_either_side() {
+        assert!(parse(&["-d", "build"]).debug);
+        assert!(parse(&["build", "-d"]).debug);
+        assert!(parse(&["--debug", "render"]).debug);
+        assert!(!parse(&["render"]).debug);
+    }
+
+    #[test]
+    fn render_without_arguments_reads_standard_input() {
+        let render = render(&["render"]);
+        assert!(render.inputs.is_empty());
+        assert!(!render.full);
     }
 
     #[test]
     fn files_land_in_order() {
-        let cli = parse(&["甲.md", "乙.md"]);
-        assert_eq!(cli.inputs.len(), 2);
-        assert!(cli.inputs[0].ends_with("甲.md"));
-        assert!(cli.inputs[1].ends_with("乙.md"));
+        let render = render(&["render", "甲.md", "乙.md"]);
+        assert_eq!(render.inputs.len(), 2);
+        assert!(render.inputs[0].ends_with("甲.md"));
+        assert!(render.inputs[1].ends_with("乙.md"));
     }
 
     #[test]
     fn short_and_long_forms_both_work() {
-        assert!(parse(&["-f"]).full);
-        assert!(parse(&["--full"]).full);
-        assert!(parse(&["--list-blocks"]).list_blocks);
-        assert!(parse(&["-L"]).list_blocks);
-        assert!(parse(&["--stats"]).stats);
-        assert!(parse(&["--debug"]).debug);
-        assert!(parse(&["-d"]).debug);
-        assert!(parse(&["--unsafe-html"]).unsafe_html);
-        assert!(parse(&["-u"]).unsafe_html);
+        let one = render(&["render", "-f", "-L"]);
+        assert!(one.full);
+        assert!(one.list_blocks);
+        assert!(render(&["render", "--list-blocks"]).list_blocks);
+        assert!(render(&["render", "--stats"]).stats);
+        assert!(render(&["render", "-s"]).stats);
+        // 长选项与短选项各自都能单独用
+        assert!(render(&["render", "--unsafe-html"]).unsafe_html);
+        assert!(render(&["render", "-u"]).unsafe_html);
     }
 
     #[test]
     fn values_can_follow_or_use_equals() {
-        assert_eq!(parse(&["--title", "某篇"]).title.as_deref(), Some("某篇"));
-        assert_eq!(parse(&["--title=某篇"]).title.as_deref(), Some("某篇"));
+        assert_eq!(render(&["render", "--title", "某篇"]).title.as_deref(), Some("某篇"));
+        assert_eq!(render(&["render", "--title=某篇"]).title.as_deref(), Some("某篇"));
     }
 
     #[test]
     fn the_title_defaults_to_the_first_file_name() {
-        assert_eq!(parse(&["甲.md"]).title_or(), "甲.md");
-        assert_eq!(parse(&["/a/b/乙.md", "丙.md"]).title_or(), "乙.md");
-        assert_eq!(parse(&["--title", "卷首", "甲.md"]).title_or(), "卷首");
-        assert_eq!(parse(&[]).title_or(), "未命名");
+        assert_eq!(render(&["render", "甲.md"]).title_or(), "甲.md");
+        assert_eq!(render(&["render", "/a/b/乙.md", "丙.md"]).title_or(), "乙.md");
+        assert_eq!(
+            render(&["render", "--title", "卷首", "甲.md"]).title_or(),
+            "卷首"
+        );
+        assert_eq!(render(&["render"]).title_or(), "未命名");
     }
 
     /// 主题只认两个值：写错时要在**解析时**就说，而不是渲染到一半才发现
     #[test]
     fn only_light_and_dark_are_themes() {
-        assert_eq!(parse(&["--theme", "dark"]).theme.as_deref(), Some("dark"));
-        let message = fail(&["--theme", "auto"]);
+        assert_eq!(
+            render(&["render", "--theme", "dark"]).theme.as_deref(),
+            Some("dark")
+        );
+        let message = fail(&["render", "--theme", "auto"]);
         assert!(
             message.contains("light") && message.contains("dark"),
             "{message}"
@@ -218,64 +396,84 @@ mod tests {
     /// `--css` / `--js` 可以给多次，按给的次序
     #[test]
     fn extra_files_are_collected_in_order() {
-        let cli = parse(&["--full", "--css", "a.css", "--css", "b.css", "--js", "x.js"]);
-        assert_eq!(cli.css.len(), 2);
-        assert_eq!(cli.js.len(), 1);
-        assert!(cli.css[0].ends_with("a.css"));
-        assert!(cli.css[1].ends_with("b.css"));
+        let options = render(&[
+            "render", "--full", "--css", "a.css", "--css", "b.css", "--js", "x.js",
+        ]);
+        assert_eq!(options.css.len(), 2);
+        assert_eq!(options.js.len(), 1);
+        assert!(options.css[0].ends_with("a.css"));
+        assert!(options.css[1].ends_with("b.css"));
     }
 
     /// 片段里没有地方放这些东西，所以给了 `--css` 却不给 `--full` 是个用法错误。
     /// 静默忽略才是坑 —— 人会以为自己的样式进去了。
     #[test]
     fn attaching_files_needs_the_full_mode() {
-        let message = fail(&["--css", "a.css"]);
+        let message = fail(&["render", "--css", "a.css"]);
         assert!(message.contains("--full"), "{message}");
-        let message = fail(&["--js", "x.js"]);
+        let message = fail(&["render", "--js", "x.js"]);
         assert!(message.contains("--full"), "{message}");
-        // 要有个别的东西（`-`）也不能替代 `--full`
         // 给了 --full 就不报
-        assert_eq!(parse(&["--full", "--css", "a.css"]).css.len(), 1);
-    }
-
-    /// 一个不认的选项要报得像个人话，并带上「你是不是想写什么」
-    #[test]
-    fn an_unknown_option_is_refused_by_name() {
-        let message = fail(&["--nope"]);
-        assert!(message.contains("--nope"), "{message}");
+        assert_eq!(render(&["render", "--full", "--css", "a.css"]).css.len(), 1);
     }
 
     /// 缺值要说清楚，不能默默当成空串 —— 那会渲染出一个空的 title。
-    ///
-    /// 断言的是**报的是什么选项**，不是报的那句话长什么样：clap 的错误信息是英文的
-    /// （本地化它是另一件事，不该在换解析器的时候顺手塞进来）。
     #[test]
     fn a_missing_value_is_a_usage_error() {
-        let message = fail(&["--title"]);
+        let message = fail(&["render", "--title"]);
         assert!(message.contains("--title"), "{message}");
     }
 
     /// `--` 之后的一律是文件名：路径以 `-` 开头的那种
     #[test]
     fn everything_after_a_bare_double_dash_is_a_file_name() {
-        let cli = parse(&["--", "--full"]);
-        assert_eq!(cli.inputs.len(), 1);
-        assert_eq!(cli.inputs[0].to_string_lossy(), "--full");
-        assert!(!cli.full, "`--` 之后那个不是选项");
+        let options = render(&["render", "--", "--full"]);
+        assert_eq!(options.inputs.len(), 1);
+        assert_eq!(options.inputs[0].to_string_lossy(), "--full");
+        assert!(!options.full, "`--` 之后那个不是选项");
     }
 
-    /// `--help` 末尾要带块写法 —— 那是 `--help` 唯一的用法说明
+    /// `new` 的页名是**必填**的 —— 少给一个就该问，而不是拿空名字去建文件
     #[test]
-    fn the_help_note_is_in_the_help_text() {
-        let help = Cli::command().render_long_help().to_string();
-        assert!(help.contains("::note"), "{help}");
-        assert!(help.contains("缩进"), "{help}");
+    fn new_needs_a_page_name() {
+        assert!(fail(&["new"]).contains("页名"));
+        match parse(&["new", "指南/入门"]).command {
+            Command::New(new) => assert_eq!(new.name, "指南/入门"),
+            other => panic!("要的是 new，给的是 {other:?}"),
+        }
     }
 
-    /// 帮助里要能看见每个选项 —— 少写一个 `#[arg]` 就少一行，而那行是唯一的文档
+    /// `build` 默认不清空、不较真 —— 那两件都是「改了行为」，得明写
     #[test]
-    fn the_help_lists_every_option() {
+    fn build_is_forgiving_by_default() {
+        match parse(&["build"]).command {
+            Command::Build(build) => {
+                assert!(!build.clean);
+                assert!(!build.strict);
+            }
+            other => panic!("要的是 build，给的是 {other:?}"),
+        }
+    }
+
+    /// `serve` 是个**占位**：命令在，但明说还没实现，而不是悄悄什么都不做
+    #[test]
+    fn serve_is_declared_even_though_it_does_nothing_yet() {
+        assert!(matches!(parse(&["serve"]).command, Command::Serve));
+    }
+
+    /// 帮助里要能看见每个子命令 —— 少写一个变体，那个命令就没人知道了
+    #[test]
+    fn the_help_lists_every_subcommand() {
         let help = Cli::command().render_long_help().to_string();
+        for name in ["render", "init", "new", "build", "serve"] {
+            assert!(help.contains(name), "帮助里少了 {name}：\n{help}");
+        }
+    }
+
+    /// `render` 的那些选项都搬过来了，一个都不能少 —— 少一个就是少一个功能
+    #[test]
+    fn the_render_help_lists_every_option() {
+        let help = render_command().render_long_help().to_string();
         for flag in [
             "--full",
             "--title",
@@ -292,30 +490,57 @@ mod tests {
             "--template-dir",
             "--list-blocks",
             "--stats",
-            "--debug",
         ] {
-            assert!(help.contains(flag), "帮助里少了 {flag}");
+            assert!(help.contains(flag), "render 的帮助里少了 {flag}：\n{help}");
         }
+    }
+
+    /// `--help` 末尾要带块写法 —— 那是 `--help` 唯一的用法说明
+    #[test]
+    fn the_help_note_is_in_the_help_text() {
+        let help = Cli::command().render_long_help().to_string();
+        assert!(help.contains("::note"), "{help}");
+        assert!(help.contains("缩进"), "{help}");
     }
 
     /// 帮助里不该混进英文 —— 那一半是 clap 写死的，用 [`HELP_TEMPLATE`] 与
     /// `override_usage` 替掉。升级 clap 时这条会先红。
     #[test]
     fn the_help_is_chinese_throughout() {
-        let help = Cli::command().render_long_help().to_string();
-        for english in [
-            "Usage:",
-            "Options:",
-            "Arguments:",
-            "Print help",
-            "Print version",
+        for help in [
+            Cli::command().render_long_help().to_string(),
+            render_command().render_long_help().to_string(),
         ] {
-            assert!(!help.contains(english), "帮助里混进了 {english}：\n{help}");
+            for english in [
+                "Usage:",
+                "Options:",
+                "Arguments:",
+                "Commands:",
+                "Print help",
+                "Print version",
+            ] {
+                assert!(!help.contains(english), "帮助里混进了 {english}：\n{help}");
+            }
+            assert!(help.contains("用法："), "{help}");
+            assert!(help.contains("显示帮助"), "{help}");
         }
-        assert!(help.contains("用法："), "{help}");
-        assert!(help.contains("显示帮助"), "{help}");
         // 主题的取值写进了帮助正文，而不是留在 clap 那句英文的 possible values 里
+        let help = render_command().render_long_help().to_string();
         assert!(help.contains("light") && help.contains("dark"), "{help}");
         assert!(!help.contains("possible values"), "{help}");
+    }
+
+    /// 取 `render` 那一个子命令的命令对象。
+    ///
+    /// **先 `build()` 再取**：全局的 `-d/-h/-V` 是在 build 时递到子命令上的，
+    /// 没 build 就取到的是一棵没长全的树 —— 帮助里会少了那三个选项。
+    fn render_command() -> clap::Command {
+        let mut command = Cli::command();
+        command.build();
+        command
+            .get_subcommands()
+            .find(|sub| sub.get_name() == "render")
+            .expect("有 render 这个子命令")
+            .clone()
     }
 }

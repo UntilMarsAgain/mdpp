@@ -43,6 +43,7 @@ fn samples() -> Vec<PathBuf> {
 fn render(sample: &Path) -> String {
     let templates = root().join("examples/templates");
     let output = Command::new(env!("CARGO_BIN_EXE_mdpp"))
+        .arg("render")
         .arg("--link-prefix")
         .arg("/notes/")
         .arg("--template-dir")
