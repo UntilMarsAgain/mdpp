@@ -6,6 +6,7 @@
 // 这些模块只属于这个二进制，库那边一概不知道它们存在 —— 所以它们住在 `mdpp-cli`
 // 这个包里，并且对 `mdpp::` 不可见（`pub(crate)`）。
 mod context;
+mod http;
 mod options;
 mod page;
 mod project;
@@ -47,7 +48,7 @@ fn main() -> ExitCode {
         Command::Init(options) => project::init::run(options),
         Command::New(options) => project::new_page::run(options),
         Command::Build(options) => project::build::run(options),
-        Command::Serve => project::serve::run(),
+        Command::Serve(options) => project::serve::run(options),
     };
 
     match outcome {

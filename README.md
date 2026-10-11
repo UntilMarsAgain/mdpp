@@ -71,6 +71,7 @@ mdpp init 我的站点          # 建骨架：mdpp.toml、pages/、templates/、
 cd 我的站点
 mdpp new 指南/安装           # 在 pages/ 下新建一页
 mdpp build                  # 扫 pages/，出站点到 build/
+mdpp serve                  # 本地预览，改一个字浏览器自己刷新
 
 cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 ```
@@ -133,7 +134,18 @@ favicon = "assets/icon.svg"                   # 标签页上那个小图标；�
 只拷**被引用**的那些；引了而 `pages/` 里没有的会逐条报出来（`--strict` 下算失败）。
 跑出 `pages/` 的不拷 —— 那是一条 `../../../etc/passwd`。
 
-`mdpp serve` 还没实现 —— 先 `mdpp build`，再用任意静态服务器托管 `build/`。
+## 本地预览
+
+```sh
+mdpp serve            # http://127.0.0.1:8080/
+mdpp serve -p 9000    # 换端口；-p 0 让系统挑一个空闲的
+```
+
+改一个字，浏览器自己就刷新了 —— `pages/`、`templates/`、`mdpp.toml`，
+外加配置里指的那几个文件（`extra_css` / `extra_js` / `favicon`）都在盯着。
+
+预览出到**临时目录**，不去动你的 `build/`：预览到一半的东西不该被当成产物。
+要的是产物就用 `mdpp build`。`Ctrl-C` 停。
 
 ## 当库用
 

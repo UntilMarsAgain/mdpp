@@ -69,14 +69,14 @@ pub enum Command {
     /// 把 pages/ 渲染成一个可静态部署的站点，写进 site_dir
     Build(Build),
 
-    /// 本地预览这个站点（还没实现）
+    /// 本地预览这个站点：改一个字，浏览器自己刷新
     #[command(
         disable_help_flag = true,
         disable_version_flag = true,
         help_template = HELP_TEMPLATE_BARE,
-        override_usage = "mdpp serve"
+        override_usage = "mdpp serve [选项]"
     )]
-    Serve,
+    Serve(Serve),
 }
 
 /// `mdpp render` —— 渲染文件。
@@ -209,6 +209,27 @@ pub struct New {
     /// 这一页的标题（默认取页名的最后一段）
     #[arg(short, long, value_name = "标题")]
     pub title: Option<String>,
+}
+
+/// `mdpp serve` —— 本地预览。
+///
+/// 没有「哪个文件」这一说：它出的是**整个站点**，到临时目录里。
+#[derive(Args, Debug)]
+#[command(
+    next_help_heading = "选项",
+    disable_help_flag = true,
+    disable_version_flag = true,
+    help_template = HELP_TEMPLATE_BARE,
+    override_usage = "mdpp serve [选项]"
+)]
+pub struct Serve {
+    /// 端口；写 0 让系统挑一个空闲的
+    #[arg(short, long, value_name = "端口", default_value_t = 8080)]
+    pub port: u16,
+
+    /// 听在哪个地址上。默认只听本机；要让容器外面的浏览器看得到，写 0.0.0.0
+    #[arg(long, value_name = "地址", default_value = "127.0.0.1")]
+    pub host: String,
 }
 
 /// `mdpp build` —— 整站。
@@ -456,9 +477,22 @@ mod tests {
     }
 
     /// `serve` 是个**占位**：命令在，但明说还没实现，而不是悄悄什么都不做
+    /// `serve` 有自己的选项：端口与听在哪个地址上
     #[test]
-    fn serve_is_declared_even_though_it_does_nothing_yet() {
-        assert!(matches!(parse(&["serve"]).command, Command::Serve));
+    fn serve_has_a_port_and_an_address() {
+        let serve = match parse(&["serve"]).command {
+            Command::Serve(serve) => serve,
+            other => panic!("要的是 serve，给的是 {other:?}"),
+        };
+        assert_eq!(serve.port, 8080);
+        assert_eq!(serve.host, "127.0.0.1");
+
+        let serve = match parse(&["serve", "-p", "0", "--host", "0.0.0.0"]).command {
+            Command::Serve(serve) => serve,
+            other => panic!("要的是 serve，给的是 {other:?}"),
+        };
+        assert_eq!(serve.port, 0);
+        assert_eq!(serve.host, "0.0.0.0");
     }
 
     /// 帮助里要能看见每个子命令 —— 少写一个变体，那个命令就没人知道了
