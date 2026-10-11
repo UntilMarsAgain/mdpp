@@ -262,12 +262,7 @@ pub fn is_template_target(target: &str) -> bool {
 /// `/示例/assets/base.css` —— 那里没有东西，于是**样式与脚本全丢，而且不报错**
 /// （页面照出得来，只是光着身子）。
 pub fn assets_href(key: &str) -> String {
-    // 首页是特例：它落在站点根（`build/index.html`），不走那一层
-    if key == INDEX_KEY {
-        return crate::page::ASSET_DIR.to_string();
-    }
-    let depth = key.split('/').filter(|segment| !segment.is_empty()).count();
-    format!("{}{}", "../".repeat(depth), crate::page::ASSET_DIR)
+    format!("{}{}", "../".repeat(segments(key)), crate::page::ASSET_DIR)
 }
 
 /// 从 `from`（一页的键）走到 `to` 的地址。
@@ -276,18 +271,40 @@ pub fn assets_href(key: &str) -> String {
 /// **目录**，不是文件。相对地址而不是从站点根算的绝对地址：这样 `build/index.html`
 /// 拷到任何地方、挂在子路径下，链接都还对。
 ///
-/// **首页是唯一的例外，给的是 `/`。** 目录式地址下，从 `/示例/` 出发 `./` 指的是
-/// 它自己（`/示例/./` 就是 `/示例/`），而 `../` 要数对层数 —— 只有 `/` 在任何一层
-/// 都直接落在站点根上。
+/// 要退几层 = **`from` 的段数**：键 `指南/深入/安装` 的页落在 `/指南/深入/安装/`，
+/// 从那儿回站点根要退三层。而首页落在站点根上（`build/index.html`，段数 0），退 0 层。
+///
+/// 首页**不是**特例：`../` × 0 就是空串，空串在地址里指的是当前目录，正是首页自己。
 pub fn href(from: &str, to: &str) -> String {
+    // 首页不能走下面那条：它没有 `<根>/index/` 那个目录，退回去也只是回到它自己
     if to == INDEX_KEY {
-        return String::from("/");
+        return root_href(from);
     }
-    let depth = from.rsplit_once('/').map_or(0, |(dir, _)| dir.split('/').count());
-    let mut out = "../".repeat(depth);
+    let mut out = "../".repeat(segments(from));
     out.push_str(&encode_href(to));
     out.push('/');
     out
+}
+
+/// 一个键有几段。首页（`index`）落在站点根上，**算 0 段** ——
+/// 它不是 `<根>/index/` 那个目录，而是 `<根>/index.html` 那个文件
+fn segments(key: &str) -> usize {
+    if key == INDEX_KEY {
+        return 0;
+    }
+    key.split('/').filter(|one| !one.is_empty()).count()
+}
+
+/// 从 `from` 走到站点根的地址：`../` × [`segments`]
+///
+/// 首页给的是 `./` 而不是空串：空串在地址里指的是「当前目录」，可从 `/示例/` 出发
+/// 那指的是 `/示例/` 自己 —— 首页链接到自己，看着像坏了
+fn root_href(from: &str) -> String {
+    let depth = segments(from);
+    if depth == 0 {
+        return String::from("./");
+    }
+    "../".repeat(depth)
 }
 
 /// `href` 里不能原样出现的字符：`#` 会把地址截断，空格会被浏览器改写。
@@ -497,16 +514,25 @@ mod tests {
     #[test]
     fn hrefs_are_relative_and_end_with_a_slash() {
         assert_eq!(href("index", "指南/入门"), "指南/入门/");
-        assert_eq!(href("指南/入门", "手册"), "../手册/");
-        assert_eq!(href("指南/深入/安装", "手册/入门"), "../../手册/入门/");
+        assert_eq!(href("指南/入门", "手册"), "../../手册/");
+        assert_eq!(href("指南/深入/安装", "手册/入门"), "../../../手册/入门/");
     }
 
-    /// 首页给的是 `/`，**不是 `./`** —— 从 `/示例/` 出发 `./` 指回它自己
+    /// 回首页要退**几层**：页在 `/指南/深入/安装/` 就退三层，与键的段数一样
     #[test]
-    fn the_home_link_is_the_site_root() {
-        assert_eq!(href("index", "index"), "/");
-        assert_eq!(href("示例", "index"), "/");
-        assert_eq!(href("指南/深入/安装", "index"), "/");
+    fn the_home_link_walks_up_the_right_number_of_levels() {
+        assert_eq!(href("index", "index"), "./");
+        assert_eq!(href("示例", "index"), "../");
+        assert_eq!(href("指南/入门", "index"), "../../");
+        assert_eq!(href("指南/深入/安装", "index"), "../../../");
+    }
+
+    /// 深层页里的链接必须真的指到那一页 —— 少退一层落到 `/指南/手册/` 而不是 `/手册/`
+    #[test]
+    fn a_link_from_a_deep_page_lands_on_the_right_page() {
+        assert_eq!(href("指南/入门", "手册"), "../../手册/");
+        assert_eq!(href("指南/深入/安装", "指南/入门"), "../../../指南/入门/");
+        assert_eq!(href("指南/深入/安装", "index"), "../../../");
     }
 
     /// 键里的空格与 `#` 要编码；中文原样留着
@@ -538,7 +564,7 @@ mod tests {
         let ResolvedLink::Link(link) = inside.resolve("手册/安装").expect("认得出") else {
             panic!("该给一个地址");
         };
-        assert_eq!(link.url, "../手册/安装/");
+        assert_eq!(link.url, "../../手册/安装/");
     }
 
     /// `[[入门]]` 这种只写文件名的：全站只有一个时认，多个时**不猜**
