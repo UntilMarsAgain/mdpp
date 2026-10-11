@@ -14,7 +14,7 @@ use markdown_it::parser::block::{BlockRule, BlockState};
 
 use crate::block::dispatch::BlockNode;
 use crate::block::{Section, expand};
-use crate::fence::{FenceLine, Fences};
+use crate::raw::Raw;
 use crate::registry::{self as reg, Block, ContentMode};
 
 /// 块级规则：由 [`crate::block::add`] 挂到解析器上，排在段落规则之前。
@@ -151,15 +151,23 @@ fn rebuild_body(lines: &[(usize, &str)]) -> String {
 /// 第一个标签**之前**的内容归到一个标签为空串的节里 —— 切分只管切，
 /// 那一节算「两边都要」还是「这写法不对」，由各个块自己定（见 [`crate::block::stdlib::panels`]）。
 ///
-/// **围栏里不切**：代码片段里的 `[x]` 是给人看的例子，不是节的开头。少了这一条，
-/// 一个带例子的选项卡会被劈成三节，而劈开之后每节的内容都是错的 —— 症状是「选项卡
-/// 标签里冒出了本该是代码的东西」，没人查得出是因为分节那一步没看围栏。
+/// **原始区里不切**：围栏代码块与 HTML 块里的一行 `[x]` 是给人看的字，不是节的
+/// 开头（见 [`crate::raw`]）。少了这一条，一个带例子的选项卡会被劈成三节，而劈开
+/// 之后每节的内容都是错的 —— 症状是「选项卡标签里冒出了本该是代码的东西」。
+///
+/// ## 一处**故意**不处理的歧义
+///
+/// 列表项之后紧跟的一行 `[x]`，在 CommonMark 里是那个列表项的**懒延续**，而这里
+/// 认成标签。不跟着 CommonMark 走是有理由的：例子文件里的选项卡就是
+/// `- 甲` 紧接 `[读法二]` 这么连着写的，跟着 markdown 走会把第二个标签吃掉。
+/// 要在列表里放一个 `[x]`，**空一行再写**就行 —— 与块里嵌块那条规矩一样。
 fn split_sections(source: &str) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
-    let mut fences = Fences::default();
+    let mut raw = Raw::default();
     for line in source.lines() {
-        let outside = fences.feed(line) == FenceLine::Outside;
-        if outside && let Some(label) = section_label(line) {
+        if !raw.feed(line)
+            && let Some(label) = section_label(line)
+        {
             out.push((label, String::new()));
             continue;
         }
@@ -327,6 +335,43 @@ mod tests {
         let html = render("::tabs\n  [甲]\n  ~~~text\n  [不是标签]\n  ~~~\n");
         assert_eq!(html.matches("class=\"tabs__tab").count(), 1, "{html}");
         assert!(html.contains("[不是标签]"), "{html}");
+    }
+
+    /// **HTML 块里的 `[标签]` 也不是标签。**
+    ///
+    /// 与围栏同一个道理、同一个成因：切分逐行裸扫，不认识「原始区」。这一条是裸
+    /// `<div>…</div>` 那种写法 —— 块身的行都在第 0 列，于是夹在中间的那一行
+    /// `[这不是标签]` 会被当成新的一节，把 HTML 块劈成两半。
+    ///
+    /// 钉的是三件事同时成立：标签栏仍是一个、HTML 原样还在、空行之后那一句回到
+    /// 原来那一节里（HTML 块到空行为止）。
+    #[test]
+    fn a_bracket_line_inside_an_html_block_is_not_a_section_label() {
+        let html = render(
+            "::tabs\n  [甲]\n  <div class=\"card\">\n  [这不是标签]\n  </div>\n\n  收尾一句\n",
+        );
+        assert_eq!(html.matches("class=\"tabs__tab").count(), 1, "{html}");
+        assert!(!html.contains("这不是标签</button>"), "{html}");
+        assert!(html.contains("[这不是标签]"), "该原样留在 HTML 里：{html}");
+        // 空行之后重新是普通内容，那一句该回原来那一节
+        assert!(html.contains("收尾一句"), "{html}");
+        assert_eq!(html.matches("class=\"tabs__panel").count(), 1, "{html}");
+    }
+
+    /// HTML 块到**空行**为止 —— 空行之后的那一行仍然可以是标签
+    #[test]
+    fn an_html_block_ends_at_the_blank_line() {
+        let sections = split_sections("[甲]\n<div>\n[x]\n\n[乙]\n");
+        let labels: Vec<&str> = sections.iter().map(|(label, _)| label.as_str()).collect();
+        assert_eq!(labels, vec!["甲", "乙"], "{sections:?}");
+    }
+
+    /// 自动链接 `<https://…>` 不开 HTML 块 —— 否则后面一整段正文都被吞掉
+    #[test]
+    fn an_autolink_does_not_start_an_html_block() {
+        let sections = split_sections("[甲]\n<https://example.com>\n[乙]\n");
+        let labels: Vec<&str> = sections.iter().map(|(label, _)| label.as_str()).collect();
+        assert_eq!(labels, vec!["甲", "乙"], "{sections:?}");
     }
 
     /// 分节单元里直接钉切分结果，不必绕渲染器 —— 那条 bug 的本质就在切分上
