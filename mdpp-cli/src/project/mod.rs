@@ -21,7 +21,23 @@ pub mod site;
 
 use std::path::{Path, PathBuf};
 
+use include_dir::{Dir, include_dir};
+
 pub use config::Config;
+
+/// 站点模板：`mdpp init` 拷走的那一个目录（`mdpp-cli/site/`）。
+///
+/// 编译期整个嵌进二进制，`init` 把它原样拷到目标目录 —— 想改新项目长什么样，改那个
+/// 目录里的文件，不必碰代码。它与 [`crate::page`] 里那一套 `assets/` 是两回事：
+/// 那一套是**页面外壳**（build 时拷进产物），这一套是**新项目的骨架**（init 时拷走）。
+pub static SITE: Dir = include_dir!("$CARGO_MANIFEST_DIR/site");
+
+/// 站点模板里那个站点名的占位符
+pub const SITE_NAME_TOKEN: &str = "{{站点名}}";
+
+/// 骨架里带占位符的那些文件（拷过去之后要把占位符换成真名字）
+const SITE_NAME_FILES: [&str; 2] = [config::FILE_NAME, "pages/index.mdpp"];
+
 
 /// 一个项目：配置，以及那几个目录的**完整**位置（相对项目根的那些已经接上了）。
 #[derive(Debug, Clone)]
@@ -96,6 +112,42 @@ pub fn under(root: &Path, path: &Path) -> PathBuf {
     }
 }
 
+/// 把骨架里那几处的 [`SITE_NAME_TOKEN`] 换成给定的站点名
+///
+/// **只动 [`SITE_NAME_FILES`] 里那几个**：其余文件里的双花括号是块填空用的
+/// （模板页的 `{{标题}}` / `{{body}}`，渲染时才填），换了那一页就废了。
+///
+/// 配置里那一处要**转义**（占位符是写在引号里的），正文那一处原样换。
+pub fn substitute_site_name(root: &Path, name: &str) -> Result<(), String> {
+    for relative in SITE_NAME_FILES {
+        let path = root.join(relative);
+        let text = std::fs::read_to_string(&path)
+            .map_err(|error| format!("读不了 {}：{error}", shown(&path)))?;
+        let value = if relative == config::FILE_NAME {
+            toml_escape(name)
+        } else {
+            name.to_string()
+        };
+        write_file(&path, &text.replace(SITE_NAME_TOKEN, &value))?;
+    }
+    Ok(())
+}
+
+/// 站点名进 TOML 基本字符串前的转义（**不带**外层引号 —— 占位符本来就在引号里）。
+/// 站点名是人写的，里面带引号不该让刚建好的项目读不出配置
+fn toml_escape(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 /// 把 `path` 建成目录（已经在了不算错 —— `create_dir_all` 本来就那样）
 pub fn ensure_dir(path: &Path) -> Result<(), String> {
     std::fs::create_dir_all(path).map_err(|error| format!("建不了目录 {}：{error}", path.display()))
@@ -108,18 +160,6 @@ pub fn write_file(path: &Path, content: &str) -> Result<(), String> {
     }
     std::fs::write(path, content)
         .map_err(|error| format!("写不了 {}：{error}", path.display()))
-}
-
-/// 在 `path` 写一个**新**文件。已经有了就报出来，**不覆盖** ——
-///
-/// `init` 建出来的首页、`new` 建出来的那一页，作者可能已经改过了，而这一次运行
-/// 只是想重跑同一条命令。默默盖掉是最难查的一种丢数据。
-pub fn write_new_file(path: &Path, content: &str) -> Result<bool, String> {
-    if path.exists() {
-        return Ok(false);
-    }
-    write_file(path, content)?;
-    Ok(true)
 }
 
 /// 把路径显示成**相对当前目录**的样子 —— 长长的绝对路径会把报错撑成一屏
@@ -138,6 +178,7 @@ pub fn shown(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use include_dir::File;
 
     #[test]
     fn a_project_is_found_from_a_subdirectory() {
@@ -211,16 +252,18 @@ mod tests {
         );
     }
 
-    /// 已有文件不覆盖 —— 作者改过的首页不该被重跑一次 init 抹掉
+    /// 骨架里的站点名占位符只出现在那两个文件里 —— 多一个文件用上它，
+    /// `init` 就漏换一个，用户看到的项目里留着一个 `{{站点名}}`
     #[test]
-    fn an_existing_file_is_left_alone() {
-        let dir = tempfile::tempdir().expect("造得出临时目录");
-        let path = dir.path().join("甲.md");
-        std::fs::write(&path, "作者写的").expect("写得下");
-
-        assert!(!write_new_file(&path, "脚手架").expect("不报错"));
-        assert_eq!(std::fs::read_to_string(&path).expect("读得动"), "作者写的");
-        // 没有的时候才写
-        assert!(write_new_file(&dir.path().join("乙.md"), "脚手架").expect("不报错"));
+    fn the_site_name_token_only_lives_where_init_replaces_it() {
+        for relative in SITE_NAME_FILES {
+            assert!(
+                crate::project::SITE
+                    .get_file(relative)
+                    .and_then(File::contents_utf8)
+                    .is_some_and(|text| text.contains(SITE_NAME_TOKEN)),
+                "骨架里的 {relative} 没有用 {SITE_NAME_TOKEN}"
+            );
+        }
     }
 }

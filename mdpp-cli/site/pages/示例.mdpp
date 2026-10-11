@@ -1,0 +1,18 @@
+# 示例
+
+正文照常写 markdown：**强调**、`行内代码`、[[index|回首页]]。
+
+::note title="提示框"
+  提示框里也能写 **markdown** 与 [[index|链接]]。
+
+::tabs
+  [读法一]
+  照着念。
+
+  [读法二]
+  自己试。
+
+::code lang=rust
+  fn main() {
+      println!("代码块原样输出");
+  }

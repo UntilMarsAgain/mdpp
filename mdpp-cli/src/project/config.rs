@@ -122,68 +122,32 @@ impl Config {
     }
 }
 
-/// `mdpp init` 写下去的那一份。
-///
-/// **手写而不序列化**：这份文件是给人看的，每个键上面那句话就是它的文档；
-/// `toml::to_string` 给不了注释，写出去的是一份没人敢改的清单。
-///
-/// `the_skeleton_parses` 盯着它与 [`Config`] 不脱节 —— 手写的模板与结构体迟早会对不上，
-/// 而那会在**用户 init 之后**才发作。
-pub const SKELETON: &str = "\
-# mdpp 项目的配置。这一层只管「东西在哪」与「站点叫什么」——
-# 正文怎么写见仓库的 examples/，其中 tour.mdpp 是一个块的巡览。
-
-# 站点名。整页的 <title> 是「页面名 —— 站点名」
-site_name = \"我的站点\"
-
-# 一句话说明
-site_description = \"\"
-
-# 正文在哪。mdpp build 递归扫这个目录，.md 与 .mdpp 都算页面
-pages_dir = \"pages\"
-
-# 模板页在哪。<目录>/<名字>.mdpp 是一页，正文里 ::名字 从这里取
-templates_dir = \"templates\"
-
-# 站点输出到哪。mdpp build 写在这里
-site_dir = \"build\"
-
-# 整页的主题：light 或 dark。不写就是 light
-theme = \"light\"
-
-# <html lang>
-lang = \"zh-Hans\"
-
-# 附加的 CSS 与 JS，按给定次序接在默认的之后。路径相对本文件
-extra_css = []
-extra_js = []
-";
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::project::SITE;
+    use include_dir::File;
 
-    /// `init` 写下的那份必须真的能被读回来 —— 手写的模板与结构体对不上时，
-    /// 症状是「刚 init 就 build 不了」，而那时用户已经建好项目了
+    /// 骨架里的 `site/mdpp.toml` 必须真的能被读回来 —— 它是刚 init 出来的项目的配置，
+    /// 而写坏它要等到用户 `mdpp init` 之后才发作
     #[test]
-    fn the_skeleton_parses_and_says_what_it_says() {
-        let config: Config = toml::from_str(SKELETON).expect("模板该能被解析");
-        assert_eq!(config.site_name, "我的站点");
+    fn the_skeleton_config_parses_and_says_what_it_says() {
+        let text = SITE
+            .get_file(FILE_NAME)
+            .and_then(File::contents_utf8)
+            .expect("站点模板里有 mdpp.toml");
+        // 骨架里带着站点名的占位符（那是 init 要替换的），它本身也是一份合法配置
+        let filled = text.replace(crate::project::SITE_NAME_TOKEN, "我的站点");
+        let config: Config = toml::from_str(&filled).expect("骨架配置该能被解析");
         assert_eq!(config.pages_dir, PathBuf::from("pages"));
         assert_eq!(config.site_dir, PathBuf::from("build"));
         assert_eq!(config.templates_dir, PathBuf::from("templates"));
         // 模板里主题写明了「light」，而「不写主题」是另一回事（`None`）
         assert_eq!(config.theme.as_deref(), Some("light"));
-        assert!(config.check().is_ok(), "模板自己该是份好配置");
+        assert!(config.check().is_ok(), "骨架自己该是份好配置");
 
         // 除主题之外，模板里写的都等于默认值 —— 写重复了就有两份答案
-        assert_eq!(
-            Config {
-                theme: None,
-                ..config
-            },
-            Config::default()
-        );
+        assert_eq!(Config { theme: None, ..config }, Config::default());
     }
 
     /// 一份空的 mdpp.toml 也是好配置：每个字段都有默认值

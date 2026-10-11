@@ -1,72 +1,34 @@
 //! `mdpp init` —— 建一个项目骨架。
 //!
-//! 产出的是一个**能立刻 build 的目录**，不是一个空壳：首页、示例页与一个模板页都已经
-//! 在那儿，第一次 `mdpp build` 就出得来一个能看的站点。
+//! 骨架是 [`crate::project::SITE`] 那个目录（`mdpp-cli/site/`），编译期整个嵌进二进制，
+//! `init` 只是把它**原样拷过去**。想改新项目长什么样，改那个目录里的文件，不必碰代码。
 //!
-//! **已有的文件一律不覆盖**（`write_new_file`）—— 在一个已经写了点的目录里重跑 `init`
-//! 是常事，默默盖掉首页是最难查的一种丢数据。要换模板页就自己删了重建。
+//! 产出的是一个**能立刻 build 的目录**：首页、示例页与一个模板页都已经在那儿，第一次
+//! `mdpp build` 就出得来一个能看的站点。
+//!
+//! ## 只在空目录里工作
+//!
+//! 目标目录里有任何东西（含隐藏文件）就**报错退出**，不覆盖、不合并、不问。
+//! 「悄悄把文件盖在别人头上」是那种事后没人查得出来的破坏，而问一句
+//! 「要不要继续」在这里又太容易答错 —— 答错了还是没法找回来。要往已有的目录里 init，
+//! 先自己把里面清空。
 
 use std::path::{Path, PathBuf};
 
 use crate::options::Init;
-use crate::project::{config::SKELETON, ensure_dir, shown, write_new_file};
+use crate::project::{SITE, ensure_dir, shown, substitute_site_name};
 
 use tracing::info;
 
-/// 首页
-const INDEX_PAGE: &str = "\
-# {{站点名}}
-
-这个站点由 `mdpp` 搭起来，正文都在 [`pages/`](pages/) 里，一个文件一页。
-
-- [[示例]] —— 一页样例，几个块都在那儿
-- 全部块名与示例见仓库的 `examples/tour.mdpp`
-
-::卡片 标题=首页
-
-改完存盘，`mdpp build` 出站点到 `build/`。
-";
-
-/// 随骨架建出来的那一页样例
-const SAMPLE_PAGE: &str = "\
-# 示例
-
-正文照常写 markdown：**强调**、`行内代码`、[[index|回首页]]。
-
-::note title=\"提示框\"
-  提示框里也能写 **markdown** 与 [[index|链接]]。
-
-::tabs
-  [读法一]
-  照着念。
-
-  [读法二]
-  自己试。
-
-::code lang=rust
-  fn main() {
-      println!(\"代码块原样输出\");
-  }
-";
-
-/// 随骨架建出来的那一页模板页。`::卡片 标题=…` 从 `templates/卡片.mdpp` 取
-const SAMPLE_TEMPLATE: &str = "\
-::banner color=#0055a4
-  **{{标题}}**
-
-  {{body}}
-";
-
-/// 建了 `.gitignore` 的内容：`build/` 是产物，不进版本库
-const GITIGNORE: &str = "# mdpp build 的产物，不进版本库\n/build/\n";
+/// 骨架里那个空的产物目录。**不在模板目录里** —— git 与 `include_dir!` 都带不动
+/// 空目录，而 `build` 自己也会建；这里建它只是为了让目录结构一眼看得见
+const SITE_DIR_NAME: &str = "build";
 
 pub fn run(options: &Init) -> Result<(), String> {
-    let root = match &options.dir {
-        Some(dir) => dir.clone(),
-        None => PathBuf::from("."),
-    };
-    ensure_dir(&root)?;
+    let root = options.dir.clone().unwrap_or_else(|| PathBuf::from("."));
+    check_empty(&root)?;
 
+    // 站点名：给了就用，没给就拿目录名（`.` 或 `/` 那种没有名字的除外）
     let name = options
         .name
         .clone()
@@ -74,142 +36,107 @@ pub fn run(options: &Init) -> Result<(), String> {
         .filter(|name| !name.is_empty() && name != ".")
         .unwrap_or_else(|| "我的站点".to_string());
 
-    let pages = config_path(&root, "pages");
-    let templates = config_path(&root, "templates");
-    let build = config_path(&root, "build");
+    ensure_dir(&root)?;
+    copy_template(&root)?;
+    // 拷过来的是骨架**原文**，那里面有站点名的占位符 —— 换上真的名字
+    substitute_site_name(&root, &name)?;
+    ensure_dir(&root.join(SITE_DIR_NAME))?;
 
-    let mut created: Vec<String> = Vec::new();
-    let mut kept: Vec<String> = Vec::new();
-
-    // 已有配置就在那儿 —— 这是「补齐缺的那些」，不是「重新初始化」
-    if write_new_file(&root.join("mdpp.toml"), &skeleton(&name))? {
-        created.push("mdpp.toml".to_string());
-    } else {
-        kept.push("mdpp.toml".to_string());
-    }
-    if write_new_file(&pages.join("index.mdpp"), &filled(INDEX_PAGE, &name))? {
-        created.push(shown(&pages.join("index.mdpp")));
-    } else {
-        kept.push(shown(&pages.join("index.mdpp")));
-    }
-    if write_new_file(&pages.join("示例.mdpp"), SAMPLE_PAGE)? {
-        created.push(shown(&pages.join("示例.mdpp")));
-    } else {
-        kept.push(shown(&pages.join("示例.mdpp")));
-    }
-    if write_new_file(&templates.join("卡片.mdpp"), SAMPLE_TEMPLATE)? {
-        created.push(shown(&templates.join("卡片.mdpp")));
-    } else {
-        kept.push(shown(&templates.join("卡片.mdpp")));
-    }
-    if write_new_file(&root.join(".gitignore"), GITIGNORE)? {
-        created.push(".gitignore".to_string());
-    } else {
-        kept.push(".gitignore".to_string());
-    }
-    // 空的产物目录也要有：让目录结构一眼看得见。`.gitignore` 忽略它，所以里面不放标记文件
-    ensure_dir(&build)?;
-
-    info!(dir = shown(&root), pages = created.len(), "项目骨架");
-    report(&root, &created, &kept);
+    info!(dir = shown(&root), site = %name, "站点骨架");
+    eprintln!("建了 {}", shown(&root));
+    eprintln!("站点名：{name}");
+    eprintln!("下一步：cd 到那里，`mdpp new 甲`，然后 `mdpp build`");
     Ok(())
 }
 
-/// 目录在配置里叫什么，就按那个名字建 —— `pages_dir` 改了之后骨架要跟着走
-fn config_path(root: &Path, dir: &str) -> PathBuf {
-    root.join(dir)
+/// 目标目录得是空的，或者压根不存在
+fn check_empty(root: &Path) -> Result<(), String> {
+    if !root.exists() {
+        return Ok(());
+    }
+    if !root.is_dir() {
+        return Err(format!("{} 不是一个目录", shown(root)));
+    }
+    let mut names: Vec<String> = std::fs::read_dir(root)
+        .map_err(|error| format!("读不了 {}：{error}", shown(root)))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect();
+    if names.is_empty() {
+        return Ok(());
+    }
+    names.sort();
+    // 只列几个：几十个文件的目录不需要全部倒出来
+    let shown_names = names
+        .iter()
+        .take(5)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("、");
+    let more = names.len().saturating_sub(5);
+    Err(format!(
+        "{} 里已经有东西了（{}{}）\n`mdpp init` 要一个空目录 —— 建错了地方就换个目录名再来",
+        shown(root),
+        shown_names,
+        if more > 0 { format!(" 等 {more} 个") } else { String::new() }
+    ))
 }
 
-/// 骨架里那行 `site_name` 换成给定的名字
-fn skeleton(name: &str) -> String {
-    let placeholder = r#"site_name = "我的站点""#;
-    let replacement = format!("site_name = {}", toml_string(name));
-    if let Some(at) = SKELETON.find(placeholder) {
-        let mut out = String::with_capacity(SKELETON.len());
-        out.push_str(&SKELETON[..at]);
-        out.push_str(&replacement);
-        out.push_str(&SKELETON[at + placeholder.len()..]);
-        return out;
-    }
-    // 模板里那行不见了：这份骨架还是得能用，于是退回原样（init 的测试会红）
-    SKELETON.to_string()
-}
-
-/// 首页模板里那一个占位
-fn filled(template: &str, name: &str) -> String {
-    template.replace("{{站点名}}", name)
-}
-
-/// TOML 基本字符串里的转义。站点名是人写的，里面带引号不该让配置文件解析不了
-fn toml_string(value: &str) -> String {
-    let mut out = String::with_capacity(value.len() + 2);
-    out.push('"');
-    for ch in value.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            other => out.push(other),
-        }
-    }
-    out.push('"');
-    out
-}
-
-/// 报告一律走**标准错误**：stdout 是产物（HTML）要去的地方，这条规矩对所有子命令都一样
-fn report(root: &Path, created: &[String], kept: &[String]) {
-    for path in created {
-        eprintln!("建了  {path}");
-    }
-    for path in kept {
-        eprintln!("已有  {path}（没动）");
-    }
-    eprintln!("项目在 {}", shown(root));
-    eprintln!("下一步：cd 到那里，`mdpp build`");
+/// 把 `mdpp-cli/site/` 整个拷到 `root`
+fn copy_template(root: &Path) -> Result<(), String> {
+    SITE
+        .extract(root)
+        .map_err(|error| format!("拷不出站点骨架：{error}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::options::Init;
-    use crate::project::Config;
+    use crate::project::{Config, SITE_NAME_TOKEN, site::Site};
 
-    fn init_at(dir: &Path) -> Result<(), String> {
+    /// 一个空目录 + 跑一次 init
+    fn init_at(dir: &Path, name: Option<&str>) -> Result<(), String> {
         run(&Init {
             dir: Some(dir.to_path_buf()),
-            name: None,
+            name: name.map(str::to_string),
         })
     }
 
+    /// 骨架拷过去的样子：目录结构原样，没有多也没有少
     #[test]
-    fn init_makes_a_project_that_builds_later() {
+    fn the_skeleton_lands_whole() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        init_at(dir.path()).expect("建得出");
+        init_at(dir.path(), None).expect("建得出");
 
         for path in [
             "mdpp.toml",
+            ".gitignore",
             "pages/index.mdpp",
             "pages/示例.mdpp",
             "templates/卡片.mdpp",
             "build",
-            ".gitignore",
         ] {
             assert!(dir.path().join(path).exists(), "少了 {path}");
         }
-        // 骨架真的能被读回来
-        assert!(Config::load(dir.path()).is_ok(), "刚建的项目读不出来配置");
+        // 骨架里没有的，init 也不该造出来：根上正好是 mdpp.toml、.gitignore 与三个目录
+        let top: Vec<String> = std::fs::read_dir(dir.path())
+            .expect("读得动")
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(top.len(), 5, "根上多了或少了东西：{top:?}");
     }
 
-    /// 建出来的样例页不该有「未知块」—— 那会让新用户的第一次 build 一上来就报错
+    /// init 的产出得真的能 build —— 骨架里的块名/参数一改，这里就先红
     #[test]
     fn the_skeleton_pages_have_no_unknown_blocks() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        init_at(dir.path()).expect("建得出");
-        let pages = crate::project::site::Site::collect(&dir.path().join("pages")).expect("扫得动");
+        init_at(dir.path(), None).expect("建得出");
+        let project = crate::project::Project::load(dir.path()).expect("这是个项目");
+        let pages = Site::collect(&project.pages_dir()).expect("扫得动");
         assert!(pages.pages().len() >= 2);
 
-        let templates =
-            crate::context::template_pages(&dir.path().join("templates")).expect("读得动");
+        let templates = crate::context::template_pages(&project.templates_dir()).expect("读得动");
         let context = mdpp::RenderContext::new().with_templates(templates);
         for page in pages.pages() {
             let source = std::fs::read_to_string(&page.source).expect("读得动");
@@ -222,62 +149,100 @@ mod tests {
         }
     }
 
-    /// 站点名写进两处：mdpp.toml 与首页
+    /// 站点名落到两处：`mdpp.toml` 与首页的标题
     #[test]
     fn the_site_name_lands_in_the_config_and_the_home_page() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        run(&Init {
-            dir: Some(dir.path().to_path_buf()),
-            name: Some("桥梁笔记".to_string()),
-        })
-        .expect("建得出");
+        init_at(dir.path(), Some("桥梁笔记")).expect("建得出");
 
-        let config = Config::load(dir.path()).expect("读得动");
-        assert_eq!(config.site_name, "桥梁笔记");
+        assert_eq!(
+            Config::load(dir.path()).expect("读得动").site_name,
+            "桥梁笔记"
+        );
         let home = std::fs::read_to_string(dir.path().join("pages/index.mdpp")).expect("读得动");
-        assert!(home.contains("# 桥梁笔记"), "{home}");
+        assert!(home.starts_with("# 桥梁笔记"), "{home}");
+    }
+
+    /// 没给名字就用目录名 —— 与 mkdocs 那套习惯一致
+    #[test]
+    fn without_a_name_the_directory_names_the_site() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let root = dir.path().join("桥梁笔记");
+        init_at(&root, None).expect("建得出");
+        assert_eq!(
+            Config::load(&root).expect("读得动").site_name,
+            "桥梁笔记"
+        );
     }
 
     /// 名字里带引号不能让配置文件解析不了 —— 站点名是人写的
     #[test]
     fn a_quoted_site_name_still_yields_a_parsable_config() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        run(&Init {
-            dir: Some(dir.path().to_path_buf()),
-            name: Some(r#"甲"乙"#.to_string()),
-        })
-        .expect("建得出");
+        init_at(dir.path(), Some(r#"甲"乙"#)).expect("建得出");
         assert_eq!(
             Config::load(dir.path()).expect("读得动").site_name,
             r#"甲"乙"#
         );
     }
 
-    /// 重跑一次不动作者写过的文件
+    /// 骨架里那些占位符**都**被换掉了 —— 漏一个，用户看到的项目里就留着一个
+    /// `{{站点名}}`。钉住「骨架里只有那两处用它」
     #[test]
-    fn running_init_again_keeps_what_the_author_wrote() {
+    fn no_placeholder_survives_the_copy() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        init_at(dir.path()).expect("第一次建得出");
-        std::fs::write(dir.path().join("pages/index.mdpp"), "# 我改过了").expect("改得下");
+        init_at(dir.path(), Some("某站")).expect("建得出");
 
-        init_at(dir.path()).expect("第二次也建得出");
-        assert_eq!(
-            std::fs::read_to_string(dir.path().join("pages/index.mdpp")).expect("读得动"),
-            "# 我改过了"
+        for path in ["mdpp.toml", "pages/index.mdpp", "pages/示例.mdpp", "templates/卡片.mdpp"] {
+            let text = std::fs::read_to_string(dir.path().join(path)).expect("读得动");
+            assert!(
+                !text.contains(SITE_NAME_TOKEN),
+                "{path} 里还留着 {SITE_NAME_TOKEN}"
+            );
+        }
+    }
+
+    /// 模板页里的 `{{标题}}` / `{{body}}` **不是**站点名 —— 那是块填空用的，
+    /// 由渲染时填。init 要是把它也换了，那一页就废了
+    #[test]
+    fn the_template_pages_keep_their_own_placeholders() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        init_at(dir.path(), Some("某站")).expect("建得出");
+        let card =
+            std::fs::read_to_string(dir.path().join("templates/卡片.mdpp")).expect("读得动");
+        assert!(card.contains("{{标题}}"), "{card}");
+        assert!(card.contains("{{body}}"), "{card}");
+    }
+
+    /// **只在空目录里工作** —— 这是这一条命令唯一的前置条件
+    #[test]
+    fn a_directory_with_anything_in_it_is_refused() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        std::fs::write(dir.path().join("作者写的.md"), "别动我").expect("写得下");
+
+        let message = init_at(dir.path(), None).unwrap_err();
+        assert!(message.contains("已经有东西了"), "{message}");
+        assert!(
+            std::fs::read_to_string(dir.path().join("作者写的.md")).expect("读得动") == "别动我",
+            "它不该被动过"
         );
     }
 
-    /// 骨架模板与配置结构体脱节时，`init` 出来的项目当场就 build 不了 ——
-    /// 那条 `the_skeleton_parses` 是在库里盯着，这里盯的是「换成真名字也没坏」
+    /// 隐藏文件也算「有东西」 —— 半路塞进来的 `.DS_Store` 之类不该被当成空目录
     #[test]
-    fn the_skeleton_stays_parsable_after_the_name_is_substituted() {
+    fn a_hidden_file_also_counts_as_content() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        run(&Init {
-            dir: Some(dir.path().to_path_buf()),
-            name: Some("甲".to_string()),
-        })
-        .expect("建得出");
-        Config::load(dir.path()).expect("换过名字的配置该读得动");
+        std::fs::write(dir.path().join(".gitkeep"), "").expect("写得下");
+        assert!(init_at(dir.path(), None).unwrap_err().contains("已经有东西了"));
+    }
+
+    /// 重跑一次要停下来 —— 而不是把用户已经写的首页盖掉
+    #[test]
+    fn running_init_twice_refuses() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        init_at(dir.path(), None).expect("第一次建得出");
+        let message = init_at(dir.path(), None).unwrap_err();
+        assert!(message.contains("已经有东西了"), "{message}");
     }
 
     /// 目录不存在时建出来 —— `mdpp init 新站点` 是最常见的一条
@@ -285,7 +250,17 @@ mod tests {
     fn a_missing_directory_is_created() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         let fresh = dir.path().join("新站点");
-        init_at(&fresh).expect("建得出");
+        init_at(&fresh, None).expect("建得出");
         assert!(fresh.join("mdpp.toml").is_file());
+    }
+
+    /// 站点名里带斜杠会让 `site_name` 写坏配置吗？不会（转义过），但路径相关的
+    /// 那几处是目录 —— 这一条盯的是 config 读得回来
+    #[test]
+    fn the_copied_config_is_readable() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        init_at(dir.path(), None).expect("建得出");
+        let config = Config::load(dir.path()).expect("读得动");
+        assert_eq!(config.site_dir, PathBuf::from("build"));
     }
 }
