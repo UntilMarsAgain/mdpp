@@ -82,21 +82,19 @@
 /* ---- 表 ------------------------------------------------------------- */
 /* 两列：左边分组名、右边内容。
  *
- * **关键**：`table-layout: fixed` + `width: 0` + `white-space: normal`
- * 这一套让标签列「有多宽就多宽、但不超 18em」，剩余宽度全给内容列。
- * 以前抄 `::fields` 是错的，那边没有 max-width 这种需求。 */
+ * **关键**：使用默认的 `table-layout: auto`（不写即可），让浏览器按内容自动计算列宽。
+ * 标签列用 `width: 1%` + `white-space: nowrap` 告诉浏览器「尽量窄，但不要断行」。
+ * 超过 `max-width: 18em` 时，`overflow-wrap: anywhere` 允许换行。 */
 
 .mdpp-content table.navbox__table {
   width: 100%;
-  margin: 0;
+  /* 默认 auto：列宽随内容自动计算，不再强制平分 */
   border-collapse: collapse;
-  /* fixed 才让 width: 0 生效：让标签列只按内容宽，内容列拿走剩余 */
-  table-layout: fixed;
 }
 
 .mdpp-content .navbox__table th,
 .mdpp-content .navbox__table td {
-  padding: 0.3em 0.6em;
+  padding: 0.5em 0.8em;
   border-bottom: 1px solid var(--mdpp-border);
   font-weight: 400;
   vertical-align: middle;
@@ -109,26 +107,33 @@
 }
 
 /* 标签列：宽度 = 内容宽度，上限 18em，超了换行。
- * `width: 0` 告诉 fixed 布局「这列不要宽度」，`normal` + `max-width` 限住上限。 */
+ *
+ * 核心技巧：
+ * - `width: 1%` + `white-space: nowrap` → 告诉浏览器「尽量窄，但不要断行」 → 列宽 = 内容宽度
+ * - `max-width: 18em` + `overflow-wrap: anywhere` → 超过上限时允许折行
+ * - 不用 flex，用表格原生 `text-align: center; vertical-align: middle;` 实现居中
+ *   （flex 会破坏表格单元格的原生布局行为） */
+
 .mdpp-content .navbox__group {
-  width: 0;
+  width: 1%;
+  white-space: nowrap;
   max-width: 18em;
-  white-space: normal;
-  word-break: keep-all;
   overflow-wrap: anywhere;
-  /* 垂直居中：单元格高度由内容列决定时，标签始终在行中间 */
-  display: flex;
-  align-items: center;
+  /* 垂直+水平居中：用表格原生方式，不破坏表格布局 */
+  text-align: center;
+  vertical-align: middle;
   /* 底色来自 `group-bg=`；不给就是那一档淡底，与通栏、标题栏同一个颜色 */
   background: var(--navbox-group-bg, var(--mdpp-surface));
   color: var(--navbox-group-fg, var(--mdpp-text-dim));
   font-weight: 600;
+  padding: 0.5em 0.8em;
+  box-sizing: border-box;
 }
 
-/* 内容列：不设宽度，fixed 布局下自动拿走剩余宽度 */
+/* 内容列：不设宽度，自动拿走剩余宽度 */
 .mdpp-content .navbox__cell {
-  /* 让内容列也能垂直居中（可选，只是看着舒服） */
   vertical-align: middle;
+  padding: 0.5em 0.8em;
 }
 
 /* ---- 通栏：above / below / [headerN] ------------------------------- */
