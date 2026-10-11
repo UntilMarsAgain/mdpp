@@ -162,6 +162,9 @@ pub struct Page<'a> {
     pub theme: Option<&'a str>,
     /// 顶栏与底栏那几个字段。`render --full` 那条路给默认的一份（全空，于是两样都不出）
     pub chrome: Chrome,
+    /// 标签页上那个小图标的地址（已经带好 `assets/` 前缀与文件名）。
+    /// `None` 就没有那个 `<link>`，浏览器自己画一个
+    pub favicon: Option<&'a str>,
     /// 正文（已渲染的 HTML 片段）
     pub body: &'a str,
     /// `--css` / `extra_css` 附的那些，接在默认的**后面**
@@ -208,6 +211,7 @@ pub fn document(page: &Page) -> String {
             ("theme_attr", &theme_attr),
             ("title", &escape(page.title)),
             ("styles", &styles),
+            ("icons", &icons(page.favicon)),
             ("scripts", &scripts),
             ("bar", &top_bar(&page.chrome)),
             ("foot", &bottom_bar(&page.chrome)),
@@ -215,6 +219,14 @@ pub fn document(page: &Page) -> String {
             ("body", page.body),
         ],
     )
+}
+
+/// 标签页上那个小图标。没有就一整行都没有 —— 浏览器自己会画一个
+fn icons(favicon: Option<&str>) -> String {
+    let Some(href) = favicon else {
+        return String::new();
+    };
+    format!("<link rel=\"icon\" href=\"{}\">", escape(href))
 }
 
 /// 顶上那一条。**站点名空就没有顶栏** —— 判据是内容而不是「用哪种资源」，
@@ -412,6 +424,7 @@ mod tests {
             lang: "zh-Hans",
             theme: None,
             chrome: Chrome::default(),
+            favicon: None,
             body,
             extra_css: &[],
             extra_js: &[],
@@ -623,6 +636,27 @@ mod tests {
                 "{url:?} 认错了：{html}"
             );
         }
+    }
+
+    /// favicon 没有就是没有那个 `<link>`；给了就转义后写进 `href`
+    #[test]
+    fn the_favicon_tag_appears_only_when_there_is_one() {
+        assert!(!document(&site_page("x")).contains("rel=\"icon\""), "不该有那个 link");
+
+        let html = document(&Page {
+            favicon: Some("assets/图标.svg"),
+            ..site_page("x")
+        });
+        assert!(
+            html.contains(r#"<link rel="icon" href="assets/图标.svg">"#),
+            "{html}"
+        );
+        // 里面的引号不能跑出来
+        let hostile = document(&Page {
+            favicon: Some("a\"onload=\"alert(1)"),
+            ..site_page("x")
+        });
+        assert!(!hostile.contains("onload=\"alert"), "{hostile}");
     }
 
     /// 那几句话是**纯文本**：转义之后原样进页面，不会变成标签或链接

@@ -25,8 +25,9 @@ use std::sync::{Arc, Mutex};
 use crate::context::template_pages;
 use crate::options::Build;
 use crate::page;
+use crate::project::assets;
 use crate::project::site::{Links, Missing, Site, assets_href};
-use crate::project::{self, Project, ensure_dir, shown};
+use crate::project::{self, Project, ensure_dir, shown, under};
 
 use mdpp::{Mdpp, RenderContext};
 use tracing::{debug, info};
@@ -75,11 +76,21 @@ fn build(project: &Project, options: &Build) -> Result<(), String> {
     let site = Arc::new(site);
     let missing: Arc<Mutex<Vec<Missing>>> = Arc::new(Mutex::new(Vec::new()));
     let mut broken = Broken::default();
+    let mut absent = Vec::new();
 
     // 资源从二进制里拷到产物里：页面指的是 `assets/base.css`，那些字节得真的在那儿。
     // 每个页面都内联一遍的话，几十个页面就是几十份拷贝
     let assets = page::copy_assets(&site_dir)?;
     info!(assets, "资源已拷进产物");
+
+    // 标签页上那个图标：也是一页资源，一样落在 `assets/` 里。
+    // 页面上的地址按各自的深度加前缀，所以这里存的是**相对站点根**的那一份
+    let favicon = favicon(project, &site_dir)?;
+
+    // 已经拷过的资源，记着，免得几十页引同一张图时拷几十回
+    let mut copied: Vec<std::path::PathBuf> = Vec::new();
+    // 被引用而进了 `assets/` 的那些（相对 pages/），只为最后那句报告
+    let mut taken: Vec<String> = Vec::new();
 
     for page in site.pages() {
         let source = std::fs::read_to_string(&page.source)
@@ -94,7 +105,34 @@ fn build(project: &Project, options: &Build) -> Result<(), String> {
             context = context.with_templates(templates.clone());
         }
 
-        let html = parser.render_with(&source, &context);
+        let assets_prefix = assets_href(&page.key);
+        let scan = assets::scan(
+            &parser.render_with(&source, &context),
+            &assets::Context {
+                page_dir: page.source.parent().unwrap_or(&pages_dir),
+                pages_dir: &pages_dir,
+                assets_dir: &site_dir.join(page::ASSET_DIR),
+                assets_prefix: &assets_prefix,
+            },
+        );
+        for value in &scan.missing {
+            absent.push(format!("{} → {value}", page.key));
+        }
+        assets::copy(&scan.wanted, &mut copied)
+            .map_err(|error| format!("拷不了资源：{error}"))?;
+        for one in &scan.wanted {
+            let relative = one
+                .from
+                .strip_prefix(&pages_dir)
+                .expect("资源都在正文目录里")
+                .to_string_lossy()
+                .replace('\\', "/");
+            if !taken.contains(&relative) {
+                taken.push(relative);
+            }
+        }
+
+        let html = scan.html;
         broken.add(page, &html);
 
         let title = document_title(project, &source, page.stem());
@@ -103,28 +141,70 @@ fn build(project: &Project, options: &Build) -> Result<(), String> {
             lang: &project.config.lang,
             theme: project.config.theme.as_deref(),
             chrome: chrome(project),
+            // 嵌套页里的图标地址也要数对层数（`../../assets/favicon.svg`）——
+            // `favicon` 存的是相对站点根的那一份
+            favicon: favicon
+                .as_deref()
+                .map(|name| format!("{assets_prefix}/{name}"))
+                .as_deref(),
             body: &html,
             extra_css: &extra_css,
             extra_js: &extra_js,
-            assets: page::Assets::Linked(assets_href(&page.key)),
+            assets: page::Assets::Linked(assets_prefix.clone()),
         });
         project::write_file(&site_dir.join(&page.output), &document)?;
         debug!(page = %page.key, out = %page.output.display(), "一页");
     }
 
     let missing = missing.lock().map(|list| list.clone()).unwrap_or_default();
-    info!(pages = site.pages().len(), missing = missing.len(), "站点出完");
-    report(project, &site, &missing, &broken);
+    info!(
+        pages = site.pages().len(),
+        missing = missing.len(),
+        resources = copied.len(),
+        "站点出完"
+    );
+    report(
+        project,
+        &site,
+        &missing,
+        &broken,
+        &absent,
+        &taken,
+        copied.len(),
+    );
 
     // `--strict`：把「有问题」变成非零退出码，好挂进 CI
-    if options.strict && !(missing.is_empty() && broken.pages.is_empty()) {
+    if options.strict && !(missing.is_empty() && broken.pages.is_empty() && absent.is_empty()) {
         return Err(format!(
-            "有问题没解决（--strict）：红链 {} 条，块问题 {} 页",
+            "有问题没解决（--strict）：红链 {} 条，块问题 {} 页，资源缺 {} 个",
             missing.len(),
-            broken.pages.len()
+            broken.pages.len(),
+            absent.len()
         ));
     }
     Ok(())
+}
+
+/// 标签页上那个图标：拷进 `assets/`，给出的地址是相对站点根的那一份
+/// （页面上按各自的深度加前缀）。
+///
+/// 写了却读不到就**报错** —— 那是一个笔误，而一个读不到的小图标只会静悄悄地
+/// 让浏览器画一个默认的。
+fn favicon(project: &Project, site_dir: &Path) -> Result<Option<String>, String> {
+    let Some(configured) = &project.config.favicon else {
+        return Ok(None);
+    };
+    let from = under(&project.root, configured);
+    let name = configured
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .ok_or_else(|| format!("favicon 不是个文件名字：{}", shown(configured)))?;
+    let to = site_dir.join(page::ASSET_DIR).join(&name);
+    project::write_file(&to, &std::fs::read_to_string(&from).map_err(|error| {
+        format!("读不了 favicon {}：{error}", shown(&from))
+    })?)?;
+    // 只给**文件名**：`favicon` 写的是项目里的相对路径，而产物里它在 `assets/` 下
+    Ok(Some(assets::encode(&name)))
 }
 
 /// 顶栏与底栏那几句话 —— 配置里那几个单行字段，原样递过去
@@ -243,9 +323,21 @@ impl Broken {
 }
 
 /// 报告走**标准错误** —— 与其余子命令一样，stdout 是产物要去的地方
-fn report(project: &Project, site: &Site, missing: &[Missing], broken: &Broken) {
+fn report(
+    project: &Project,
+    site: &Site,
+    missing: &[Missing],
+    broken: &Broken,
+    absent: &[String],
+    // 被引用、进了 `assets/` 的那些（相对 `pages/`），只为最后那句报告
+    taken: &[String],
+    resources: usize,
+) {
     let site_dir = shown(&project.site_dir());
-    eprintln!("站点建在 {site_dir}（{ } 页）", site.pages().len());
+    eprintln!(
+        "站点建在 {site_dir}（{} 页，{resources} 个资源）",
+        site.pages().len()
+    );
     if site.is_empty() {
         eprintln!("正文目录里还没有页面 —— `mdpp new 甲` 建一页试试");
     }
@@ -276,14 +368,28 @@ fn report(project: &Project, site: &Site, missing: &[Missing], broken: &Broken) 
         );
     }
 
-    if !site.others().is_empty() {
+    if !absent.is_empty() {
+        eprintln!("正文引了这些文件，而 pages/ 里没有：");
+        for one in absent {
+            eprintln!("  {one}");
+        }
+    }
+
+    // `pages/` 下不是页面的文件有两种下场：被引用了就进了 `assets/`，剩下的才白放着
+    let idle: Vec<&str> = site
+        .others()
+        .iter()
+        .map(String::as_str)
+        .filter(|relative| !taken.iter().any(|one| one == *relative))
+        .collect();
+    if !idle.is_empty() {
         eprintln!(
-            "pages/ 下这些文件不是页面，没有进站点（这一版不拷附件）：{}",
-            site.others().join("、")
+            "pages/ 下这些文件没被任何一页引用，没有进站点：{}",
+            idle.join("、")
         );
     }
 
-    if missing.is_empty() && broken.pages.is_empty() {
+    if missing.is_empty() && broken.pages.is_empty() && absent.is_empty() {
         eprintln!("没有红链，也没有块问题。");
     }
 }
@@ -565,6 +671,136 @@ mod tests {
         build_ok(&project).expect("出得来");
         let html = output_of(&project, "index");
         assert!(!html.contains("mdpp-foot"), "{html}");
+    }
+
+    /// 正文引用的本地文件被拷进 `assets/`，而页面上的地址改到那儿去
+    #[test]
+    fn a_referenced_image_lands_in_assets_with_its_address_fixed() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let root = dir.path().join("站点");
+        crate::project::init::run(&crate::options::Init {
+            dir: Some(root.clone()),
+            name: Some(TEST_SITE.to_string()),
+        })
+        .expect("建得出");
+        // 一张在页面同级，一张在正文根下：两个都要落到 assets/ 下的不同位置
+        std::fs::create_dir_all(root.join("pages/指南")).expect("建得出");
+        std::fs::write(root.join("pages/指南/桥.png"), "桥").expect("写得下");
+        std::fs::write(root.join("pages/字.png"), "字").expect("写得下");
+        std::fs::write(root.join("pages/指南/安装.mdpp"), "# 安装\n\n![桥](桥.png)\n")
+            .expect("写得下");
+        let project = Project::load(&root).expect("读得动");
+
+        build_ok(&project).expect("出得来");
+
+        // 资源真的在产物里
+        let assets = project.site_dir().join("assets");
+        assert_eq!(
+            std::fs::read_to_string(assets.join("指南/桥.png")).expect("没拷"),
+            "桥"
+        );
+
+        // 地址改到了 assets/，而且是**数对层数**的（安装页在 指南/ 下面）
+        let html = output_of(&project, "指南/安装");
+        assert!(
+            html.contains(r#"src="../../assets/指南/桥.png""#),
+            "{html}"
+        );
+        // 没引用的那张不进站点
+        assert!(!assets.join("字.png").exists(), "没被引用却拷进去了");
+    }
+
+    /// 引了而 pages/ 里没有的文件要报出来，而且 `--strict` 下算失败
+    #[test]
+    fn a_reference_to_nothing_is_reported_and_can_fail_the_build() {
+        let (_dir, project) = project_with(&[("甲.mdpp", "# 甲\n\n![没有](没有这张.png)\n")]);
+
+        // 默认只报出来，不拦住 build —— 写到还没放的文件是常事
+        build_ok(&project).expect("默认该出得来");
+        let html = std::fs::read_to_string(
+            project.site_dir().join("甲/index.html"),
+        )
+        .expect("读得动");
+        // 找不到就**原样留着**（地址一个字不改），而报告里说的是作者写下的那一份
+        assert!(
+            html.contains(r#"src="没有这张.png""#),
+            "找不到就不该改地址：{html}"
+        );
+
+        let message = build(
+            &project,
+            &Build {
+                clean: false,
+                strict: true,
+            },
+        )
+        .expect_err("本该失败");
+        assert!(message.contains("资源缺"), "{message}");
+    }
+
+    /// 标签页上那个图标：拷进 `assets/`，每个页面上的地址按深度加前缀
+    #[test]
+    fn the_favicon_lands_in_assets_and_is_referenced_by_every_page() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let root = dir.path().join("站点");
+        crate::project::init::run(&crate::options::Init {
+            dir: Some(root.clone()),
+            name: Some(TEST_SITE.to_string()),
+        })
+        .expect("建得出");
+        std::fs::create_dir_all(root.join("assets")).expect("建得出");
+        std::fs::write(root.join("assets/icon.svg"), "<svg/>").expect("写得下");
+        std::fs::create_dir_all(root.join("pages/指南")).expect("建得出");
+        std::fs::write(
+            root.join("mdpp.toml"),
+            "site_name = \"测试站点\"\nfavicon = \"assets/icon.svg\"\n",
+        )
+        .expect("改得下");
+        std::fs::write(root.join("pages/指南/安装.mdpp"), "# 安装\n").expect("写得下");
+        let project = Project::load(&root).expect("读得动");
+
+        build_ok(&project).expect("出得来");
+        assert!(
+            project.site_dir().join("assets/icon.svg").is_file(),
+            "图标没拷进产物"
+        );
+        assert!(
+            output_of(&project, "index").contains(r#"<link rel="icon" href="assets/icon.svg">"#),
+            "{}",
+            output_of(&project, "index")
+        );
+        // 嵌套页的地址要数对层数
+        assert!(
+            output_of(&project, "指南/安装")
+                .contains(r#"<link rel="icon" href="../../assets/icon.svg">"#),
+            "{}",
+            output_of(&project, "指南/安装")
+        );
+    }
+
+    /// 配了 favicon 却读不到就报错 —— 那是一个笔误，而读不到的小图标只会静悄悄地
+    /// 让浏览器画一个默认的
+    #[test]
+    fn a_favicon_that_cannot_be_read_says_so() {
+        let (_dir, project) = project_with(&[]);
+        std::fs::write(
+            project.root.join("mdpp.toml"),
+            "site_name = \"测试站点\"\nfavicon = \"没有这个.svg\"\n",
+        )
+        .expect("改得下");
+        let project = Project::load(&project.root).expect("读得动");
+
+        let message = build_ok(&project).unwrap_err();
+        assert!(message.contains("favicon"), "{message}");
+        assert!(message.contains("没有这个.svg"), "{message}");
+    }
+
+    /// 不写 favicon 就没有那个 `<link>` —— 浏览器自己画一个
+    #[test]
+    fn no_favicon_means_no_link_tag() {
+        let (_dir, project) = project_with(&[]);
+        build_ok(&project).expect("出得来");
+        assert!(!output_of(&project, "index").contains("rel=\"icon\""), "不该有那个 link");
     }
 
     /// 站点那份外壳样式只在 build 里 —— 单文件页面里不该有那一列

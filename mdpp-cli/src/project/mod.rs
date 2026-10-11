@@ -12,6 +12,7 @@
 //! 找不到就说「这不是一个项目」，并指向 `mdpp init`。**不猜**：在一个普通的笔记目录里
 //! 悄悄建出站点，比报错糟糕得多。
 
+pub mod assets;
 pub mod build;
 pub mod config;
 pub mod init;
