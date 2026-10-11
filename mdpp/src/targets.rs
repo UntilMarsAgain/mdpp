@@ -10,33 +10,20 @@
 //! 认不出的写法原样留着（返回 `None`）：尖括号写法本来就对、跨行的目标不碰、带引号的
 //! 多半还挂着标题 —— 那几种交给标准解析器。
 
+use crate::raw::{FenceLine, Fences};
+
 /// 把一段 markdown 里链接目标中的空格补成 `%20`。
 pub fn encode_target_spaces(markdown: &str) -> String {
     let mut out = String::with_capacity(markdown.len());
-    // 当前在不在围栏代码块里（记的是围栏用的记号：` 还是 ~）
-    let mut fence: Option<char> = None;
+    // 围栏代码块里的东西一个字都不改：那是给人看的例子。判定走 [`crate::raw`]，
+    // 与分节那一步共用一个状态机 —— 两处各写一份的话迟早会对不上
+    let mut fences = Fences::default();
 
     for line in markdown.split_inclusive('\n') {
-        let trimmed = line.trim_start();
-        let marker = trimmed.chars().next().filter(|ch| *ch == '`' || *ch == '~');
-        if let Some(marker) = marker {
-            let run = trimmed.chars().take_while(|ch| *ch == marker).count();
-            if run >= 3 {
-                match fence {
-                    Some(open) if open == marker => fence = None,
-                    None => fence = Some(marker),
-                    // 另一种记号：不配对，当普通一行
-                    _ => {}
-                }
-                out.push_str(line);
-                continue;
-            }
-        }
-
-        if fence.is_some() {
-            out.push_str(line);
-        } else {
-            out.push_str(&encode_line_targets(line));
+        match fences.feed(line) {
+            // 围栏里（含分隔行本身）：照搬
+            FenceLine::Delimiter | FenceLine::Inside => out.push_str(line),
+            FenceLine::Outside => out.push_str(&encode_line_targets(line)),
         }
     }
     out
