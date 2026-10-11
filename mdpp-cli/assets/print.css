@@ -53,6 +53,22 @@
     padding-top: 0.6em;
   }
 
+  /* 导航框折起来时屏幕上只有标题栏，纸上要展开 —— 与选项卡同一条理由。
+   * 标题栏那个按钮在纸上没意义（纸上也点不动），藏掉。 */
+  .mdpp-content .navbox__body[hidden] {
+    display: block !important;
+  }
+
+  .mdpp-content .navbox__toggle {
+    display: none;
+  }
+
+  /* 嵌进去的子导航框在纸上不该再缩在竖线里 —— 纸上看不出层次 */
+  .mdpp-content .navbox--nested {
+    margin: 0;
+    border-left: 0;
+  }
+
   /* 信息栏在屏幕上浮在右边绕着正文走，纸上浮动只会让它只占半页 */
   .mdpp-content .aside {
     float: none;

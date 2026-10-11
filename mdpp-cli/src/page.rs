@@ -36,6 +36,8 @@ pub const DEFAULT_CSS: &str = concat!(
     "\n",
     include_str!("../assets/panels.css"),
     "\n",
+    include_str!("../assets/navbox.css"),
+    "\n",
     include_str!("../assets/embeds.css"),
     "\n",
     include_str!("../assets/print.css"),
@@ -175,6 +177,32 @@ mod tests {
         assert!(html.contains("tabs__tab--on"), "{html}");
     }
 
+    /// 导航框的开关也要接上 —— 与选项卡同一个分工
+    #[test]
+    fn the_script_binds_the_navbox_toggle_too() {
+        assert!(DEFAULT_JS.contains(".navbox__toggle"), "{}", DEFAULT_JS);
+        assert!(DEFAULT_JS.contains(".navbox__body"), "{}", DEFAULT_JS);
+        // 按钮上那两个字由渲染器落在 data-label-* 上，脚本里不硬编码中文
+        assert!(DEFAULT_JS.contains("data-label-show"), "{}", DEFAULT_JS);
+        assert!(DEFAULT_JS.contains("data-label-hide"), "{}", DEFAULT_JS);
+    }
+
+    /// **按钮上的字要跟着状态换。** 少了这一步，按钮会一直停在「显示」上，
+    /// 而内容已经展开了 —— 页面看着正常，而那个字在说谎。
+    #[test]
+    fn the_toggle_label_is_swapped_by_the_state_change() {
+        let fold = DEFAULT_JS
+            .split("function fold")
+            .nth(1)
+            .expect("脚本里该有 fold 那一步");
+        let fold = &fold[..fold.find("\n  }").expect("fold 有个头")];
+        assert!(
+            fold.contains("wasCollapsed ? \"data-label-hide\" : \"data-label-show\""),
+            "按钮的字没跟着状态换：\n{fold}"
+        );
+        assert!(fold.contains("textContent = next"), "\n{fold}");
+    }
+
     #[test]
     fn a_theme_lands_on_the_html_element() {
         let html = full_document("t", "x", Some("dark"), &[], &[]);
@@ -243,6 +271,7 @@ mod tests {
             ("text.css", "title-block"),
             ("media.css", "figcaption"),
             ("panels.css", "theme__part--dark"),
+            ("navbox.css", "navbox__group"),
             ("embeds.css", "math--display"),
             ("print.css", "attr(data-label)"),
         ] {
