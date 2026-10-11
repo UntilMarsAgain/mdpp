@@ -169,14 +169,16 @@ fn an_unknown_subcommand_is_a_usage_error() {
     assert!(stderr_of(&out).contains("buidl"), "{}", stderr_of(&out));
 }
 
-/// `serve` 是个占位：明说没做，别让人以为站点坏了
+/// `serve` 在不是项目的目录里也要说清是哪一个 —— 它跟 build 一样先找项目
 #[test]
-fn serve_says_it_is_not_implemented_yet() {
+fn serve_outside_a_project_says_so() {
     let dir = empty_dir();
     let out = mdpp(dir.path(), &["serve"]);
 
     assert!(!out.status.success());
-    let message = stderr_of(&out);
-    assert!(message.contains("还没实现"), "{message}");
-    assert!(message.contains("mdpp build"), "{message}");
+    assert!(
+        stderr_of(&out).contains("不是一个 mdpp 项目"),
+        "{}",
+        stderr_of(&out)
+    );
 }

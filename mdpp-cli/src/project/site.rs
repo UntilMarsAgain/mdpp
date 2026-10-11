@@ -129,11 +129,6 @@ impl Site {
         &self.others
     }
 
-    /// 一页都没有
-    pub fn is_empty(&self) -> bool {
-        self.pages.is_empty()
-    }
-
     /// 按归一后的键查
     pub fn by_key(&self, key: &str) -> Option<&Page> {
         self.by_key.get(key).map(|at| &self.pages[*at])

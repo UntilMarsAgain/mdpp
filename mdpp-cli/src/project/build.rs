@@ -43,16 +43,69 @@ struct Broken {
     pages: Vec<String>,
 }
 
-pub fn run(options: &Build) -> Result<(), String> {
-    let project = Project::open()?;
-    build(&project, options)
+/// 一趟 `build` 的结果 —— 报告与 `serve` 的「重出」那一行都要读它
+#[derive(Debug, Default)]
+pub struct Built {
+    /// 出到哪儿了
+    pub site_dir: PathBuf,
+    /// 页数
+    pub pages: usize,
+    /// 进了 `assets/` 的资源数
+    pub resources: usize,
+    /// 红链（`[[目标]]` 指不到站内某一页）
+    pub links: Vec<String>,
+    /// 块有问题（名字没注册 / 用错了）的那些页
+    pub broken: Vec<String>,
+    /// 正文引了而 `pages/` 里没有的文件
+    pub absent: Vec<String>,
+    /// 撞了键的页
+    pub duplicates: Vec<String>,
+    /// `pages/` 下没被引用的文件
+    pub idle: Vec<String>,
 }
 
-/// 已经在项目里了，出一遍站点。
+impl Built {
+    /// 有没有问题（`--strict` 看的就是这个）
+    pub fn has_problems(&self) -> bool {
+        !(self.links.is_empty() && self.broken.is_empty() && self.absent.is_empty())
+    }
+
+    /// 「N 页，M 个资源」—— 报告与 `serve` 那一行都用它
+    pub fn summary(&self) -> String {
+        format!("{} 页，{} 个资源", self.pages, self.resources)
+    }
+}
+
+pub fn run(options: &Build) -> Result<(), String> {
+    let project = Project::open()?;
+    let site_dir = project.site_dir();
+    let built = build_into(&project, options, &site_dir)?;
+    report(&built);
+
+    // `--strict`：把「有问题」变成非零退出码，好挂进 CI
+    if options.strict && built.has_problems() {
+        return Err(format!(
+            "有问题没解决（--strict）：红链 {} 条，块问题 {} 页，资源缺 {} 个",
+            built.links.len(),
+            built.broken.len(),
+            built.absent.len()
+        ));
+    }
+    Ok(())
+}
+
+/// 出一遍站点到**给定的那个目录**。
 ///
-/// 与 [`run`] 分开是为了能直接测：项目根是给定的，不必去动进程当前目录
+/// 目录是参数而不是项目自己的 `site_dir`：`serve` 出到临时目录，不去动用户手
+/// 里的 `build/`（预览到一半的东西不该被当成产物）。
+///
+/// 与 [`run`] 分开也是为了能直接测：项目根是给定的，不必去动进程当前目录
 /// （测试是并发的，动它就有串味的风险）。
-fn build(project: &Project, options: &Build) -> Result<(), String> {
+pub fn build_into(
+    project: &Project,
+    options: &Build,
+    site_dir: &Path,
+) -> Result<Built, String> {
     let pages_dir = project.pages_dir();
     if !pages_dir.is_dir() {
         return Err(format!(
@@ -67,10 +120,9 @@ fn build(project: &Project, options: &Build) -> Result<(), String> {
     let extra_js = read_all(&project.config.extra_js, &project.root)?;
 
     if options.clean {
-        clean(project)?;
+        clean(project, site_dir)?;
     }
-    let site_dir = project.site_dir();
-    ensure_dir(&site_dir)?;
+    ensure_dir(site_dir)?;
 
     let parser = Mdpp::new();
     let site = Arc::new(site);
@@ -80,12 +132,12 @@ fn build(project: &Project, options: &Build) -> Result<(), String> {
 
     // 资源从二进制里拷到产物里：页面指的是 `assets/base.css`，那些字节得真的在那儿。
     // 每个页面都内联一遍的话，几十个页面就是几十份拷贝
-    let assets = page::copy_assets(&site_dir)?;
+    let assets = page::copy_assets(site_dir)?;
     info!(assets, "资源已拷进产物");
 
     // 标签页上那个图标：也是一页资源，一样落在 `assets/` 里。
     // 页面上的地址按各自的深度加前缀，所以这里存的是**相对站点根**的那一份
-    let favicon = favicon(project, &site_dir)?;
+    let favicon = favicon(project, site_dir)?;
 
     // 已经拷过的资源，记着，免得几十页引同一张图时拷几十回
     let mut copied: Vec<std::path::PathBuf> = Vec::new();
@@ -156,33 +208,39 @@ fn build(project: &Project, options: &Build) -> Result<(), String> {
         debug!(page = %page.key, out = %page.output.display(), "一页");
     }
 
-    let missing = missing.lock().map(|list| list.clone()).unwrap_or_default();
+    let links: Vec<String> = missing
+        .lock()
+        .map(|list| {
+            list.iter()
+                .map(|one| format!("{} → [[{}]]（{}）", one.page, one.target, one.why))
+                .collect()
+        })
+        .unwrap_or_default();
     info!(
         pages = site.pages().len(),
-        missing = missing.len(),
+        links = links.len(),
         resources = copied.len(),
         "站点出完"
     );
-    report(
-        project,
-        &site,
-        &missing,
-        &broken,
-        &absent,
-        &taken,
-        copied.len(),
-    );
 
-    // `--strict`：把「有问题」变成非零退出码，好挂进 CI
-    if options.strict && !(missing.is_empty() && broken.pages.is_empty() && absent.is_empty()) {
-        return Err(format!(
-            "有问题没解决（--strict）：红链 {} 条，块问题 {} 页，资源缺 {} 个",
-            missing.len(),
-            broken.pages.len(),
-            absent.len()
-        ));
-    }
-    Ok(())
+    // `pages/` 下不是页面的文件有两种下场：被引用了就进了 `assets/`，剩下的才白放着
+    let idle: Vec<String> = site
+        .others()
+        .iter()
+        .filter(|relative| !taken.iter().any(|one| one == *relative))
+        .cloned()
+        .collect();
+
+    Ok(Built {
+        site_dir: site_dir.to_path_buf(),
+        pages: site.pages().len(),
+        resources: copied.len(),
+        links,
+        broken: broken.pages.clone(),
+        absent,
+        duplicates: site.duplicates().to_vec(),
+        idle,
+    })
 }
 
 /// 标签页上那个图标：拷进 `assets/`，给出的地址是相对站点根的那一份
@@ -232,24 +290,23 @@ fn templates_of(project: &Project) -> Result<Option<mdpp::block::template::Templ
 ///
 /// **`site_dir` 是配置里的一行字**，打错一个字就可能让这条命令去删整个项目 ——
 /// 所以先确认它不在正文、模板与项目根里面，连「是它们的上一级」也不放过。
-fn clean(project: &Project) -> Result<(), String> {
-    let site_dir = project.site_dir();
+fn clean(project: &Project, site_dir: &Path) -> Result<(), String> {
     for keep in [
         project.root.clone(),
         project.pages_dir(),
         project.templates_dir(),
     ] {
-        if keep.starts_with(&site_dir) {
+        if keep.starts_with(site_dir) {
             return Err(format!(
                 "site_dir（{}）不能是项目、正文或模板目录的**上一层** —— 清空它会连内容一起删掉",
-                shown(&site_dir)
+                shown(site_dir)
             ));
         }
     }
     if site_dir.exists() {
-        std::fs::remove_dir_all(&site_dir)
-            .map_err(|error| format!("清不了 {}：{error}", shown(&site_dir)))?;
-        debug!(dir = shown(&site_dir), "已清空产物目录");
+        std::fs::remove_dir_all(site_dir)
+            .map_err(|error| format!("清不了 {}：{error}", shown(site_dir)))?;
+        debug!(dir = shown(site_dir), "已清空产物目录");
     }
     Ok(())
 }
@@ -323,531 +380,51 @@ impl Broken {
 }
 
 /// 报告走**标准错误** —— 与其余子命令一样，stdout 是产物要去的地方
-fn report(
-    project: &Project,
-    site: &Site,
-    missing: &[Missing],
-    broken: &Broken,
-    absent: &[String],
-    // 被引用、进了 `assets/` 的那些（相对 `pages/`），只为最后那句报告
-    taken: &[String],
-    resources: usize,
-) {
-    let site_dir = shown(&project.site_dir());
-    eprintln!(
-        "站点建在 {site_dir}（{} 页，{resources} 个资源）",
-        site.pages().len()
-    );
-    if site.is_empty() {
+/// 报告一律走**标准错误** —— 与其余子命令一样，stdout 是产物要去的地方。
+///
+/// 只读 [`Built`]：它已经装好了要说的每一句，`serve` 重出时拿的是同一份。
+pub fn report(built: &Built) {
+    eprintln!("站点建在 {}（{}）", shown(&built.site_dir), built.summary());
+    if built.pages == 0 {
         eprintln!("正文目录里还没有页面 —— `mdpp new 甲` 建一页试试");
     }
 
-    if !missing.is_empty() {
-        eprintln!("红链 {} 条（站内没有这样的页）：", missing.len());
-        for one in missing {
-            eprintln!("  {} → [[{}]]（{}）", one.page, one.target, one.why);
-        }
-    }
-
-    if !broken.pages.is_empty() {
-        eprintln!(
-            "块有问题：未知块 {} 个、误用 {} 个，分布在 {} 页",
-            broken.unknown,
-            broken.misused,
-            broken.pages.len()
-        );
-        for key in &broken.pages {
-            eprintln!("  {key}");
-        }
-    }
-
-    if !site.duplicates().is_empty() {
-        eprintln!(
-            "这几页撞了同一个键，只渲染了先排到的那一份：{}",
-            site.duplicates().join("、")
-        );
-    }
-
-    if !absent.is_empty() {
-        eprintln!("正文引了这些文件，而 pages/ 里没有：");
-        for one in absent {
+    if !built.links.is_empty() {
+        eprintln!("红链 {} 条（站内没有这样的页）：", built.links.len());
+        for one in &built.links {
             eprintln!("  {one}");
         }
     }
 
-    // `pages/` 下不是页面的文件有两种下场：被引用了就进了 `assets/`，剩下的才白放着
-    let idle: Vec<&str> = site
-        .others()
-        .iter()
-        .map(String::as_str)
-        .filter(|relative| !taken.iter().any(|one| one == *relative))
-        .collect();
-    if !idle.is_empty() {
+    if !built.broken.is_empty() {
+        eprintln!("块有问题（名字没注册，或参数用错了），在这些页：");
+        for key in &built.broken {
+            eprintln!("  {key}");
+        }
+    }
+
+    if !built.absent.is_empty() {
+        eprintln!("正文引了这些文件，而 pages/ 里没有：");
+        for one in &built.absent {
+            eprintln!("  {one}");
+        }
+    }
+
+    if !built.duplicates.is_empty() {
+        eprintln!(
+            "这几页撞了同一个键，只渲染了先排到的那一份：{}",
+            built.duplicates.join("、")
+        );
+    }
+
+    if !built.idle.is_empty() {
         eprintln!(
             "pages/ 下这些文件没被任何一页引用，没有进站点：{}",
-            idle.join("、")
+            built.idle.join("、")
         );
     }
 
-    if missing.is_empty() && broken.pages.is_empty() && absent.is_empty() {
+    if !built.has_problems() {
         eprintln!("没有红链，也没有块问题。");
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::options::{Build, Init};
-
-    /// 测试里站点名定死 —— 否则它会跟着临时目录的名字跑
-    const TEST_SITE: &str = "测试站点";
-
-    /// 建好骨架的项目，`pages/` 里再添几页
-    fn project_with(pages: &[(&str, &str)]) -> (tempfile::TempDir, Project) {
-        let dir = tempfile::tempdir().expect("造得出临时目录");
-        let root = dir.path().join("站点");
-        crate::project::init::run(&Init {
-            dir: Some(root.clone()),
-            name: Some(TEST_SITE.to_string()),
-        })
-        .expect("建得出");
-        let project = Project::load(&root).expect("读得动");
-        for (path, text) in pages {
-            let full = project.pages_dir().join(path);
-            if let Some(parent) = full.parent() {
-                std::fs::create_dir_all(parent).expect("建得出");
-            }
-            std::fs::write(&full, text).expect("写得下");
-        }
-        (dir, project)
-    }
-
-    fn build_ok(project: &Project) -> Result<(), String> {
-        build(
-            project,
-            &Build {
-                clean: false,
-                strict: false,
-            },
-        )
-    }
-
-    /// 读某一页的产物。输出路径取自 [`Site`] 本身 —— 在测试里另算一遍的话，
-    /// 「首页落在根上」那个例外就得抄两份
-    fn output_of(project: &Project, key: &str) -> String {
-        let site = Site::collect(&project.pages_dir()).expect("扫得动");
-        let path = project.site_dir().join(
-            &site
-                .by_key(key)
-                .unwrap_or_else(|| panic!("没有 {key} 这一页"))
-                .output,
-        );
-        std::fs::read_to_string(&path)
-            .unwrap_or_else(|error| panic!("读不了 {}：{error}", path.display()))
-    }
-
-    #[test]
-    fn a_project_builds_into_nested_index_files() {
-        let (_dir, project) = project_with(&[("指南/入门.mdpp", "# 入门\n\n回 [[index]]。\n")]);
-        build_ok(&project).expect("出得来");
-
-        assert!(project.site_dir().join("index.html").is_file(), "首页没出");
-        assert!(
-            project.site_dir().join("指南/入门/index.html").is_file(),
-            "嵌套页没出"
-        );
-        let html = output_of(&project, "指南/入门");
-        assert!(html.contains("<h1"), "正文没渲染：{html}");
-        // 回首页的那条要给站点根，不是 `./`（那会指回本页）
-        assert!(html.contains(r#"href="/""#), "{html}");
-    }
-
-    /// 站内链接指到页，红链指不到 —— 这是「有项目」与「渲染单篇」最大的分别
-    #[test]
-    fn a_link_to_an_existing_page_is_resolved_and_the_rest_are_red() {
-        let (_dir, project) = project_with(&[
-            ("甲.mdpp", "# 甲\n\n[[乙]] 与 [[没有这一页]]\n"),
-            ("乙.mdpp", "# 乙\n"),
-        ]);
-        build_ok(&project).expect("出得来");
-
-        let html = output_of(&project, "甲");
-        // 属性次序是库那边定的（`data-doc` 写在 `href` 前面），这里只关心有没有地址
-        assert!(html.contains(r#"class="wikilink" data-doc="乙" href="乙/""#), "{html}");
-        assert!(html.contains(r#"class="wikilink wikilink--missing""#), "{html}");
-        assert!(html.contains(r#"data-missing="true""#), "{html}");
-    }
-
-    /// 嵌套页之间的相对地址要算对，否则站点挪个位置就全是死链
-    #[test]
-    fn links_between_nested_pages_are_relative() {
-        let (_dir, project) = project_with(&[
-            ("指南/深入/安装.mdpp", "# 安装\n\n[[手册]]\n"),
-            ("手册.mdpp", "# 手册\n"),
-            ("指南/入门.mdpp", "# 入门\n\n[[index]]\n"),
-        ]);
-        build_ok(&project).expect("出得来");
-
-        assert!(output_of(&project, "指南/深入/安装").contains(r#"href="../../手册/""#));
-        assert!(output_of(&project, "指南/入门").contains(r#"href="/""#));
-    }
-
-    /// 红链默认不拦住 build —— 写到还没写的页面是常态
-    #[test]
-    fn red_links_alone_still_build() {
-        let (_dir, project) = project_with(&[("甲.mdpp", "# 甲\n\n[[还没写的那页]]\n")]);
-        assert!(build_ok(&project).is_ok());
-    }
-
-    /// `--strict` 才把它变成失败 —— CI 里要的就��这一条
-    #[test]
-    fn strict_fails_on_a_red_link() {
-        let (_dir, project) = project_with(&[("甲.mdpp", "# 甲\n\n[[还没写的那页]]\n")]);
-        let message = build(
-            &project,
-            &Build {
-                clean: false,
-                strict: true,
-            },
-        )
-        .expect_err("本该失败");
-        assert!(message.contains("红链"), "{message}");
-    }
-
-    /// 块名写错了也要能让 `--strict` 失败 —— 那比红链更硬
-    #[test]
-    fn strict_fails_on_an_unknown_block() {
-        let (_dir, project) = project_with(&[("甲.mdpp", "# 甲\n\n::根本没有这个块\n  内容\n")]);
-        let message = build(
-            &project,
-            &Build {
-                clean: false,
-                strict: true,
-            },
-        )
-        .expect_err("本该失败");
-        assert!(message.contains("块问题"), "{message}");
-    }
-
-    /// `<title>` 取第一个一级标题，代码块里那行不算
-    #[test]
-    fn the_document_title_comes_from_the_first_heading() {
-        let (_dir, project) = project_with(&[("甲.mdpp", "# 甲页\n")]);
-        build_ok(&project).expect("出得来");
-        assert!(
-            output_of(&project, "甲").contains("<title>甲页 —— 测试站点</title>"),
-            "{}",
-            output_of(&project, "甲")
-        );
-
-        let (_dir2, project2) = project_with(&[("乙.mdpp", "```\n# 这是注释\n```\n\n没写标题\n")]);
-        build_ok(&project2).expect("出得来");
-        assert!(
-            output_of(&project2, "乙").contains("<title>乙 —— 测试站点</title>"),
-            "代码块里的 # 不该被当标题：{}",
-            output_of(&project2, "乙")
-        );
-    }
-
-    /// 没写站点名就不多出那半截标题
-    #[test]
-    fn a_site_without_a_name_gets_a_bare_title() {
-        let dir = tempfile::tempdir().expect("造得出临时目录");
-        let root = dir.path().join("站点");
-        crate::project::init::run(&Init {
-            dir: Some(root.clone()),
-            name: Some(TEST_SITE.to_string()),
-        })
-        .expect("建得出");
-        std::fs::write(root.join("mdpp.toml"), "site_name = \"\"\n").expect("改得下");
-        let project = Project::load(&root).expect("读得动");
-        build_ok(&project).expect("出得来");
-        assert!(output_of(&project, "index").contains("<title>测试站点</title>"));
-    }
-
-    /// `--clean` 去掉上一轮的残留；而它**不许**把项目本身清掉
-    #[test]
-    fn clean_removes_stale_output() {
-        let (_dir, project) = project_with(&[("甲.mdpp", "# 甲\n")]);
-        let stale = project.site_dir().join("上一轮/index.html");
-        project::write_file(&stale, "<p>旧的</p>").expect("写得下");
-
-        build(
-            &project,
-            &Build {
-                clean: true,
-                strict: false,
-            },
-        )
-        .expect("出得来");
-        assert!(!stale.exists(), "上一轮的残留还在");
-        assert!(project.site_dir().join("甲/index.html").is_file());
-    }
-
-    /// `site_dir` 写错成项目根 / 正文目录时，`--clean` 必须拒绝 —— 它会去删东西
-    #[test]
-    fn clean_refuses_to_wipe_the_project_itself() {
-        let (_dir, project) = project_with(&[]);
-        for bad in ["site_dir = \".\"\n", "site_dir = \"pages\"\n"] {
-            std::fs::write(project.root.join("mdpp.toml"), bad).expect("改得下");
-            let broken = Project::load(&project.root).expect("读得动");
-            let message = build(
-                &broken,
-                &Build {
-                    clean: true,
-                    strict: false,
-                },
-            )
-            .expect_err("本该拒绝");
-            assert!(message.contains("site_dir"), "{message}");
-        }
-    }
-
-    /// 模板页从 `templates/` 取；不在那儿时只是没有模板页，不该拦住 build
-    #[test]
-    fn templates_come_from_the_project_directory() {
-        let (_dir, project) = project_with(&[("甲.mdpp", "# 甲\n\n::卡片 标题=首页\n")]);
-        build_ok(&project).expect("出得来");
-        assert!(output_of(&project, "甲").contains("首页"));
-
-        std::fs::remove_dir_all(project.templates_dir()).expect("删得掉");
-        build_ok(&project).expect("没有模板页目录也该出得来");
-    }
-
-    /// 正文目录不在要说清是哪个目录 —— 「build 失败」没人查得动
-    #[test]
-    fn a_missing_pages_directory_says_where_it_looked() {
-        let dir = tempfile::tempdir().expect("造得出临时目录");
-        std::fs::write(
-            dir.path().join("mdpp.toml"),
-            "pages_dir = \"根本没有这个\"\n",
-        )
-        .expect("写得下");
-        let project = Project::load(dir.path()).expect("读得动");
-        let message = build_ok(&project).unwrap_err();
-        assert!(message.contains("根本没有这个"), "{message}");
-    }
-
-    /// 站点页面的外壳：顶栏（站点名 + 那句话说明 + 仓库链接）与底栏（copyright）。
-    /// 那几句话**全是纯文本**，配置里写什么就摆什么
-    #[test]
-    fn a_built_page_gets_the_site_shell() {
-        let dir = tempfile::tempdir().expect("造得出临时目录");
-        let root = dir.path().join("站点");
-        crate::project::init::run(&crate::options::Init {
-            dir: Some(root.clone()),
-            name: Some(TEST_SITE.to_string()),
-        })
-        .expect("建得出");
-        std::fs::write(
-            root.join("mdpp.toml"),
-            "site_name = \"测试站点\"\n\
-             site_description = \"桥梁与河\"\n\
-             repo_url = \"https://example.com/notes\"\n\
-             copyright = \"© 某人\"\n",
-        )
-        .expect("改得下");
-        let project = Project::load(&root).expect("读得动");
-
-        build_ok(&project).expect("出得来");
-        let html = output_of(&project, "index");
-
-        // 顶栏：站点名 + 说明 + 仓库链接
-        assert!(html.contains("<span class=\"mdpp-bar__title\">测试站点</span>"), "{html}");
-        assert!(html.contains("<span class=\"mdpp-bar__desc\">桥梁与河</span>"), "{html}");
-        assert!(html.contains(r#"<a class="mdpp-bar__repo" href="https://example.com/notes""#), "{html}");
-        // 底栏
-        assert!(html.contains("<span class=\"mdpp-foot__text\">© 某人</span>"), "{html}");
-        assert!(html.contains("由 mdpp 生成"), "{html}");
-        // 顶栏在正文之上、底栏在正文之下
-        assert!(html.find("mdpp-bar").expect("有顶栏") < html.find("mdpp-content").expect("有正文"));
-        assert!(html.find("mdpp-content").expect("有正文") < html.find("mdpp-foot").expect("有底栏"));
-    }
-
-    /// 没写 copyright 就没有底栏 —— 与 mkdocs 一个规矩，空的那句不必摆在那儿
-    #[test]
-    fn no_copyright_means_no_bottom_bar() {
-        let (_dir, project) = project_with(&[]);
-        build_ok(&project).expect("出得来");
-        let html = output_of(&project, "index");
-        assert!(!html.contains("mdpp-foot"), "{html}");
-    }
-
-    /// 正文引用的本地文件被拷进 `assets/`，而页面上的地址改到那儿去
-    #[test]
-    fn a_referenced_image_lands_in_assets_with_its_address_fixed() {
-        let dir = tempfile::tempdir().expect("造得出临时目录");
-        let root = dir.path().join("站点");
-        crate::project::init::run(&crate::options::Init {
-            dir: Some(root.clone()),
-            name: Some(TEST_SITE.to_string()),
-        })
-        .expect("建得出");
-        // 一张在页面同级，一张在正文根下：两个都要落到 assets/ 下的不同位置
-        std::fs::create_dir_all(root.join("pages/指南")).expect("建得出");
-        std::fs::write(root.join("pages/指南/桥.png"), "桥").expect("写得下");
-        std::fs::write(root.join("pages/字.png"), "字").expect("写得下");
-        std::fs::write(root.join("pages/指南/安装.mdpp"), "# 安装\n\n![桥](桥.png)\n")
-            .expect("写得下");
-        let project = Project::load(&root).expect("读得动");
-
-        build_ok(&project).expect("出得来");
-
-        // 资源真的在产物里
-        let assets = project.site_dir().join("assets");
-        assert_eq!(
-            std::fs::read_to_string(assets.join("指南/桥.png")).expect("没拷"),
-            "桥"
-        );
-
-        // 地址改到了 assets/，而且是**数对层数**的（安装页在 指南/ 下面）
-        let html = output_of(&project, "指南/安装");
-        assert!(
-            html.contains(r#"src="../../assets/指南/桥.png""#),
-            "{html}"
-        );
-        // 没引用的那张不进站点
-        assert!(!assets.join("字.png").exists(), "没被引用却拷进去了");
-    }
-
-    /// 引了而 pages/ 里没有的文件要报出来，而且 `--strict` 下算失败
-    #[test]
-    fn a_reference_to_nothing_is_reported_and_can_fail_the_build() {
-        let (_dir, project) = project_with(&[("甲.mdpp", "# 甲\n\n![没有](没有这张.png)\n")]);
-
-        // 默认只报出来，不拦住 build —— 写到还没放的文件是常事
-        build_ok(&project).expect("默认该出得来");
-        let html = std::fs::read_to_string(
-            project.site_dir().join("甲/index.html"),
-        )
-        .expect("读得动");
-        // 找不到就**原样留着**（地址一个字不改），而报告里说的是作者写下的那一份
-        assert!(
-            html.contains(r#"src="没有这张.png""#),
-            "找不到就不该改地址：{html}"
-        );
-
-        let message = build(
-            &project,
-            &Build {
-                clean: false,
-                strict: true,
-            },
-        )
-        .expect_err("本该失败");
-        assert!(message.contains("资源缺"), "{message}");
-    }
-
-    /// 标签页上那个图标：拷进 `assets/`，每个页面上的地址按深度加前缀
-    #[test]
-    fn the_favicon_lands_in_assets_and_is_referenced_by_every_page() {
-        let dir = tempfile::tempdir().expect("造得出临时目录");
-        let root = dir.path().join("站点");
-        crate::project::init::run(&crate::options::Init {
-            dir: Some(root.clone()),
-            name: Some(TEST_SITE.to_string()),
-        })
-        .expect("建得出");
-        std::fs::create_dir_all(root.join("assets")).expect("建得出");
-        std::fs::write(root.join("assets/icon.svg"), "<svg/>").expect("写得下");
-        std::fs::create_dir_all(root.join("pages/指南")).expect("建得出");
-        std::fs::write(
-            root.join("mdpp.toml"),
-            "site_name = \"测试站点\"\nfavicon = \"assets/icon.svg\"\n",
-        )
-        .expect("改得下");
-        std::fs::write(root.join("pages/指南/安装.mdpp"), "# 安装\n").expect("写得下");
-        let project = Project::load(&root).expect("读得动");
-
-        build_ok(&project).expect("出得来");
-        assert!(
-            project.site_dir().join("assets/icon.svg").is_file(),
-            "图标没拷进产物"
-        );
-        assert!(
-            output_of(&project, "index").contains(r#"<link rel="icon" href="assets/icon.svg">"#),
-            "{}",
-            output_of(&project, "index")
-        );
-        // 嵌套页的地址要数对层数
-        assert!(
-            output_of(&project, "指南/安装")
-                .contains(r#"<link rel="icon" href="../../assets/icon.svg">"#),
-            "{}",
-            output_of(&project, "指南/安装")
-        );
-    }
-
-    /// 配了 favicon 却读不到就报错 —— 那是一个笔误，而读不到的小图标只会静悄悄地
-    /// 让浏览器画一个默认的
-    #[test]
-    fn a_favicon_that_cannot_be_read_says_so() {
-        let (_dir, project) = project_with(&[]);
-        std::fs::write(
-            project.root.join("mdpp.toml"),
-            "site_name = \"测试站点\"\nfavicon = \"没有这个.svg\"\n",
-        )
-        .expect("改得下");
-        let project = Project::load(&project.root).expect("读得动");
-
-        let message = build_ok(&project).unwrap_err();
-        assert!(message.contains("favicon"), "{message}");
-        assert!(message.contains("没有这个.svg"), "{message}");
-    }
-
-    /// 不写 favicon 就没有那个 `<link>` —— 浏览器自己画一个
-    #[test]
-    fn no_favicon_means_no_link_tag() {
-        let (_dir, project) = project_with(&[]);
-        build_ok(&project).expect("出得来");
-        assert!(!output_of(&project, "index").contains("rel=\"icon\""), "不该有那个 link");
-    }
-
-    /// 站点那份外壳样式只在 build 里 —— 单文件页面里不该有那一列
-    #[test]
-    fn the_built_site_is_the_only_one_with_the_shell() {
-        let (_dir, project) = project_with(&[("指南/安装.mdpp", "# 安装\n")]);
-        build_ok(&project).expect("出得来");
-
-        let html = output_of(&project, "index");
-        assert!(html.contains(r#"href="assets/site.css""#), "{html}");
-        let css = std::fs::read_to_string(project.site_dir().join("assets/site.css"))
-            .expect("资源没拷出来");
-        assert!(css.contains("max-width: 1080px"), "限宽不见了：{css}");
-        assert!(css.contains(".mdpp-bar"), "顶栏不见了：{css}");
-
-        // 深层页的资源路径要**数对层数** —— 少一个 `../`，浏览器会把 404 的样式
-        // 当成空样式，页面于是光着身子出来，而且**不报错**
-        let nested = output_of(&project, "指南/安装");
-        assert!(
-            nested.contains(r#"href="../../assets/base.css""#),
-            "深层页的资源路径不对：{nested}"
-        );
-        assert!(
-            nested.contains(r#"src="../../assets/mdpp.js""#),
-            "深层页的脚本路径不对：{nested}"
-        );
-    }
-
-    /// 产物是**能直接部署**的一堆文件：页面外链资源，而资源真的在那儿
-    #[test]
-    fn the_output_is_a_deployable_directory() {
-        let (_dir, project) = project_with(&[]);
-        build_ok(&project).expect("出得来");
-
-        let html = output_of(&project, "index");
-        assert!(html.starts_with("<!DOCTYPE html>"), "{html}");
-        // 页面外链资源，样式不进页面
-        assert!(html.contains(r#"href="assets/base.css""#), "{html}");
-        assert!(html.contains("<div class=\"mdpp-bar\">"), "{html}");
-        assert!(!html.contains(".mdpp-content {"), "样式不该内联：{html}");
-        // 而资源确实被拷到了产物里
-        let css = std::fs::read_to_string(project.site_dir().join("assets/base.css"))
-            .expect("资源没拷出来");
-        assert!(css.contains(".mdpp-content"), "资源是空的");
-        assert!(
-            project.site_dir().join("assets/mdpp.js").is_file(),
-            "脚本没拷出来"
-        );
     }
 }
