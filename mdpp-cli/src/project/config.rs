@@ -39,13 +39,13 @@ pub struct Config {
     #[serde(default = "default_site_dir")]
     pub site_dir: PathBuf,
 
-    /// 页首。markdown，渲染在每页正文之上（在卡片之外）。不写就没有
+    /// 底栏那句话。**空的就是没有底栏**（与 mkdocs 的 `copyright` 一个意思）
     #[serde(default)]
-    pub header: String,
+    pub copyright: String,
 
-    /// 页尾。markdown，渲染在每页正文之下（在卡片之外）。不写就没有
+    /// 顶栏右端那个仓库链接。空的就是没有那个链接
     #[serde(default)]
-    pub footer: String,
+    pub repo_url: String,
 
     /// 整页的主题：`light` 或 `dark`。不写就是默认的 `light`
     #[serde(default)]
@@ -75,8 +75,8 @@ impl Default for Config {
             pages_dir: default_pages_dir(),
             templates_dir: default_templates_dir(),
             site_dir: default_site_dir(),
-            header: String::new(),
-            footer: String::new(),
+            copyright: String::new(),
+            repo_url: String::new(),
             theme: None,
             lang: default_lang(),
             extra_css: Vec::new(),

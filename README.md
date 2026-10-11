@@ -107,22 +107,19 @@ cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 `mdpp build --strict` 让红链与写坏的块变成非零退出码，好挂进 CI。
 
 站点页面的外壳照着 [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/)
-那个样子来的 —— 顶上那条、正中一列、底下收个尾 —— 但有几处**故意不一样**：那一列是一张
+那个样子来的 —— 顶上那条、正中一列、底下收一条 —— 但有几处**故意不一样**：那一列是一张
 圆角卡片摆在浅一号的底上（mkdocs 那边是白底平铺）、顶栏是 `sticky` 而不是 `fixed`、
-页首页尾在卡片**之外**。这一层写死，没有开关；配色仍取自 `base.css` 的那组变量。
+底栏只有一句话加一句「由 mdpp 生成」。这一层写死，没有开关；配色仍取自 `base.css`
+的那组变量。
 
-页首与页尾写在 `mdpp.toml` 里（markdown，`[[链接]]` 照样解析），不写就没有：
+顶栏与底栏上那几句话由 `mdpp.toml` 给，**全是单行字符串** —— 与 mkdocs 的
+`site_name` / `site_description` / `copyright` / `repo_url` 是一回事：
 
 ```toml
-site_description = "十四座桥，与它们的记述"   # 出现在顶栏里
-
-header = """
-::banner
-  **桥梁笔记**
-"""
-footer = """
-—— [[index|回首页]] · 由 mdpp 生成
-"""
+site_name = "桥梁笔记"                        # 顶栏左边
+site_description = "十四座桥，与它们的记述"    # 顶栏右边
+repo_url = "https://example.com/notes"        # 顶栏右端那个链接（只认 http/https）
+copyright = "© 某人"                          # 底栏那句；空的就是没有底栏
 ```
 
 `mdpp serve` 还没实现 —— 先 `mdpp build`，再用任意静态服务器托管 `build/`。

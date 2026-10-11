@@ -134,6 +134,23 @@ impl Assets {
     }
 }
 
+/// 站点那几个「顶栏与底栏」的字段 —— **全是单行字符串**。
+///
+/// 刻意不给 markdown：页首页尾那一层要改版式、重写一遍，比改配置里一行字麻烦得多。
+/// 与 mkdocs 的 `site_name` / `site_description` / `copyright` / `repo_url` 是一回事 ——
+/// 顶栏左边一句、右边一句，底栏一句，都是一句话能说完的东西。
+#[derive(Debug, Clone, Default)]
+pub struct Chrome {
+    /// 顶栏左边的站点名。**空的就是没有顶栏**
+    pub name: String,
+    /// 顶栏上那句说明
+    pub description: String,
+    /// 顶栏右端那个仓库链接（只给 http/https）
+    pub repo_url: String,
+    /// 底栏那句话。空的就是没有底栏
+    pub copyright: String,
+}
+
 /// 一个页面要填进模板的那几样
 #[derive(Debug)]
 pub struct Page<'a> {
@@ -143,17 +160,10 @@ pub struct Page<'a> {
     pub lang: &'a str,
     /// 主题：`Some("light" | "dark")` 时设 `data-mdpp-theme`，`::theme` 那两节由它挑
     pub theme: Option<&'a str>,
-    /// 顶栏上的站点名。**空的就是没有顶栏** —— `render --full` 那条路就是空的：
-    /// 单篇笔记没有「站点」这一说
-    pub site_name: &'a str,
-    /// 顶栏上那句说明（`site_description`）
-    pub site_description: &'a str,
+    /// 顶栏与底栏那几个字段。`render --full` 那条路给默认的一份（全空，于是两样都不出）
+    pub chrome: Chrome,
     /// 正文（已渲染的 HTML 片段）
     pub body: &'a str,
-    /// 页首（已渲染的 HTML 片段）。空的就是没有页首
-    pub header: &'a str,
-    /// 页尾（已渲染的 HTML 片段）。空的就是没有页尾
-    pub footer: &'a str,
     /// `--css` / `extra_css` 附的那些，接在默认的**后面**
     pub extra_css: &'a [String],
     /// `--js` / `extra_js` 附的那些，接在默认的**后面**
@@ -199,10 +209,8 @@ pub fn document(page: &Page) -> String {
             ("title", &escape(page.title)),
             ("styles", &styles),
             ("scripts", &scripts),
-            ("bar", &bar(page)),
-            // 页首页尾连标签一起填进去：空内容时整段没有（空标签是噪音）
-            ("header", &section("header", page.header)),
-            ("footer", &section("footer", page.footer)),
+            ("bar", &top_bar(&page.chrome)),
+            ("foot", &bottom_bar(&page.chrome)),
             // 正文排最后：它是 HTML，不该被当成还能填占位符的模板
             ("body", page.body),
         ],
@@ -211,29 +219,51 @@ pub fn document(page: &Page) -> String {
 
 /// 顶上那一条。**站点名空就没有顶栏** —— 判据是内容而不是「用哪种资源」，
 /// 于是 `render --full` 那条路不必额外知道自己「不是站点」
-fn bar(page: &Page) -> String {
-    let name = page.site_name.trim();
+fn top_bar(chrome: &Chrome) -> String {
+    let name = chrome.name.trim();
     if name.is_empty() {
         return String::new();
     }
-    let mut inner = format!("<span class=\"mdpp-bar__title\">{}</span>", escape(name));
-    let description = page.site_description.trim();
+    let mut inner = format!(
+        "<span class=\"mdpp-bar__title\">{}</span>",
+        escape(name)
+    );
+    let description = chrome.description.trim();
     if !description.is_empty() {
         inner.push_str(&format!(
             "\n<span class=\"mdpp-bar__desc\">{}</span>",
             escape(description)
         ));
     }
+    // 仓库链接：协议只认 http/https —— 配置里写个 `javascript:` 就点一下执行一段
+    if let Some(url) = web_url(chrome.repo_url.trim()) {
+        inner.push_str(&format!(
+            "\n<a class=\"mdpp-bar__repo\" href=\"{}\" rel=\"noopener\">仓库</a>",
+            escape(url)
+        ));
+    }
     format!("<div class=\"mdpp-bar\">\n<div class=\"mdpp-bar__inner\">\n{inner}\n</div>\n</div>")
 }
 
-/// 页首 / 页尾那一段。**标签在这里裹**（模板里的 `{{header}}` 填的是整个元素）——
-/// 空内容时什么都不出，免得每个页面都挂着一对空标签
-fn section(tag: &str, html: &str) -> String {
-    if html.trim().is_empty() {
+/// 底下那一条。**没写 copyright 就没有底栏** —— 与 mkdocs 一个规矩：
+/// 空的那句不必摆在那儿
+fn bottom_bar(chrome: &Chrome) -> String {
+    let text = chrome.copyright.trim();
+    if text.is_empty() {
         return String::new();
     }
-    format!("<{tag} class=\"mdpp-{tag}\">\n{html}\n</{tag}>")
+    format!(
+        "<div class=\"mdpp-foot\">\n<div class=\"mdpp-foot__inner\">\n\
+         <span class=\"mdpp-foot__text\">{}</span>\n\
+         <span class=\"mdpp-foot__made\">由 mdpp 生成</span>\n</div>\n</div>",
+        escape(text)
+    )
+}
+
+/// 只认能点开一个网页的协议（`javascript:` 之类不该能进 `href`）
+fn web_url(value: &str) -> Option<&str> {
+    let lowered = value.to_ascii_lowercase();
+    (lowered.starts_with("http://") || lowered.starts_with("https://")).then_some(value)
 }
 
 /// 把 `assets/` 里那些资源拷到 `<dest>/assets/`，模板不拷。
@@ -381,22 +411,22 @@ mod tests {
             title: "某篇笔记",
             lang: "zh-Hans",
             theme: None,
-            site_name: "",
-            site_description: "",
+            chrome: Chrome::default(),
             body,
-            header: "",
-            footer: "",
             extra_css: &[],
             extra_js: &[],
             assets,
         }
     }
 
-    /// 带顶栏的那一种（站点页面）
+    /// 站点页面：带顶栏那一套
     fn site_page<'a>(body: &'a str) -> Page<'a> {
         Page {
-            site_name: "某站点",
-            site_description: "一句话说明",
+            chrome: Chrome {
+                name: "某站点".to_string(),
+                description: "一句话说明".to_string(),
+                ..Chrome::default()
+            },
             ..page(body, Assets::Linked(ASSET_DIR.to_string()))
         }
     }
@@ -506,7 +536,7 @@ mod tests {
         let built = document(&site_page("x"));
         assert!(built.contains(r#"href="assets/site.css""#), "{built}");
         let css = asset(SITE_CSS);
-        for needle in ["1080px", ".mdpp-bar", ".mdpp-main"] {
+        for needle in ["1080px", ".mdpp-bar", ".mdpp-foot", ".mdpp-main"] {
             assert!(css.contains(needle), "site.css 里少了 {needle}");
         }
 
@@ -516,9 +546,9 @@ mod tests {
         assert!(!standalone.contains("mdpp-bar"), "{standalone}");
     }
 
-    /// 顶栏上有站点名与那句话说明；站点名空就没有顶栏（`render --full` 那条路）
+        /// 顶栏上是站点名、那句话说明与（给了的）仓库链接；站点名空就没有顶栏
     #[test]
-    fn the_top_bar_carries_the_site_name_and_its_description() {
+    fn the_top_bar_carries_the_configured_phrases() {
         let html = document(&site_page("x"));
         assert!(
             html.contains("<span class=\"mdpp-bar__title\">某站点</span>"),
@@ -531,55 +561,82 @@ mod tests {
         // 顶栏在正文之上
         assert!(html.find("mdpp-bar").expect("有顶栏") < html.find("mdpp-content").expect("有正文"));
 
-        // 没有站点名就没有顶栏
+        // 没有站点名就没有顶栏 —— 那句话与仓库链接都跟着一起没了
         let nameless = document(&Page {
-            site_name: "   ",
-            site_description: "有说明也没用",
+            chrome: Chrome {
+                name: "   ".to_string(),
+                description: "有说明也没用".to_string(),
+                repo_url: "https://example.com".to_string(),
+                copyright: "有版权也没用".to_string(),
+            },
             ..site_page("x")
         });
         assert!(!nameless.contains("mdpp-bar"), "{nameless}");
     }
 
-    /// 页首与页尾在**卡片之外**：它们在 `.mdpp-main` 里，正文那张卡片前后
+    /// 底栏上是 `copyright` 那一句话，右端是写死的「由 mdpp 生成」；
+    /// **没写 copyright 就没有底栏**（与 mkdocs 一个规矩）
     #[test]
-    fn the_header_and_footer_sit_outside_the_content_card() {
-        let html = document(&Page {
-            header: "<p>抬头</p>",
-            footer: "<p>页脚</p>",
-            ..site_page("<p>正文</p>")
-        });
-        assert!(
-            html.contains("<header class=\"mdpp-header\">\n<p>抬头</p>\n</header>"),
-            "{html}"
-        );
-        assert!(
-            html.contains("<footer class=\"mdpp-footer\">\n<p>页脚</p>\n</footer>"),
-            "{html}"
-        );
-        let (header, card, footer) = (
-            html.find("mdpp-header").expect("有页首"),
-            html.find("mdpp-content").expect("有卡片"),
-            html.find("mdpp-footer").expect("有页尾"),
-        );
-        assert!(header < card && card < footer, "{html}");
-    }
-
-    /// 没配页首页尾时就不该有那两段 —— 空标签是噪音
-    #[test]
-    fn no_configured_header_means_no_header() {
+    fn the_bottom_bar_carries_the_copyright() {
         let html = document(&site_page("x"));
-        assert!(!html.contains("mdpp-header"), "{html}");
-        assert!(!html.contains("mdpp-footer"), "{html}");
-    }
+        assert!(!html.contains("mdpp-foot"), "没写 copyright 就不该有底栏：{html}");
 
-    /// 只有空白的那一段当没有 —— 配置里留个空的多行字符串不该拖出一对空标签
-    #[test]
-    fn a_blank_header_is_no_header() {
-        let html = document(&Page {
-            header: "\n  \n",
+        let with = document(&Page {
+            chrome: Chrome {
+                copyright: "© 某人".to_string(),
+                ..site_page("x").chrome
+            },
             ..site_page("x")
         });
-        assert!(!html.contains("mdpp-header"), "{html}");
+        assert!(
+            with.contains("<span class=\"mdpp-foot__text\">© 某人</span>"),
+            "{with}"
+        );
+        assert!(with.contains("由 mdpp 生成"), "{with}");
+        // 底栏在正文之下
+        assert!(
+            with.find("mdpp-content").expect("有正文") < with.find("mdpp-foot").expect("有底栏"),
+            "{with}"
+        );
+    }
+
+    /// 仓库链接只认 http/https —— 配置里写个 `javascript:` 就点一下执行一段
+    #[test]
+    fn the_repo_link_takes_only_web_urls() {
+        for (url, wanted) in [
+            ("https://example.com/x", true),
+            ("http://example.com", true),
+            ("javascript:alert(1)", false),
+            ("data:text/html,x", false),
+            ("  ", false),
+        ] {
+            let html = document(&Page {
+                chrome: Chrome {
+                    repo_url: url.to_string(),
+                    ..site_page("x").chrome
+                },
+                ..site_page("x")
+            });
+            assert_eq!(
+                html.contains("mdpp-bar__repo"),
+                wanted,
+                "{url:?} 认错了：{html}"
+            );
+        }
+    }
+
+    /// 那几句话是**纯文本**：转义之后原样进页面，不会变成标签或链接
+    #[test]
+    fn the_bar_phrases_are_escaped_not_rendered() {
+        let html = document(&Page {
+            chrome: Chrome {
+                name: "<script>alert(1)</script>".to_string(),
+                ..site_page("x").chrome
+            },
+            ..site_page("x")
+        });
+        assert!(!html.contains("<script>alert(1)"), "{html}");
+        assert!(html.contains("&lt;script&gt;"), "{html}");
     }
 
     #[test]
@@ -701,15 +758,7 @@ mod tests {
     fn the_template_still_has_the_placeholders_the_filler_fills() {
         let template = template();
         for name in [
-            "lang",
-            "theme_attr",
-            "title",
-            "styles",
-            "scripts",
-            "bar",
-            "header",
-            "footer",
-            "body",
+            "lang", "theme_attr", "title", "styles", "scripts", "bar", "foot", "body",
         ] {
             assert!(
                 template.contains(&format!("{{{{{name}}}}}") ),
