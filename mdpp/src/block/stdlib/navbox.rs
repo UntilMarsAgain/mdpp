@@ -9,7 +9,7 @@
 //!   [above]
 //!   何为方针 · 方针列表
 //!
-//!   [header1]
+//!   [header]
 //!   基本原则
 //!
 //!   [基本原则]
@@ -18,7 +18,7 @@
 //!   [收录标准]
 //!   通用收录标准 · 人物 · 组织 · 网站
 //!
-//!   [header2]
+//!   [header]
 //!   内容方针
 //!
 //!   [基本原则]
@@ -31,7 +31,7 @@
 //! `group1=` 之类的参数。维基那边要 `|group1=` 与 `|list1=` 两个参数配一对，纯粹是
 //! 模板参数装不下多行内容；这里 `[标签]` 节本来就装得下。
 //!
-//! 分组名**可以重复**：同一个标签在不同的 `[headerN]` 下面各写一次是正常的
+//! 分组名**可以重复**：同一个标签在不同的 `[header]` 下面各写一次是正常的
 //! （「基本原则 / 收录标准 / 格式手册」那一组在每个分组下重复，正是维基那些「方针类」
 //! 导航框的样子）。标签是**显示用的字**，不是标识，所以重复不构成冲突。
 //!
@@ -58,9 +58,10 @@
 //!
 //! - `[above]` / `[below]` —— 维基的那两行通栏，位置固定：一条紧贴标题栏之下，
 //!   一条在最底下；
-//! - `[headerN]` —— **通栏标题条**，落在作者写它的那两行之间（维基的 `|headern=`）。
+//! - `[header]` —— **通栏标题条**，落在作者写它的那两行之间（维基的 `|headern=`）。
+//!   **不带编号，可以写很多条** —— 位置由次序决定，编号是多余的。
 //!
-//! 这三个名字因此当不了分组名 —— 要写一个叫「above」的分组，写 `[header1]` 再把它
+//! 这三个名字因此当不了分组名 —— 要写一个叫「above」的分组，写 `[header]` 再把它
 //! 摆在对的地方，或者换个叫法。
 //!
 //! ## 标题栏与折叠
@@ -91,8 +92,6 @@
 //! 宽松了就等于允许塞任意声明，而 `::banner` 只给 `color=` 就是同一个道理。要改样子
 //! 用 [`::css`](crate::block::stdlib)。
 
-use std::collections::BTreeMap;
-
 use super::super::dispatch::{render_problem, sections};
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
@@ -107,8 +106,10 @@ enum Slot {
     Above,
     /// `[below]` —— 最底下那一行通栏
     Below,
-    /// `[headerN]` —— 落在作者写它那两行之间的通栏标题条
-    Header(usize),
+    /// `[header]` —— 落在作者写它那两行之间的通栏标题条。
+    ///
+    /// **没有编号，可以写很多条** —— 它落在哪儿由写下来的次序决定，编号是多余的。
+    Header,
     /// 别的字就是**分组名**，它同时也是这一节的标题
     Group(String),
 }
@@ -170,24 +171,24 @@ fn state_of(block: &Block) -> Result<State, String> {
 
 /// 认一个 `[标签]`。
 ///
-/// 除了 `above` / `below` / `headerN`，**其余一律当分组名** —— 不去猜「像不像编号」
+/// 除了 `above` / `below` / `header`，**其余一律当分组名** —— 不去猜「像不像编号」
 /// 之类的东西，所以写 `[2024 年的条目]` 也是个合法的分组名。
 fn slot_of(label: &str) -> Result<Slot, String> {
     match label {
         "above" => return Ok(Slot::Above),
         "below" => return Ok(Slot::Below),
+        "header" => return Ok(Slot::Header),
         _ => {}
     }
-    // 只有 `header` 开头才按编号认。`header` 单独一个（没有数字）是个写得不对的
-    // 通栏 —— 说清它要什么，而不是当成一个叫「header」的分组。
+    // `header` 带尾巴的全部不认。老写法（`header1`）要单独给一句 —— 它是从维基那边
+    // 照搬过来的，而「不认」两个字看不出该写什么。
     if let Some(rest) = label.strip_prefix("header") {
-        return match rest.parse::<usize>() {
-            Ok(index) if index > 0 => Ok(Slot::Header(index)),
-            _ => Err(format!(
-                "[{label}] 不认：通栏要带一个 1 起的编号，比如 [header1]、\
-                 写成一个分组的话换个名字就好"
-            )),
+        let hint = if rest.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
+            "维基那边是 |headern=，这里不用编号：写 [header] 就好，写几条都是它"
+        } else {
+            "写成一个分组的话换个名字就好"
         };
+        return Err(format!("[{label}] 不认：{hint}"));
     }
     Ok(Slot::Group(label.to_string()))
 }
@@ -327,7 +328,6 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     // 先**整块**认一遍再渲染：标签写错了就整块报出来，免得渲染半截
     let mut above: Option<&Node> = None;
     let mut below: Option<&Node> = None;
-    let mut headers: BTreeMap<usize, &Node> = BTreeMap::new();
     let mut segments: Vec<Segment> = Vec::new();
     // 分组名的活字放这儿：`sections(node)` 给的那个 `&str` 活不过循环，而行标签要
     // 一直用到渲染完
@@ -361,24 +361,13 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
                     return;
                 }
             }
-            Slot::Header(index) => {
-                if headers.insert(index, section).is_some() {
-                    render_problem(
-                        block,
-                        fmt,
-                        &format!("`[header{index}]` 写了两处：一个编号只能有一条"),
-                    );
-                    return;
-                }
+            Slot::Header => {
                 // 通栏就是它的标题，空着等于没有标题 —— 不如报错，也不该画一条空条
                 if section.children.is_empty() {
-                    render_problem(
-                        block,
-                        fmt,
-                        &format!("`[header{index}]` 是空的：通栏就是它的标题"),
-                    );
+                    render_problem(block, fmt, "`[header]` 是空的：通栏就是它的标题");
                     return;
                 }
+                // **可以写很多条**，不去重：它落在哪儿由写下来的次序决定
                 segments.push(Segment::Header(section));
             }
             // 分组名**可以重复**：它是显示用的字，不是标识
@@ -517,10 +506,10 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     fmt.cr();
 }
 
-/// 一条横跨两列的通栏（`[above]` / `[below]` / `[headerN]`）。
+/// 一条横跨两列的通栏（`[above]` / `[below]` / `[header]`）。
 ///
 /// 用 `<td>` 而不是 `<th>`：这几行是**内容**（「何为方针 · 方针列表」是一句话），
-/// 而这一列的表头另有其人（左边那个分组名）。`[headerN]` 是「下面几行的分组名」，
+/// 而这一列的表头另有其人（左边那个分组名）。`[header]` 是「下面几行的分组名」，
 /// 但 HTML 里没有「横跨一行的行组」这种表头，用 `th` 反而会让读屏软件把整行念成一个
 /// 单元格标题 —— 那是好事，不过 CSS 上要另给一份样式，不如统一当内容处理。
 fn full_row(fmt: &mut dyn Renderer, class: &str, section: &Node) {
@@ -579,11 +568,11 @@ mod tests {
     }
 
     /// 分组名**可以重复** —— 它是显示用的字，不是标识。维基那些「方针类」导航框
-    /// 就是同一个标签在每个 `[headerN]` 下面各写一次。
+    /// 就是同一个标签在每个 `[header]` 下面各写一次。
     #[test]
     fn a_group_name_may_repeat_under_each_header() {
         let html = render(
-            "::navbox title=x\n  [header1]\n  基本原则\n  [基本原则]\n  甲\n  [header2]\n  内容方针\n  [基本原则]\n  乙\n",
+            "::navbox title=x\n  [header]\n  基本原则\n  [基本原则]\n  甲\n  [header]\n  内容方针\n  [基本原则]\n  乙\n",
         );
         assert!(!html.contains("template--problem"), "{html}");
         assert_eq!(html.matches("navbox__head").count(), 2, "{html}");
@@ -597,11 +586,11 @@ mod tests {
         assert!(html.contains("甲") && html.contains("乙"), "{html}");
     }
 
-    /// `[headerN]` 是一条横跨两列的通栏，落在作者写它的那两行之间
+    /// `[header]` 是一条横跨两列的通栏，落在作者写它的那两行之间
     #[test]
     fn a_header_is_a_full_width_row_between_them() {
         let html = render(
-            "::navbox title=求问百科\n  [header1]\n  基本原则\n  [甲组]\n  甲\n  [乙组]\n  乙\n",
+            "::navbox title=求问百科\n  [header]\n  基本原则\n  [甲组]\n  甲\n  [乙组]\n  乙\n",
         );
         assert!(html.contains(r#"colspan="2""#), "{html}");
         assert!(html.contains("基本原则"), "{html}");
@@ -625,27 +614,45 @@ mod tests {
         );
     }
 
-    /// 通栏编号要 1 起；`[header]` 光秃秃一个要说得清要什么
+    /// `[header]` 不带编号；带编号的是老写法，要指出该写什么
     #[test]
-    fn a_header_needs_a_number() {
-        for bad in ["header", "header0", "headerX"] {
+    fn a_header_takes_no_number() {
+        let ok = render("::navbox title=x\n  [header]\n  甲\n  [分组]\n  乙\n");
+        assert!(!ok.contains("template--problem"), "{ok}");
+
+        // 带数字的（从维基照搬过来的）不认，且提示要说清改成什么
+        for bad in ["header1", "header0", "header2"] {
             let html = render(&format!("::navbox title=x\n  [{bad}]\n  甲\n"));
             assert!(html.contains("template--problem"), "{bad} -> {html}");
-            assert!(html.contains("1 起的编号"), "{html}");
+            assert!(html.contains("不用编号"), "{bad} -> {html}");
+            assert!(html.contains("[header]"), "{bad} -> {html}");
         }
-        let ok = render("::navbox title=x\n  [header1]\n  甲\n  [分组]\n  乙\n");
-        assert!(!ok.contains("template--problem"), "{ok}");
     }
 
-    /// 通栏重号是冲突；空通栏也报错（它就是它的标题，没有标题等于没有）
+    /// **`[header]` 可以写很多条** —— 它没有编号，也就不存在「重号」这回事。
+    ///
+    /// 这是「不带编号」换来的：编号一旦没有，去重就没有了依据，而通栏本来就是
+    /// 「写在哪儿就落在哪儿」，重复并不构成冲突。
     #[test]
-    fn a_repeated_or_empty_header_is_refused() {
-        let twice =
-            render("::navbox title=x\n  [header1]\n  甲\n  [分组]\n  乙\n  [header1]\n  丙\n");
-        assert!(twice.contains("template--problem"), "{twice}");
-        assert!(twice.contains("写了两处"), "{twice}");
+    fn a_header_may_appear_many_times() {
+        let html = render(
+            "::navbox title=x\n  [header]\n  甲\n  [一组]\n  一\n  [header]\n  乙\n  [二组]\n  二\n",
+        );
+        assert!(!html.contains("template--problem"), "{html}");
+        assert_eq!(html.matches("navbox__head").count(), 2, "{html}");
+        assert!(html.contains("甲") && html.contains("乙"), "{html}");
+        // 次序：甲 → 一组 → 乙 → 二组
+        let at = |needle: &str| html.find(needle).unwrap_or_else(|| panic!("{needle}"));
+        assert!(
+            at("甲") < at("一") && at("一") < at("乙") && at("乙") < at("二组"),
+            "{html}"
+        );
+    }
 
-        let empty = render("::navbox title=x\n  [header1]\n  [分组]\n  甲\n");
+    /// 空通栏报错（它就是它的标题，没有标题等于没有）
+    #[test]
+    fn an_empty_header_is_refused() {
+        let empty = render("::navbox title=x\n  [header]\n  [分组]\n  甲\n");
         assert!(empty.contains("template--problem"), "{empty}");
         assert!(empty.contains("是空的"), "{empty}");
         assert!(!empty.contains("navbox__table"), "不渲染半截：{empty}");
@@ -955,7 +962,7 @@ mod tests {
         assert!(html.contains("一行也没有"), "{html}");
 
         // 只有通栏也不算数 —— 它自己撑不起一个框
-        let headers = render("::navbox title=x\n  [header1]\n  只有通栏\n");
+        let headers = render("::navbox title=x\n  [header]\n  只有通栏\n");
         assert!(headers.contains("template--problem"), "{headers}");
     }
 
