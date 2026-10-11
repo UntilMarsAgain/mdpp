@@ -76,6 +76,11 @@ fn build(project: &Project, options: &Build) -> Result<(), String> {
     let missing: Arc<Mutex<Vec<Missing>>> = Arc::new(Mutex::new(Vec::new()));
     let mut broken = Broken::default();
 
+    // 资源从二进制里拷到产物里：页面指的是 `assets/base.css`，那些字节得真的在那儿。
+    // 每个页面都内联一遍的话，几十个页面就是几十份拷贝
+    let assets = page::copy_assets(&site_dir)?;
+    info!(assets, "资源已拷进产物");
+
     for page in site.pages() {
         let source = std::fs::read_to_string(&page.source)
             .map_err(|error| format!("读不了 {}：{error}", shown(&page.source)))?;
@@ -93,13 +98,15 @@ fn build(project: &Project, options: &Build) -> Result<(), String> {
         broken.add(page, &html);
 
         let title = document_title(project, &source, page.stem());
-        let document = page::full_document(
-            &title,
-            &html,
-            project.config.theme.as_deref(),
-            &extra_css,
-            &extra_js,
-        );
+        let document = page::document(&page::Page {
+            title: &title,
+            lang: &project.config.lang,
+            theme: project.config.theme.as_deref(),
+            body: &html,
+            extra_css: &extra_css,
+            extra_js: &extra_js,
+            assets: page::Assets::Linked(page::ASSET_DIR),
+        });
         project::write_file(&site_dir.join(&page.output), &document)?;
         debug!(page = %page.key, out = %page.output.display(), "一页");
     }
@@ -334,8 +341,8 @@ mod tests {
         );
         let html = output_of(&project, "指南/入门");
         assert!(html.contains("<h1"), "正文没渲染：{html}");
-        // 首页那条链接要指回根
-        assert!(html.contains(r#"href="../""#), "{html}");
+        // 回首页的那条要给站点根，不是 `./`（那会指回本页）
+        assert!(html.contains(r#"href="/""#), "{html}");
     }
 
     /// 站内链接指到页，红链指不到 —— 这是「有项目」与「渲染单篇」最大的分别
@@ -365,7 +372,7 @@ mod tests {
         build_ok(&project).expect("出得来");
 
         assert!(output_of(&project, "指南/深入/安装").contains(r#"href="../../手册/""#));
-        assert!(output_of(&project, "指南/入门").contains(r#"href="../""#));
+        assert!(output_of(&project, "指南/入门").contains(r#"href="/""#));
     }
 
     /// 红链默认不拦住 build —— 写到还没写的页面是常态
@@ -504,14 +511,24 @@ mod tests {
         assert!(message.contains("根本没有这个"), "{message}");
     }
 
-    /// 产物是能直接打开的整页：样式与脚本都在里面
+    /// 产物是**能直接部署**的一堆文件：页面外链资源，而资源真的在那儿
     #[test]
-    fn the_output_is_a_self_contained_page() {
+    fn the_output_is_a_deployable_directory() {
         let (_dir, project) = project_with(&[]);
         build_ok(&project).expect("出得来");
+
         let html = output_of(&project, "index");
         assert!(html.starts_with("<!DOCTYPE html>"), "{html}");
-        assert!(html.contains(".mdpp-content"), "样式没内联：{html}");
-        assert!(html.contains("tabs__tab--on"), "脚本没内联：{html}");
+        // 页面外链资源，样式不进页面
+        assert!(html.contains(r#"href="assets/base.css""#), "{html}");
+        assert!(!html.contains(".mdpp-content {"), "样式不该内联：{html}");
+        // 而资源确实被拷到了产物里
+        let css = std::fs::read_to_string(project.site_dir().join("assets/base.css"))
+            .expect("资源没拷出来");
+        assert!(css.contains(".mdpp-content"), "资源是空的");
+        assert!(
+            project.site_dir().join("assets/mdpp.js").is_file(),
+            "脚本没拷出来"
+        );
     }
 }

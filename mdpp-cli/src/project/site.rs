@@ -261,24 +261,24 @@ pub fn is_template_target(target: &str) -> bool {
         .is_some_and(|(prefix, _)| prefix.trim().eq_ignore_ascii_case("template"))
 }
 
-/// 从 `from`（一��的键）走到 `to` 的相对地址。
+/// 从 `from`（一页的键）走到 `to` 的地址。
 ///
-/// 每退一层加一个 `../`，目标总是以 `/` 结尾 —— 产物是**目录**，不是文件。
-/// 相对地址而不是从站点根算的绝对地址：这样 `build/index.html` 拷到任何地方、
-/// 挂在子路径下，链接都还对。
-pub fn relative_href(from: &str, to: &str) -> String {
-    let depth = from.rsplit_once('/').map_or(0, |(dir, _)| dir.split('/').count());
-    let mut href = "../".repeat(depth);
+/// **页与页之间是相对的**，每退一层加一个 `../`，目标总是以 `/` 结尾 —— 产物是
+/// **目录**，不是文件。相对地址而不是从站点根算的绝对地址：这样 `build/index.html`
+/// 拷到任何地方、挂在子路径下，链接都还对。
+///
+/// **首页是唯一的例外，给的是 `/`。** 目录式地址下，从 `/示例/` 出发 `./` 指的是
+/// 它自己（`/示例/./` 就是 `/示例/`），而 `../` 要数对层数 —— 只有 `/` 在任何一层
+/// 都直接落在站点根上。
+pub fn href(from: &str, to: &str) -> String {
     if to == INDEX_KEY {
-        // 目录式输出下首页就是根：写 `../` 而不是冗余的 `../index/`
-        if depth == 0 {
-            href.push_str("./");
-        }
-        return href;
+        return String::from("/");
     }
-    href.push_str(&encode_href(to));
-    href.push('/');
-    href
+    let depth = from.rsplit_once('/').map_or(0, |(dir, _)| dir.split('/').count());
+    let mut out = "../".repeat(depth);
+    out.push_str(&encode_href(to));
+    out.push('/');
+    out
 }
 
 /// `href` 里不能原样出现的字符：`#` 会把地址截断，空格会被浏览器改写。
@@ -378,7 +378,7 @@ impl Links {
     /// `[[入门]]` 这种只写文件名的写法，光看正文看不出它指的是哪个目录下的那一页
     fn link_to(&self, page: &Page) -> ResolvedLink {
         ResolvedLink::Link(
-            LinkTarget::new(relative_href(&self.from, &page.key)).attr("data-page", page.key.clone()),
+            LinkTarget::new(href(&self.from, &page.key)).attr("data-page", page.key.clone()),
         )
     }
 }
@@ -474,24 +474,27 @@ mod tests {
         assert!(!is_template_target("帮助:入门"));
     }
 
-    /// 每退一层加一个 `../`，目标总是以 `/` 结尾
+    /// 页与页之间是相对的，每退一层加一个 `../`，目标总是以 `/` 结尾
     #[test]
     fn hrefs_are_relative_and_end_with_a_slash() {
-        assert_eq!(relative_href("index", "指南/入门"), "指南/入门/");
-        assert_eq!(relative_href("指南/入门", "index"), "../");
-        assert_eq!(relative_href("指南/入门", "手册"), "../手册/");
-        assert_eq!(
-            relative_href("指南/深入/安装", "手册/入门"),
-            "../../手册/入门/"
-        );
-        assert_eq!(relative_href("index", "index"), "./");
+        assert_eq!(href("index", "指南/入门"), "指南/入门/");
+        assert_eq!(href("指南/入门", "手册"), "../手册/");
+        assert_eq!(href("指南/深入/安装", "手册/入门"), "../../手册/入门/");
+    }
+
+    /// 首页给的是 `/`，**不是 `./`** —— 从 `/示例/` 出发 `./` 指回它自己
+    #[test]
+    fn the_home_link_is_the_site_root() {
+        assert_eq!(href("index", "index"), "/");
+        assert_eq!(href("示例", "index"), "/");
+        assert_eq!(href("指南/深入/安装", "index"), "/");
     }
 
     /// 键里的空格与 `#` 要编码；中文原样留着
     #[test]
     fn hrefs_are_percent_encoded() {
-        assert_eq!(relative_href("index", "我的 页"), "我的%20页/");
-        assert_eq!(relative_href("index", "a#b"), "a%23b/");
+        assert_eq!(href("index", "我的 页"), "我的%20页/");
+        assert_eq!(href("index", "a#b"), "a%23b/");
     }
 
     /// 解析器：认得出的给地址，认不出的记一笔红链
