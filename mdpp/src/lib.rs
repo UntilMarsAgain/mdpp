@@ -74,6 +74,7 @@ pub struct ReadmeSnippets;
 pub mod block;
 pub mod context;
 pub mod engine;
+pub mod fence;
 pub mod link;
 pub mod registry;
 pub mod slug;
