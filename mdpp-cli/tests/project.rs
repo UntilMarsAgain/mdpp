@@ -334,3 +334,42 @@ fn serve_outside_a_project_says_so() {
         stderr_of(&out)
     );
 }
+
+/// 覆盖层目录：build 后把 `override/` 里的东西原样拷到产物里，重复就覆盖
+#[test]
+fn the_override_directory_is_copied_after_build() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+
+    std::fs::create_dir_all(root.join("override")).expect("建得出");
+    std::fs::write(root.join("override/CNAME"), "example.com
+").expect("写得下");
+    std::fs::write(root.join("override/robots.txt"), "User-agent: *
+Disallow: /private/
+").expect("写得下");
+    std::fs::write(root.join("override/index.html"), "<h1>自定义首页</h1>
+").expect("写得下");
+
+    assert!(mdpp(&root, &["build"]).status.success());
+    assert_eq!(std::fs::read_to_string(root.join("build/CNAME")).expect("读得动").trim(), "example.com");
+    assert!(std::fs::read_to_string(root.join("build/robots.txt")).expect("读得动").contains("Disallow: /private/"));
+    assert_eq!(std::fs::read_to_string(root.join("build/index.html")).expect("读得动").trim(), "<h1>自定义首页</h1>");
+
+    // 配个别的名字也能用
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(
+        &config,
+        text.replace(
+            "override_dir = \"override\"",
+            "override_dir = \"我的覆盖层\"",
+        ),
+    )
+    .expect("改得下");
+    std::fs::create_dir_all(root.join("我的覆盖层")).expect("建得出");
+    std::fs::write(root.join("我的覆盖层/test.txt"), "custom-override
+").expect("写得下");
+
+    assert!(mdpp(&root, &["build"]).status.success());
+    assert_eq!(std::fs::read_to_string(root.join("build/test.txt")).expect("读得动").trim(), "custom-override");
+}

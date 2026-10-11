@@ -123,6 +123,7 @@ site_url = "https://x.github.io/repo/"        # 站点在网上的地址；配�
 repo_url = "https://example.com/notes"        # 顶栏右端那个链接（只认 http/https）
 copyright = "© 某人"                          # 底栏那句；空的就是没有底栏
 favicon = "assets/icon.svg"                   # 标签页上那个小图标；相对项目根
+override_dir = "override"                     # 覆盖层：build 后把这里的东西原样拷到产物里
 ```
 
 `site_url` 只回答「你在网上是哪一个」那一个问题：配了，每一页就多一条
@@ -142,6 +143,10 @@ favicon = "assets/icon.svg"                   # 标签页上那个小图标；�
 产物根上总有一个空的 `.nojekyll`：GitHub Pages 少了它就会跑 Jekyll，而 Jekyll 把 `_`
 开头的目录当内部数据结构**静默丢掉** —— `pages/_草稿/某页.mdpp` 出了页面，推上去
 却 404，而且没有任何报错。别的静态托管不认这个文件。
+
+**覆盖层目录**：`override_dir`（默认 `override/`）。`mdpp build` 完成后，把这个目录里的
+东西原样拷到产物里，重复就覆盖。可以往里放 `CNAME`（GitHub Pages 自定义域名）、
+自定义 `robots.txt`、`sitemap.xml`，或者把某页换成完全手写的 HTML。配个别的名字也行。
 
 ## 本地预览
 
