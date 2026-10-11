@@ -44,14 +44,11 @@
 .mdpp-content .navbox__bar {
   position: relative;
   padding: 0.5em 4em;
-  background: var(--navbox-bar-bg, var(--mdpp-surface));
+  /* 底色与字色都来自渲染器落的自定义属性（`title-bg=`），字色是按亮度算出来的 */
+  background: var(--navbox-title-bg, var(--mdpp-surface));
+  color: var(--navbox-title-fg, inherit);
   text-align: center;
   font-weight: 600;
-}
-
-/* 大标题的颜色由 `--navbox-title-fg` 给（渲染器把 `title-color=` 落成它） */
-.mdpp-content .navbox__title {
-  color: var(--navbox-title-fg, inherit);
 }
 
 .mdpp-content .navbox__toggle {
@@ -117,6 +114,8 @@
 .mdpp-content .navbox__group {
   width: 1%;
   white-space: nowrap;
+  /* 底色来自 `group-bg=`；不给就是那一档淡底，与通栏、标题栏同一个颜色 */
+  background: var(--navbox-group-bg, var(--mdpp-surface));
   color: var(--navbox-group-fg, var(--mdpp-text-dim));
   font-weight: 600;
 }
@@ -131,6 +130,7 @@
 
 .mdpp-content .navbox__table .navbox__head {
   background: var(--navbox-head-bg, var(--mdpp-surface));
+  color: var(--navbox-head-fg, inherit);
   text-align: center;
   font-weight: 600;
 }
