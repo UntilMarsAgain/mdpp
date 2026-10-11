@@ -9,8 +9,8 @@
 //!   解析**，参数只管外框的样子。
 //! - `media`：把一个文件摆出来（`image` / `video` / `audio`）。三者共用一套 `src=`
 //!   校验、尺寸上限与图注规矩。
-//! - `panels`：**按 `[标签]` 分节**的块（`tabs` / `theme`）。全库只有这两个；它们不读
-//!   块正文，而是各节已解析好的子节点。
+//! - `panels`：**按 `[标签]` 分节**的块（`tabs` / `theme` / `navbox`）。它们不读
+//!   块正文，而是各节已解析好的子节点；`navbox` 的标签同时就是它的分组名。
 //! - `embeds`：把内容**原样写出去**的块（`code` / `mermaid` / `math` / `css` /
 //!   `html` / `js`），注册为 [`ContentMode::Raw`]，正文一个字符都不解析。
 //! - `callouts`：提示框（`note` / `tip` / `warning` / `danger` / `error`）。形状完全
@@ -22,6 +22,7 @@
 mod callouts;
 mod embeds;
 mod media;
+mod navbox;
 mod panels;
 mod text;
 
@@ -30,6 +31,7 @@ use markdown_it::Node;
 use callouts::{render_danger, render_error, render_note, render_tip, render_warning};
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
 use media::{render_audio, render_image, render_video};
+use navbox::render_navbox;
 use panels::{render_tabs, render_theme};
 use text::{
     render_aside, render_banner, render_fields, render_quote, render_signature, render_title,
@@ -72,6 +74,7 @@ pub const NAMES: &[&str] = &[
     "warning",
     "danger",
     "error",
+    "navbox",
 ];
 
 /// 把内置块灌进注册表。
@@ -98,7 +101,8 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("tip", ContentMode::Markdown, render_tip))
         .register(spec("warning", ContentMode::Markdown, render_warning))
         .register(spec("danger", ContentMode::Markdown, render_danger))
-        .register(spec("error", ContentMode::Markdown, render_error));
+        .register(spec("error", ContentMode::Markdown, render_error))
+        .register(spec("navbox", ContentMode::Sections, render_navbox));
 }
 
 /// 全部内置块的名字（诊断与命令行帮助按它列出来）
@@ -220,6 +224,8 @@ mod tests {
                 "image" | "video" | "audio" => format!("::{name} src=x.png\n  注\n"),
                 "tabs" => format!("::{name}\n  [甲]\n  正文一行\n"),
                 "theme" => format!("::{name}\n  [light]\n  正文一行\n"),
+                // navbox 要一个标题与一行分组，否则那个样子是「用法有问题」的框
+                "navbox" => format!("::{name} title=某导航框\n  [分类]\n  甲\n"),
                 _ => format!("::{name}\n  正文一行\n"),
             };
             let html = Mdpp::new().render(&source);

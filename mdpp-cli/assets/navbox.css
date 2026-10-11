@@ -1,0 +1,216 @@
+/* ---- 导航框 -------------------------------------------------------- */
+/* `::navbox` 的样子。渲染器只吐结构（见 `mdpp/src/block/stdlib/navbox.rs`），
+ * 折叠的开合由 `mdpp.js` 接上 —— 与 `::tabs` 同一个分工。
+ *
+ * 骨架与 `::fields` 同源（那张也是左标签、右内容的两列表），所以那几条
+ * padding / border / 左对齐的规矩是同一种；这里多出的是标题栏、通栏与折叠。
+ */
+
+.mdpp-content .navbox {
+  margin: 1.6em 0;
+  border: 1px solid var(--mdpp-border);
+  border-radius: var(--mdpp-radius);
+  background: var(--mdpp-bg);
+  overflow: hidden;
+}
+
+/* 嵌进去的没有标题栏也没有外框，只是一条竖线分出层次 */
+.mdpp-content .navbox--nested {
+  margin: 0.5em 0 0;
+  border: 0;
+  border-left: 2px solid var(--mdpp-border);
+  border-radius: 0;
+}
+
+.mdpp-content .navbox__body {
+  padding: 0.5em 0.9em 0.7em;
+}
+
+.mdpp-content .navbox--nested .navbox__body {
+  padding: 0.2em 0 0.2em 0.7em;
+}
+
+/* 没接线时（就一份 HTML 丢进浏览器）折起来的那一框照样藏着 */
+.mdpp-content .navbox__body[hidden] {
+  display: none;
+}
+
+/* ---- 标题栏与开关 -------------------------------------------------- */
+/* 标题栏本身**不是**开关：点标题去开合是个不明确的交互（读者分不清那是标题还是
+ * 开关）。开合是右边那个写着字的小按钮。
+ *
+ * 按钮绝对定位而不是并排放，是为了标题仍然**正中** —— 并排的话标题会被按钮挤偏。 */
+
+.mdpp-content .navbox__bar {
+  position: relative;
+  padding: 0.5em 4em;
+  background: var(--mdpp-surface);
+  text-align: center;
+  font-weight: 600;
+}
+
+.mdpp-content .navbox__toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.35em;
+  transform: translateY(-50%);
+  padding: 0.15em 0.55em;
+  border: 1px solid var(--mdpp-border);
+  border-radius: 4px;
+  background: var(--mdpp-bg);
+  color: var(--mdpp-text-dim);
+  font: inherit;
+  font-size: 0.82em;
+  font-weight: 400;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.mdpp-content .navbox__toggle:hover {
+  border-color: var(--mdpp-accent);
+  color: var(--mdpp-text);
+}
+
+/* 键盘走到哪儿要看得出来 */
+.mdpp-content .navbox__toggle:focus-visible {
+  outline: 2px solid var(--mdpp-accent);
+  outline-offset: 1px;
+}
+
+/* ---- 表 ------------------------------------------------------------- */
+/* 两列：左边分组名、右边内容。与 `.fields` 一样把表的边距抹掉 —— 外边距由
+ * `.navbox__body` 给一次就够。 */
+
+.mdpp-content table.navbox__table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.mdpp-content .navbox__table th,
+.mdpp-content .navbox__table td {
+  padding: 0.3em 0.6em;
+  border-bottom: 1px solid var(--mdpp-border);
+  text-align: left;
+  font-weight: 400;
+  vertical-align: top;
+}
+
+/* 最后一行不用再画一条线（外面已经有边框了） */
+.mdpp-content .navbox__table tr:last-child th,
+.mdpp-content .navbox__table tr:last-child td {
+  border-bottom: 0;
+}
+
+/* 分组名：一行都不折（`::fields` 也是这么写的） */
+.mdpp-content .navbox__group {
+  white-space: nowrap;
+  color: var(--mdpp-text-dim);
+  font-weight: 600;
+}
+
+/* ---- 通栏：above / below / [headerN] ------------------------------- */
+/* 三者横跨两列，但**不是一回事**：`[headerN]` 是下面几行的分组标题，
+ * above/below 是两句内容。所以前者的底色深一些、居中，后者更淡。 */
+
+.mdpp-content .navbox__head {
+  background: var(--mdpp-surface);
+  text-align: center;
+  font-weight: 600;
+}
+
+.mdpp-content .navbox__above,
+.mdpp-content .navbox__below {
+  color: var(--mdpp-text-dim);
+  text-align: center;
+  font-size: 0.94em;
+}
+
+.mdpp-content .navbox__head > :first-child,
+.mdpp-content .navbox__above > :first-child,
+.mdpp-content .navbox__below > :first-child {
+  margin-top: 0;
+}
+
+.mdpp-content .navbox__head > :last-child,
+.mdpp-content .navbox__above > :last-child,
+.mdpp-content .navbox__below > :last-child {
+  margin-bottom: 0;
+}
+
+/* ---- 内容格 --------------------------------------------------------- */
+/* 段落的上下外边距由行高给；不抹掉的话第一行与最后一行会格外空。 */
+
+.mdpp-content .navbox__cell > :first-child {
+  margin-top: 0;
+}
+
+.mdpp-content .navbox__cell > :last-child {
+  margin-bottom: 0;
+}
+
+/* ---- hlist：列表默认横排 ------------------------------------------- */
+/* 维基那边 navbox 自带 `hlist` 类，无序列表会显示成由小圆点分隔的水平列表。
+ * 这里照做：`inline-block` 而不是 `inline` —— 前者让一条链接不被拦腰折断，
+ * 折行发生在条目**之间**。
+ *
+ * 分隔点挂在「上一条」的后面，于是最后一条后面没有多余的那个。 */
+
+.mdpp-content .navbox__cell > ul,
+.mdpp-content .navbox__cell > ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mdpp-content .navbox__cell > ul > li,
+.mdpp-content .navbox__cell > ol > li {
+  display: inline-block;
+}
+
+.mdpp-content .navbox__cell > ul > li:not(:last-child)::after,
+.mdpp-content .navbox__cell > ol > li:not(:last-child)::after {
+  content: "·";
+  padding: 0 0.35em;
+  color: var(--mdpp-text-dim);
+}
+
+/* 里层的列表仍竖排带子弹：横排的里层在窄屏上没法读 */
+.mdpp-content .navbox__cell ul ul,
+.mdpp-content .navbox__cell ul ol,
+.mdpp-content .navbox__cell ol ul,
+.mdpp-content .navbox__cell ol ol {
+  display: block;
+  margin: 0;
+  padding-left: 1.2em;
+  list-style: disc;
+}
+
+.mdpp-content .navbox__cell ul ul > li,
+.mdpp-content .navbox__cell ul ol > li,
+.mdpp-content .navbox__cell ol ul > li,
+.mdpp-content .navbox__cell ol ol > li {
+  display: list-item;
+}
+
+.mdpp-content .navbox__cell ul ul > li:not(:last-child)::after,
+.mdpp-content .navbox__cell ul ol > li:not(:last-child)::after,
+.mdpp-content .navbox__cell ol ul > li:not(:last-child)::after,
+.mdpp-content .navbox__cell ol ol > li:not(:last-child)::after {
+  content: none;
+}
+
+/* 窄屏：分组名不再不折行（否则一列宽都被标签吃掉了），改到内容上面去 */
+@media (max-width: 34rem) {
+  .mdpp-content .navbox__table th,
+  .mdpp-content .navbox__table td {
+    display: block;
+    border-bottom: 0;
+  }
+
+  .mdpp-content .navbox__group {
+    padding-bottom: 0.1em;
+    border-bottom: 1px solid var(--mdpp-border);
+  }
+}
