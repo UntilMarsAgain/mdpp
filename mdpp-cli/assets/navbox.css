@@ -20,26 +20,14 @@
   margin: 0;
 }
 
-/* 嵌进去的没有标题栏也没有外框，只是一条竖线分出层次 */
+/* 嵌进去的没有标题栏也没有外框 —— 它就坐在父格的内容区里。层级靠缩进本身
+ * 与标签样式分，**不画竖线**（那条线在 group-bg= 配了色的导航框里和标签
+ * 底色互相打架）。 */
 .mdpp-content .navbox--nested {
   margin: 0;
   border: 0;
-  border-left: 2px solid var(--mdpp-border);
   border-radius: 0;
   background: transparent;
-}
-
-/* 嵌套导航框：完全紧凑，行间无间隙 */
-.mdpp-content .navbox--nested {
-  margin: 0;
-  border: 0;
-  border-left: 2px solid var(--mdpp-border);
-  border-radius: 0;
-  background: transparent;
-}
-
-.mdpp-content .navbox__cell > .navbox--nested {
-  margin: 0; /* 父 cell 已清零 padding，不再需要负边距 */
 }
 
 .mdpp-content .navbox--nested .navbox__body {
@@ -47,35 +35,35 @@
   background: transparent;
 }
 
-.mdpp-content .navbox--nested .navbox__table {
-  border: none;
+/* 子表格的行间紧凑，且**不画横线** —— 通栏已经分了组，再画线是噪音。
+ *
+ * 选择器**必须带上 `.navbox__group` / `.navbox__cell`**：下面那条基础格子规则
+ * 也是 (0,3,1)，不带类就打成平手、靠后的基础规则赢，padding 整个失效。 */
+.mdpp-content .navbox--nested .navbox__table th.navbox__group,
+.mdpp-content .navbox--nested .navbox__table td.navbox__cell {
+  border-bottom: 0;
+  padding: 0.25em 0.5em;
 }
 
-.mdpp-content .navbox--nested .navbox__table th,
-.mdpp-content .navbox--nested .navbox__table td {
-  border-bottom: none;
-  padding: 0.125em 0.35em; /* 极紧凑 */
-}
-
-.mdpp-content .navbox--nested .navbox__group {
-  padding: 0.125em 0.35em;
+/* 次级标签列：收窄（18em → 10em）、字号略小。
+ * **左 padding 极小** —— 子标签贴着父格左缘。维基那边正是如此：内容区的文字
+ * （"序号 · 卫星 · 名称意义"）离左缘远，子标签（"小行星"）几乎贴着。 */
+.mdpp-content .navbox--nested .navbox__table th.navbox__group {
+  max-width: 10em;
+  padding: 0.25em 0.5em 0.25em 0.3em;
   font-size: 0.9em;
 }
 
-.mdpp-content .navbox--nested .navbox__cell {
-  padding: 0.125em 0.35em;
+/* 三级及更深：标签列再收窄（8em）、再小一号 */
+.mdpp-content .navbox--nested .navbox--nested .navbox__table th.navbox__group {
+  max-width: 8em;
+  font-size: 0.88em;
 }
 
-/* 嵌套导航框的列表也紧凑 */
-.mdpp-content .navbox--nested .navbox__cell > ul,
-.mdpp-content .navbox--nested .navbox__cell > ol {
-  gap: 0.25em;
-}
-
-/* 嵌套 Group 的左侧竖线调整 */
-.mdpp-content .navbox .navbox .navbox__group {
-  border-left: 1px solid var(--mdpp-border);
-  padding-left: 0.6em;
+/* 子 navbox 里横排列表的分隔点更紧 */
+.mdpp-content .navbox--nested .navbox__cell > ul > li:not(:last-child)::after,
+.mdpp-content .navbox--nested .navbox__cell > ol > li:not(:last-child)::after {
+  padding: 0 0.25em;
 }
 
 /* 没接线时（就一份 HTML 丢进浏览器）折起来的那一框照样藏着 */
@@ -180,17 +168,38 @@
   box-sizing: border-box;
 }
 
-/* 嵌套时：父单元格减少内边距，子导航框体零内边距，行间无间隙 */
-.mdpp-content .navbox__cell {
-  /* 清零父单元格 padding，让子表格能够贴边 */
-  padding: 0;
-}
-
-/* 正常情况下的单元格 padding */
+/* 正常情况下的单元格 padding —— 嵌套与顶层同一份：子 navbox 就坐在父格的
+ * 内容区里，和父格的列表文字同一缩进。
+ *
+ * 以前这里上面还有一条 `.navbox__cell { padding: 0 }`，想把「装子 navbox 的
+ * 格子」清零，但它被本条（`.navbox__table td.navbox__cell`，(0,3,1)）盖掉了
+ * —— 优先级 (0,2,0) 对 (0,3,1)，从没生效过，注释却写着「已清零」。已删。 */
 .mdpp-content .navbox__table th.navbox__group,
 .mdpp-content .navbox__table td.navbox__cell {
   padding: 0.4em 0.8em;
   vertical-align: middle;
+}
+
+/* ---- 装着子导航框的格子 ------------------------------------------- */
+/* 水平 padding 归零：子导航框铺满整格 —— 维基那边子标签（"小行星"）就是贴着
+ * 内容区左缘的，而同一格里的文字（"序号 · 卫星 · …"）离得远。**文字间距 >
+ * 标签间距**，这就是那个对比。
+ *
+ * 左侧留 2px：两级标签的底色之间要有一道缝，完全挨在一起分不出层次
+ * （是一道缝，不是竖线 —— 不用 `border`，免得在 group-bg= 配了色的框里打架）。
+ *
+ * 记号类 `navbox__cell--branch` 由渲染器给（`holds_nested_navbox`）：
+ * CSS 选不了「哪个格子装着子框」，只能由看得见结构的那一侧留记号。 */
+
+.mdpp-content .navbox__table td.navbox__cell--branch {
+  padding: 0.3em 0 0.3em 2px;
+}
+
+/* 格子里的文字（横排列表、段落）另给大缩进 —— 与子标签的 0.3em 拉开层次 */
+.mdpp-content .navbox__table td.navbox__cell--branch > ul,
+.mdpp-content .navbox__table td.navbox__cell--branch > ol,
+.mdpp-content .navbox__table td.navbox__cell--branch > p {
+  padding-left: 1.2em;
 }
 
 /* ---- 通栏：above / below / [headerN] ------------------------------- */

@@ -92,7 +92,7 @@
 //! 宽松了就等于允许塞任意声明，而 `::banner` 只给 `color=` 就是同一个道理。要改样子
 //! 用 [`::css`](crate::block::stdlib)。
 
-use super::super::dispatch::{render_problem, sections};
+use super::super::dispatch::{BlockNode, render_problem, sections};
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
 
@@ -291,6 +291,19 @@ fn bg_of(block: &Block, key: &str) -> Result<Option<String>, String> {
     }
 }
 
+/// 这一节的子节点里有没有一个 `::navbox` —— 即这一格装着一个子导航框。
+///
+/// 只数**直接**子节点：写在列表项里的（懒延续那种）不算，那整个子导航框会先被
+/// markdown 收成列表项的文字（见 [`crate::block::scanner`] 的测试），这里认了
+/// 反而会在一个「压根没嵌进去」的格子上打记号。
+fn holds_nested_navbox(section: &Node) -> bool {
+    section.children.iter().any(|child| {
+        child
+            .cast::<BlockNode>()
+            .is_some_and(|b| b.0.name == "navbox")
+    })
+}
+
 /// `::navbox` —— 见模块头。
 pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     // 没有 `title=` 就是**嵌进去的样子**：没有标题栏、没有边框、没有开关。
@@ -470,6 +483,15 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
                         return;
                     }
                 };
+                // 装着子导航框的格子留个记号：CSS 选不了父元素，而嵌套布局要的是
+                // 「父格文字大间距、子导航框贴左小间距」（维基模式），两套间距必须
+                // 分开给 —— 记号由看得见结构的这一侧给
+                let cell_class = if holds_nested_navbox(section) {
+                    "navbox__cell navbox__cell--branch"
+                } else {
+                    "navbox__cell"
+                }
+                .to_string();
                 fmt.cr();
                 fmt.open("tr", &[]);
                 fmt.open(
@@ -482,7 +504,7 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
                 );
                 fmt.text_raw(&label);
                 fmt.close("th");
-                fmt.open("td", &[("class", "navbox__cell".to_string())]);
+                fmt.open("td", &[("class", cell_class)]);
                 fmt.contents(&section.children);
                 fmt.close("td");
                 fmt.close("tr");
@@ -722,6 +744,36 @@ mod tests {
         assert!(html.contains("桥墩"), "{html}");
         // 父导航框只有自己的标题栏
         assert_eq!(html.matches("navbox__bar").count(), 1, "{html}");
+    }
+
+    /// 装着子导航框的格子带 `navbox__cell--branch` 记号 —— CSS 靠它把
+    /// 「父格文字的大间距」与「子导航框贴左的小间距」分开
+    #[test]
+    fn a_cell_holding_a_nested_navbox_is_marked() {
+        let html =
+            render("::navbox title=x\n  [分组]\n  * 甲\n\n  ::navbox\n    [子组]\n    * 乙\n");
+        assert!(
+            html.contains(r#"<td class="navbox__cell navbox__cell--branch">"#),
+            "{html}"
+        );
+        // 只有装着子框的那一格带记号
+        assert_eq!(html.matches("navbox__cell--branch").count(), 1, "{html}");
+    }
+
+    /// 三层嵌套时**每层**各带各的记号 —— 第三层格子里没子框，不带
+    #[test]
+    fn nested_cells_are_marked_at_every_level() {
+        let html = render(
+            "::navbox title=x\n  [甲]\n  一句\n\n  ::navbox\n    [乙]\n    一句\n\n    ::navbox\n      [丙]\n      一句\n",
+        );
+        assert_eq!(html.matches("navbox__cell--branch").count(), 2, "{html}");
+    }
+
+    /// 写在列表项里的不算（那是懒延续，子导航框整个被吞成文字）
+    #[test]
+    fn a_navbox_swallowed_by_a_list_is_not_marked() {
+        let html = render("::navbox title=x\n  [分组]\n  * 甲\n  ::navbox\n    [子]\n    乙\n");
+        assert!(!html.contains("navbox__cell--branch"), "{html}");
     }
 
     /// 嵌套**必须空一行**，否则会被 markdown 当成列表项的续行。

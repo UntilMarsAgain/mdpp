@@ -63,7 +63,8 @@
     display: none;
   }
 
-  /* 嵌进去的子导航框在纸上不该再缩在竖线里 —— 纸上看不出层次 */
+  /* 嵌进去的子导航框在纸上没有什么要还原的（屏幕上已不画竖线），
+   * 但 `--full` 之外的单段 HTML 可能还带着旧样式，所以这条留着兜底。 */
   .mdpp-content .navbox--nested {
     margin: 0;
     border-left: 0;
