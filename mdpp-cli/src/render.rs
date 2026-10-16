@@ -166,7 +166,7 @@ impl Stats {
         self.bytes_in += source.len();
         self.bytes_out += html.len();
         // 只报**出问题的地方**：那几个类名由 `block::dispatch` 一处写死，不会过期。
-        // 「块有几个」数不出来 —— 22 个块各写各的 class，要数就得把 22 个名字抄一份
+        // 「块有几个」数不出来 —— 块各写各的 class，要数就得把名字抄一份
         // 在这儿，而那份清单过期之后报出来的数字还是「像模���样」的，比不报更坏。
         self.unknown += html.matches("template--unknown").count();
         self.misused += html.matches("template--problem").count();

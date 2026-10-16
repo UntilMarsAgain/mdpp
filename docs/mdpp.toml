@@ -1,0 +1,60 @@
+# Markdown++ 的项目文档。这是一份**自己的工具写自己的文档**的站点：
+# 正文用方言块写，导航栏与目录页由 mdpp build 生成。
+
+# 站点名。它出现在每一页顶上那条的左边
+site_name = "Markdown++"
+
+# 一句话说明。它出现在顶栏里，站点名右边，也进每一页的 <meta name="description">
+site_description = "给 markdown 加一套块级方言"
+
+# 站点在网上的绝对地址，如 https://example.github.io/repo/。
+# 写了每一页就多一条 <link rel="canonical">，告诉搜索引擎「你在网上是哪一个」。
+# 页内链接一律仍是相对的 —— 整站能挂在任意子路径下，site_url 只回答那一个问题。
+# 本地预览不必写它。
+# site_url = "https://example.github.io/mdpp/"
+
+# 顶栏右端那个仓库链接。只认 http/https
+# repo_url = "https://example.com/mdpp"
+
+# 底栏那句话。空的就是没有底栏
+copyright = "MIT 许可"
+
+# 标签页上那个小图标。相对本文件，不写就没有（浏览器自己画一个）
+# favicon = "assets/favicon.svg"
+
+# 正文在哪。mdpp build 递归扫这个目录，.md 与 .mdpp 都算页面
+pages_dir = "pages"
+
+# 模板页在哪。<目录>/<名字>.mdpp 是一页，正文里 ::名字 从这里取
+templates_dir = "templates"
+
+# 站点输出到哪。mdpp build 写在这里
+site_dir = "build"
+
+# 整页的主题：light 或 dark。不写就是 light
+theme = "light"
+
+# <html lang>
+lang = "zh-Hans"
+
+# 附加的 CSS 与 JS，按给定次序接在默认的之后。路径相对本文件
+extra_css = []
+extra_js = []
+
+# 覆盖层目录：build 完成后把这个目录里的东西原样拷到产物里，重复就覆盖
+override_dir = "override"
+
+# 导航栏：顶栏下面那一行链接，mkdocs 的 nav 那套写法。
+# 每一项是一个字符串（显示文字，指「全站唯一叫这个名字的页」），
+# 或一个单项表（显示文字 → 站内页的键；键是 pages/ 下的路径，index 是首页）。
+nav = [
+  { "首页" = "index" },
+  { "方言语法" = "方言" },
+  { "作为库" = "库" },
+  { "命令行" = "命令行" },
+  { "附录" = "附录/markdown" },
+]
+
+# 目录页：build 会额外生成一页「页面清单」，列出全站每一页，
+# 并自动在导航栏末尾加一个按钮。这里写的是它的名字（键）。
+toc = "目录"

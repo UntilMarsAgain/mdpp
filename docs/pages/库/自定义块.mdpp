@@ -1,0 +1,133 @@
+# 自定义块
+
+`::` 语法由一张**注册表**驱动，注册表是普通数据：从 `BlockRegistry::with_builtins()`
+开始灌（内置的 + 你自己的），或者从 `BlockRegistry::new()` 从零来。交给构建器：
+
+```rust
+use mdpp::registry::{BlockRegistry, ContentMode};
+use mdpp::Mdpp;
+
+let mut registry = BlockRegistry::with_builtins();
+registry.register_fn("问候", ContentMode::Markdown, |block, node, fmt| {
+    fmt.open("p", &[("class", "greet".to_string())]);
+    fmt.text(&format!("你好，{}", block.param("who").unwrap_or("世界")));
+    fmt.contents(&node.children);
+    fmt.close("p");
+});
+
+let mdpp = Mdpp::builder().registry(registry).build();
+let html = mdpp.render("::问候 who=某人\n  内容\n");
+```
+
+## 三档内容
+
+注册一块要交代两件事：渲染函数，以及**块内容怎么处理**（`ContentMode`）。后者不是
+可选项 —— 扫描器要靠它在内容被解析**之前**决定走哪条路。
+
+| 档 | 渲染器拿到什么 | 什么时候用 |
+|---|---|---|
+| `ContentMode::Markdown` | `node.children`（内容已交给整个解析器解析过） | 块里要能写 markdown、链接、再嵌块 |
+| `ContentMode::Sections` | `node.children` 里是若干个 `Section`（各节各解析过） | 按 `[标签]` 分节的块 |
+| `ContentMode::Raw` | `block.body`（原文，一个字没动） | 内容是另一种语言（TeX、图、样式、代码） |
+
+`Markdown` 档就用 `fmt.contents(&node.children)` 把内容写出去：
+
+```rust
+fn compare(block: &mdpp::Block, node: &Node, fmt: &mut dyn Renderer) {
+    fmt.open("dl", &[("class", "compare".to_string())]);
+    for side in ["左", "右"] {
+        if let Some(value) = block.param(side) {
+            fmt.open("dt", &[]);
+            fmt.text(side);
+            fmt.close("dt");
+            fmt.open("dd", &[]);
+            fmt.text(value);
+            fmt.close("dd");
+        }
+    }
+    fmt.close("dl");
+    fmt.contents(&node.children);
+}
+```
+
+`Sections` 档遍历 `Section`：
+
+```rust
+fn steps(_block: &mdpp::Block, node: &Node, fmt: &mut dyn Renderer) {
+    fmt.open("ol", &[("class", "steps".to_string())]);
+    for section in &node.children {
+        let Some(label) = section.cast::<mdpp::block::Section>() else {
+            continue;
+        };
+        fmt.open("li", &[]);
+        fmt.text(&label.label);
+        fmt.contents(&section.children);
+        fmt.close("li");
+    }
+    fmt.close("ol");
+}
+```
+
+`Raw` 档读 `block.body`，一个字都不解析：
+
+```rust
+fn countdown(block: &mdpp::Block, _node: &Node, fmt: &mut dyn Renderer) {
+    let Some(date) = block.param("日期") else {
+        fmt.text("缺少 日期=…");
+        return;
+    };
+    fmt.open("span", &[("class", "countdown".to_string())]);
+    fmt.text(&format!("距 {date} 还有若干天"));
+    fmt.close("span");
+}
+```
+
+::warning
+  `Raw` 档的块名**不能**再被 markdown 解析一遍 —— TeX、图定义、样式里的记号各有各的
+  语法，按 markdown 走一遍会被改写。这就是 `::code`、`::math`、`::css` 都登记成 `Raw`
+  的原因。
+
+## `Block` 头
+
+渲染器拿到的 `Block` 只有头：
+
+| 字段 / 方法 | 是什么 |
+|---|---|
+| `block.name` | `::` 后面的名字 |
+| `block.params` | `Vec<(String, String)>`，`key=value` 参数（只写 key 的开关，值是空串） |
+| `block.body` | 块内容原文（已去掉公共缩进） |
+| `block.param(key)` | 取一个参数的值，没有就是 `None` |
+| `block.has(key)` | 这个开关写没写 —— `param` 分不开「写了 `flag=`」与「写了 `flag`」 |
+
+## 注册项与其它操作
+
+```rust
+// 用闭包（外部注册多半是这一种）
+registry.register_fn("甲", ContentMode::Markdown, |block, node, fmt| { /* … */ });
+
+// 用函数指针（本库自带的块全是这一种）
+registry.register(BlockSpec::plain("乙", ContentMode::Raw, my_fn));
+
+// 摘掉一个，改个名字再注册回去 —— 这是改掉一个内置块最短的路
+let taken = registry.remove("note").unwrap();
+registry.register(taken.with_name("我的提示"));
+```
+
+- `register` 对同名块**覆盖**，不会重复注册；
+- `names()` 按注册次序列出（诊断与 `--list-blocks` 用它）；
+- 想让用户块（模板页）**不生效**、只认内置块，用 `BlockRegistry::builtin()` 即可
+  （模板页只在注册表里查不到时才开始找）。
+
+## `::html` 里再写 markdown
+
+自定义块的渲染器里若要「渲染一小段 markdown」，用 `mdpp::engine::render_nested(src)`
+—— 它**沿用当次那一份上下文与注册表**，所以你注册的块在内层也认得：
+
+```rust
+fmt.text_raw(&mdpp::engine::render_nested("**粗** 与 [[链接]]"));
+```
+
+完整例子见 `mdpp/examples/custom_block.rs`。
+
+::本板块 标题="作为库使用"
+  [[库]] · [[库/内部链接]] · [[库/模板页来源]] · [[库/自定义块]] · [[库/构建选项]]

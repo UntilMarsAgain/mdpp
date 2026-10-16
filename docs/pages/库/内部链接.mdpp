@@ -1,0 +1,95 @@
+# 内部链接
+
+`[[目标|显示文字]]` 由使用方决定落到哪。库只负责**认出**链接、把目标递给你，再按你
+递回来的东西渲染。顺序是 MediaWiki 的：**目标在前，显示文字在后**。
+
+## 三种结局
+
+| `resolve` 返回 | 渲染成 |
+|---|---|
+| `ResolvedLink::Link(LinkTarget)` | 带 `href` 的普通链（`<a class="wikilink" …>`） |
+| `ResolvedLink::Node(Box<dyn NodeRenderer>)` | 整个节点归那个函数写（连 `<a>` 都由它决定） |
+| `None`，**或压根没递解析器** | **红链**：`<a class="wikilink wikilink--missing" data-missing="true">` |
+
+「解析器说没有」与「压根没人递解析器」渲染成**同样的红链**：两者都是「调用方不知道
+这一页存不存在」，而渲染成一条看起来正常的链等于替它宣称「这一页存在」。
+
+## 递给它一条地址
+
+最小的一份实现：认得出的给地址，认不出的什么都不给（于是落成红链）。
+
+```rust
+use std::collections::HashSet;
+use std::sync::Arc;
+
+use mdpp::{Mdpp, RenderContext};
+use mdpp::link::{LinkResolver, LinkTarget, ResolvedLink};
+
+#[derive(Debug)]
+struct Vault {
+    existing: HashSet<String>,
+}
+
+impl LinkResolver for Vault {
+    fn resolve(&self, target: &str) -> Option<ResolvedLink> {
+        self.existing.contains(target).then(|| {
+            ResolvedLink::Link(
+                LinkTarget::new(format!("/notes/{target}")).attr("data-page", target),
+            )
+        })
+    }
+}
+```
+
+`LinkTarget::new(url)` 后面可以 `.attr(key, value)` 接着挂属性（`rel`、`data-*`、
+甚至 `class` —— 给 `class` 时会与库自带的 `wikilink` 合并，不会被顶掉）。
+
+## 想自己画红链
+
+递 `ResolvedLink::Node`，整个 `<a>` 由你写 —— 比如加一句「（还没写）」：
+
+```rust
+use mdpp::markdown_it::{Node, Renderer};
+use mdpp::link::{LinkResolver, NodeRenderer, ResolvedLink};
+
+struct RedLink;
+
+impl NodeRenderer for RedLink {
+    fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
+        fmt.open("a", &[("class", "wikilink wikilink--missing".to_string())]);
+        fmt.contents(&node.children);
+        fmt.text("（还没写）");
+        fmt.close("a");
+    }
+}
+
+struct DrawsItsOwnRedLink;
+
+impl LinkResolver for DrawsItsOwnRedLink {
+    fn resolve(&self, _target: &str) -> Option<ResolvedLink> {
+        Some(ResolvedLink::Node(Box::new(RedLink)))
+    }
+}
+```
+
+## 红链为什么故意不带 `href`
+
+带上 `href` 浏览器就会自己走，接单击处理的一方再也轮不到 —— 而那正是「这一页还没有」
+最需要有人接手的时候。想换红链的样子有两条路：递 `Node` 自己画，或者用自己那份样式
+接 `wikilink--missing` 与 `data-missing="true"` 这两个钩子。
+
+## 在项目里
+
+`mdpp build` 自己实现了一份 `LinkResolver`：`pages/` 就是全部的真相 —— 先按键查，
+再按「全站唯一的文件名」查；两样都不中就是一条**红链**，并在 build 结束时逐条报出来
+（`--strict` 下算失败）。见 [[命令行/项目]]。
+
+## trait 的约束
+
+`LinkResolver: Send + Sync + Debug`。要求 `Debug` 是因为实现方那几样（索引、连接）
+多半已经 `Debug`，而没有它的话调用方连「这一份上下文里带了什么」都打印不出来。
+
+完整例子见 `mdpp/examples/link_resolver.rs`。
+
+::本板块 标题="作为库使用"
+  [[库]] · [[库/内部链接]] · [[库/模板页来源]] · [[库/自定义块]] · [[库/构建选项]]

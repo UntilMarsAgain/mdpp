@@ -1,0 +1,87 @@
+# 构建选项
+
+`Mdpp` 建一次，可以反复渲染。`Mdpp::builder()` 给出一个 `MdppBuilder`，每一项都能单独改。
+
+## 那几条可开关的语法
+
+| 方法 | 默认 | 说明 |
+|---|---|---|
+| `math(bool)` | 开 | 行内 `$…$` 与 `$$…$$` |
+| `wikilink(bool)` | 开 | 内部链接 `[[…]]` |
+| `tables(bool)` | 开 | 表格 |
+| `heading_anchors(bool)` | 开 | 给标题加 `id`（关掉之后 `[跳转](#标题)` 就少了落点） |
+| `setext(bool)` | **关** | Setext 标题（标题下一行写 `===` / `---`） |
+| `indented_code(bool)` | **关** | 缩进代码块（四空格开头） |
+| `typographer(bool)` | **关** | 排版替换（`--` 变 `–`、直引号变弯引号） |
+| `raw_html(bool)` | **关** | 正文里的 HTML 原样透传（**安全开关**） |
+
+```rust
+use mdpp::Mdpp;
+
+let mdpp = Mdpp::builder()
+    .typographer(true)
+    .raw_html(false)
+    .build();
+
+let html = mdpp.render("## 标题\n\n正文。\n");
+```
+
+## 为什么那几处刻意关掉
+
+- **raw HTML**：渲染出来的 HTML 常常被直接注入页面，开着它等于把 XSS 入口交给
+  正文作者。要开得自己写出来 —— 那就是一次显式的决定。
+- **缩进代码块**：缩进在本库里有别的用途 —— 它是 `::` 块的边界，两者会互相干扰。
+  代码块请用围栏写法。
+- **typographer / smartquotes**：它们会把 `--accent` 变成 `–accent`、把 `"引号"` 变成
+  `“引号”` —— 在正文里是锦上添花，在代码片段里是**改坏内容**，而这两条规则不区分代码
+  片段。
+
+于是 `--` 在代码里原样留着，而「想打开也有开关」—— 默认关是一种选择，不是不支持：
+
+```rust
+let html = Mdpp::builder().typographer(true).build().render("a -- b\n");
+assert!(html.contains('\u{2013}'));  // –
+```
+
+## 换掉整张注册表
+
+`registry(BlockRegistry)` 换掉**整张**表（默认是 `builtin()`，即全部内置块）。想
+「内置的 + 我自己的」就从 `with_builtins()` 开始灌，见 [[库/自定义块]]：
+
+```rust
+use mdpp::registry::BlockRegistry;
+use mdpp::{Mdpp, ContentMode};
+
+let mut registry = BlockRegistry::new();  // 从零：一个内置块都没有
+registry.register_fn("只有这一个", ContentMode::Raw, |_, _, fmt| fmt.text("出来了"));
+
+let mdpp = Mdpp::builder().registry(registry).build();
+assert!(!mdpp.render("::note\n  甲\n").contains("<blockquote"));  // note 不在了
+assert!(mdpp.render("::只有这一个\n").contains("出来了"));
+```
+
+## 并发：一个线程一个
+
+**`Mdpp` 既不是 `Send` 也不是 `Sync`。** markdown-it 的 `ext` 集合是 `RefCell`，而
+`parse` 期间真的读写它（围栏代码块的语言前缀、标题的 slug 函数都从那里取），所以两个
+线程共用一个解析器是**数据竞争**，不是「慢一点」。
+
+定成一个线程建一个：建一次是微秒级的事，比外面套一把锁划算。渲染状态（链接解析器、
+模板页、注册表那一趟）本身是线程局部的，各线程各渲各的互不干扰。
+
+```rust
+// 每个线程自己建一个
+let mdpp = Mdpp::new();
+
+// 或者放进线程局部：
+thread_local! {
+    static MDPP: Mdpp = Mdpp::new();
+}
+```
+
+`render_with` 可以**递归调用** —— `::html` 里的 `<markdown>` 就是这么做的：上下文
+与注册表进入时装上、返回时还原（还原的是**进入之前**那一份，不是清空），所以外层那一趟
+不受内层影响。
+
+::本板块 标题="作为库使用"
+  [[库]] · [[库/内部链接]] · [[库/模板页来源]] · [[库/自定义块]] · [[库/构建选项]]

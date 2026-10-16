@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 160" role="img" aria-label="一座单孔石拱桥的示意图">
+  <rect width="320" height="160" fill="#eaf1fb"/>
+  <path d="M0 118h320v42H0z" fill="#d6e4f7"/>
+  <path d="M40 118 Q160 34 280 118" fill="none" stroke="#5b8dd6" stroke-width="8" stroke-linecap="round"/>
+  <path d="M40 118v26M280 118v26" stroke="#5b8dd6" stroke-width="8" stroke-linecap="round"/>
+  <path d="M0 86h320" stroke="#0055a4" stroke-width="6"/>
+  <path d="M24 86V70M80 86V70M136 86V70M192 86V70M248 86V70M296 86V70" stroke="#0055a4" stroke-width="4"/>
+  <path d="M0 66h320" stroke="#0055a4" stroke-width="5"/>
+  <path d="M10 138q14-7 28 0t28 0 28 0 28 0 28 0 28 0 28 0 28 0 28 0 28 0" fill="none" stroke="#0055a4" stroke-width="3" opacity=".55"/>
+</svg>

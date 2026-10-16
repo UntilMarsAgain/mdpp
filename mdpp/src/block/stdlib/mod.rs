@@ -9,7 +9,8 @@
 //!   解析**，参数只管外框的样子。
 //! - `media`：把一个文件摆出来（`image` / `video` / `audio`）。三者共用一套 `src=`
 //!   校验、尺寸上限与图注规矩。
-//! - `panels`：**按 `[标签]` 分节**的块（`tabs` / `theme` / `navbox`）。它们不读
+//! - `panels`：**按 `[标签]` 分节**的块（`tabs` / `theme` / `columns` / `navbox`）。
+//!   它们不读
 //!   块正文，而是各节已解析好的子节点；`navbox` 的标签同时就是它的分组名。
 //! - `embeds`：把内容**原样写出去**的块（`code` / `mermaid` / `math` / `css` /
 //!   `html` / `js`），注册为 [`ContentMode::Raw`]，正文一个字符都不解析。
@@ -32,7 +33,7 @@ use callouts::{render_danger, render_error, render_note, render_tip, render_warn
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
 use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;
-use panels::{render_tabs, render_theme};
+use panels::{render_columns, render_tabs, render_theme};
 use text::{
     render_aside, render_banner, render_fields, render_quote, render_signature, render_title,
 };
@@ -60,6 +61,7 @@ pub const NAMES: &[&str] = &[
     "title",
     "tabs",
     "theme",
+    "columns",
     "image",
     "video",
     "audio",
@@ -88,6 +90,7 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("title", ContentMode::Markdown, render_title))
         .register(spec("tabs", ContentMode::Sections, render_tabs))
         .register(spec("theme", ContentMode::Sections, render_theme))
+        .register(spec("columns", ContentMode::Sections, render_columns))
         .register(spec("image", ContentMode::Raw, render_image))
         .register(spec("video", ContentMode::Raw, render_video))
         .register(spec("audio", ContentMode::Raw, render_audio))
@@ -224,6 +227,8 @@ mod tests {
                 "image" | "video" | "audio" => format!("::{name} src=x.png\n  注\n"),
                 "tabs" => format!("::{name}\n  [甲]\n  正文一行\n"),
                 "theme" => format!("::{name}\n  [light]\n  正文一行\n"),
+                // 分栏与选项卡一样，每节都得有 [标签]，标签前不许有正文
+                "columns" => format!("::{name}\n  [甲]\n  正文一行\n"),
                 // navbox 要一个标题与一行分组，否则那个样子是「用法有问题」的框
                 "navbox" => format!("::{name} title=某导航框\n  [分类]\n  甲\n"),
                 _ => format!("::{name}\n  正文一行\n"),
@@ -246,6 +251,10 @@ mod tests {
         let registry = BlockRegistry::builtin();
         assert_eq!(
             registry.get("tabs").map(BlockSpec::mode),
+            Some(ContentMode::Sections)
+        );
+        assert_eq!(
+            registry.get("columns").map(BlockSpec::mode),
             Some(ContentMode::Sections)
         );
         assert_eq!(

@@ -15,15 +15,17 @@
  * - 底栏只有一句话加一句「由 mdpp 生成」，没有 mkdocs 那一串社交图标。
  *
  * 这些都是写死的：**这一层不提供开关**。能配的只有顶栏与底栏上那几句话
- * （`mdpp.toml` 里的 `site_name` / `site_description` / `repo_url` / `copyright`），
- * 配色仍取自 `base.css` 的 `:root`；想改版式就复制一份 `site.css` 去改。
+ * （`mdpp.toml` 里的 `site_name` / `site_description` / `repo_url` / `copyright`）、
+ * 导航栏那一行链接（`nav`），配色仍取自 `base.css` 的 `:root`；想改版式就复制一份
+ * `site.css` 去改。
  */
 
 /* ---- 那一列 ---------------------------------------------------------- */
 
-/* 正文、顶栏内容、页首页尾共用一列的宽度。窄屏上那一列就是整屏。 */
+/* 正文、顶栏内容、导航栏、页首页尾共用一列的宽度。窄屏上那一列就是整屏。 */
 .mdpp-main,
-.mdpp-bar__inner {
+.mdpp-bar__inner,
+.mdpp-nav__inner {
   max-width: 1080px;
   margin-inline: auto;
 }
@@ -90,6 +92,43 @@
   color: var(--mdpp-accent);
 }
 
+/* ---- 导航栏 ----------------------------------------------------------- */
+
+/* 顶栏下面那一行链接，mkdocs-material 的 tabs 那个位置。
+ * 与顶栏同一层，于是往上滚时它跟着顶栏一起留在那儿 */
+.mdpp-nav {
+  border-top: 1px solid var(--mdpp-border);
+  background: var(--mdpp-surface);
+}
+
+.mdpp-nav__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.4rem;
+  padding: 0 1.5rem;
+}
+
+.mdpp-nav__link {
+  display: inline-block;
+  padding: 0.55rem 0.7rem 0.6rem;
+  font-size: 0.95em;
+  color: var(--mdpp-text-dim);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+
+.mdpp-nav__link:hover {
+  color: var(--mdpp-accent);
+}
+
+/* 当前页：底下那条 accent 色的线，mkdocs-material 的 active tab 那个样子 */
+.mdpp-nav__link--active {
+  color: var(--mdpp-accent);
+  border-bottom-color: var(--mdpp-accent);
+  font-weight: 600;
+}
+
 /* ---- 卡片 ------------------------------------------------------------- */
 
 /* 页面底色比正文浅一号的，整张卡片才浮得起来。深色主题下同理。 */
@@ -103,6 +142,35 @@ body {
   border: 1px solid var(--mdpp-border);
   border-radius: var(--mdpp-radius);
   box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+}
+
+/* ---- 目录页 ----------------------------------------------------------- */
+
+/* 目录页（`toc` 生成的那一页）里的清单 */
+.mdpp-content .toc {
+  list-style: none;
+  padding-left: 0;
+  margin: 1rem 0;
+}
+
+.mdpp-content .toc li {
+  padding: 0.45rem 0.2rem;
+  border-bottom: 1px solid var(--mdpp-border);
+}
+
+.mdpp-content .toc li:last-child {
+  border-bottom: 0;
+}
+
+.mdpp-content .toc a {
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.mdpp-content .toc__path {
+  color: var(--mdpp-text-dim);
+  font-size: 0.85em;
+  margin-left: 0.6em;
 }
 
 /* ---- 底栏 ------------------------------------------------------------- */
@@ -136,6 +204,7 @@ body {
 @media print {
   .mdpp-main,
   .mdpp-bar__inner,
+  .mdpp-nav__inner,
   .mdpp-foot__inner {
     max-width: none;
   }

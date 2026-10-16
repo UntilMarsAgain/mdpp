@@ -1,4 +1,4 @@
-//! 分节类：`tabs` / `theme` —— 全库唯二按 `[标签]` 分节的块。
+//! 分节类：`tabs` / `theme` / `columns` —— 按 `[标签]` 分节的三个块。
 //!
 //! 它们与其他块的根本差别是**不读块正文**：分节发生在扫描时（见
 //! [`crate::block::scanner`]），各节已经各自解析成子节点、挂在一个 [`Section`] 下面。
@@ -6,7 +6,8 @@
 //!
 //! 差别也只在于**怎么摆**：选项卡是一排按钮加若干面板，切换靠一段脚本
 //! （`mdpp-cli/assets/mdpp.js` —— 那是界面那一层的事，渲染器只吐结构）；深浅色主题是
-//! 把两节都渲染进去、显示哪一节由样式按 `data-mdpp-theme` 决定（切主题不必重新渲染）。
+//! 把两节都渲染进去、显示哪一节由样式按 `data-mdpp-theme` 决定（切主题不必重新渲染）；
+//! 分栏是把各节**一起摆出来**，横着排，窄屏由样式堆成一竖列。
 
 use super::super::dispatch::{render_problem, sections};
 use crate::registry::Block;
@@ -165,6 +166,83 @@ pub(super) fn render_theme(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     fmt.cr();
 }
 
+/// `::columns` —— 水平分栏：块里用 `[标签]` 分节，一节就是一栏，几栏一起摆出来。
+///
+/// ```text
+/// ::columns
+///   [写法]
+///   用 ::quote 的写法……
+///   [效果]
+///   渲染出来的样子……
+/// ```
+///
+/// 与 `::tabs` 的根本差别是**几栏同时可见**：选项卡一次只露一节，分栏是拿来并排比对的
+/// （写法与效果、两种变体、参数与默认值）。每节各自是一份小文档，栏里照样能写段落、
+/// 表格、别的块。
+///
+/// `[标签]` 默认当**栏头**（一行小字压在栏顶）；纯摆版面不想见字就写 `labels=off`。
+/// 摆不下时样式会自动堆成一竖列 —— 那是 CSS 的事，渲染器不分宽窄屏。
+/// 与 `::tabs` 同一个规矩：`[标签]` 要与本节的其他行**左对齐**。
+pub(super) fn render_columns(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
+    let sections = sections(node);
+    if sections.is_empty() {
+        render_problem(block, fmt, "分栏是空的：每一节要以 [标签] 开头");
+        return;
+    }
+    if sections.iter().any(|(label, _)| label.is_empty()) {
+        render_problem(
+            block,
+            fmt,
+            "有内容写在第一个 [标签] 之前：分栏的每一节都要以 [标签] 开头",
+        );
+        return;
+    }
+
+    // 栏头默认露出来；要纯版面就 labels=off（与 banner 的 rounded=off 同一套取值）
+    let labels = block
+        .param("labels")
+        .map(|value| value.trim().to_lowercase());
+    let headless = match labels.as_deref() {
+        None | Some("" | "on" | "true" | "yes") => false,
+        Some("off" | "false" | "no" | "0") => true,
+        Some(_) => {
+            render_problem(block, fmt, "labels= 只认 off（不写栏头）；不写就是写");
+            return;
+        }
+    };
+
+    fmt.cr();
+    fmt.open(
+        "div",
+        &[(
+            "class",
+            if headless {
+                "columns columns--nolabels".to_string()
+            } else {
+                "columns".to_string()
+            },
+        )],
+    );
+    for (label, content) in &sections {
+        fmt.cr();
+        fmt.open("div", &[("class", "columns__col".to_string())]);
+        if !headless {
+            fmt.cr();
+            // 用真标题元素：一栏就是一段独立内容，读屏与目录都认它
+            fmt.open("div", &[("class", "columns__head".to_string())]);
+            fmt.text(label);
+            fmt.close("div");
+        }
+        fmt.cr();
+        fmt.contents(&content.children);
+        fmt.cr();
+        fmt.close("div");
+    }
+    fmt.cr();
+    fmt.close("div");
+    fmt.cr();
+}
+
 #[cfg(test)]
 mod tests {
     use crate::engine::Mdpp;
@@ -208,6 +286,34 @@ mod tests {
 
         let stray = render("::tabs\n  没写标签的内容\n  [一]\n  正文\n");
         assert!(stray.contains("template--problem"), "{stray}");
+    }
+
+    /// `::columns`：每节一栏、同时可见，默认把 [标签] 当栏头
+    #[test]
+    fn columns_render_one_column_per_section_with_a_head() {
+        let html = render("::columns\n  [写法]\n  这边写\n  [效果]\n  那边看\n");
+        assert_eq!(html.matches("class=\"columns__col\"").count(), 2, "{html}");
+        assert!(html.contains("columns__head"), "{html}");
+        assert!(html.contains(">写法<") && html.contains(">效果<"), "{html}");
+        // 分栏不是选项卡：不藏任何一节，也没有可点的标签
+        assert!(!html.contains("tabs__tab"), "{html}");
+        assert!(!html.contains("hidden"), "{html}");
+
+        // 一栏里照样是完整的一份小文档
+        let rich = render("::columns\n  [一]\n  **加粗**\n");
+        assert!(rich.contains("<strong>加粗</strong>"), "{rich}");
+
+        // labels=off：纯摆版面，栏头不露
+        let bare = render("::columns labels=off\n  [一]\n  内容\n");
+        assert!(bare.contains("columns--nolabels"), "{bare}");
+        assert!(!bare.contains("columns__head"), "{bare}");
+
+        let stray = render("::columns\n  没写标签\n  [一]\n  正文\n");
+        assert!(stray.contains("template--problem"), "{stray}");
+        let empty = render("::columns\n");
+        assert!(empty.contains("template--problem"), "{empty}");
+        let bad = render("::columns labels=大概\n  [一]\n  正文\n");
+        assert!(bad.contains("template--problem"), "{bad}");
     }
 
     /// 一节里还能再嵌一个选项卡（各节是各自解析的小文档）

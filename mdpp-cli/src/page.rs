@@ -34,7 +34,7 @@
 //! | `{{meta}}` | `<meta name="description">` 与 `<link rel="canonical">`；**哪样没配就没有哪样** |
 //! | `{{styles}}` | 样式：要么一段内联的 `<style>`，要么一串 `<link>` |
 //! | `{{scripts}}` | 脚本：要么一段内联的 `<script>`，要么一串 `<script src>` |
-//! | `{{bar}}` | 顶上那一条，**连标签一起**；站点名空就没有 |
+//! | `{{bar}}` | 顶上那一条（**含导航栏**），**连标签一起**；站点名与导航都没有就没有 |
 //! | `{{header}}` `{{footer}}` | 页首 / 页尾：**连标签一起**，没配就整段没有 |
 //! | `{{body}}` | 正文（已渲染的 HTML 片段） |
 //!
@@ -142,6 +142,10 @@ impl Assets {
 /// 刻意不给 markdown：页首页尾那一层要改版式、重写一遍，比改配置里一行字麻烦得多。
 /// 与 mkdocs 的 `site_name` / `site_description` / `copyright` / `repo_url` 是一回事 ——
 /// 顶栏左边一句、右边一句，底栏一句，都是一句话能说完的东西。
+///
+/// `nav` 是顶栏下面那一行链接 —— 已经解析好了（显示文字、相对这一页的地址、
+/// 是不是当前页），由 `build` 那边对着站点查好再递过来；`render --full` 给
+/// 默认的空值，于是单文件页面没有导航。
 #[derive(Debug, Clone, Default)]
 pub struct Chrome {
     /// 顶栏左边的站点名。**空的就是没有顶栏**
@@ -152,6 +156,19 @@ pub struct Chrome {
     pub repo_url: String,
     /// 底栏那句话。空的就是没有底栏
     pub copyright: String,
+    /// 导航栏：顶栏下面那一行链接
+    pub nav: Vec<NavLink>,
+}
+
+/// 导航栏里的一个链接。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NavLink {
+    /// 显示文字
+    pub label: String,
+    /// 相对**这一页**的地址（`../手册/` 那样）
+    pub href: String,
+    /// 这一项是不是当前页（导航里高亮那一个）
+    pub active: bool,
 }
 
 /// 这一页的绝对地址（`<link rel="canonical">`）。没配 `site_url` 就是 `None`
@@ -279,29 +296,63 @@ fn meta(chrome: &Chrome, canonical: &Canonical) -> String {
     lines.join("\n")
 }
 
-/// 顶上那一条。**站点名空就没有顶栏** —— 判据是内容而不是「用哪种资源」，
-/// 于是 `render --full` 那条路不必额外知道自己「不是站点」
+/// 顶上那一条。**站点名空且没有导航就没有顶栏** —— 判据是内容而不是「用哪种资源」，
+/// 于是 `render --full` 那条路不必额外知道自己「不是站点」。
 fn top_bar(chrome: &Chrome) -> String {
     let name = chrome.name.trim();
-    if name.is_empty() {
+    let has_nav = !chrome.nav.is_empty();
+    if name.is_empty() && !has_nav {
         return String::new();
     }
-    let mut inner = format!("<span class=\"mdpp-bar__title\">{}</span>", escape(name));
-    let description = chrome.description.trim();
-    if !description.is_empty() {
-        inner.push_str(&format!(
-            "\n<span class=\"mdpp-bar__desc\">{}</span>",
-            escape(description)
+    let mut inner = String::new();
+    if !name.is_empty() {
+        inner.push_str(&format!("<span class=\"mdpp-bar__title\">{}</span>", escape(name)));
+        let description = chrome.description.trim();
+        if !description.is_empty() {
+            inner.push_str(&format!(
+                "\n<span class=\"mdpp-bar__desc\">{}</span>",
+                escape(description)
+            ));
+        }
+        // 仓库链接：协议只认 http/https —— 配置里写个 `javascript:` 就点一下执行一段
+        if let Some(url) = web_url(chrome.repo_url.trim()) {
+            inner.push_str(&format!(
+                "\n<a class=\"mdpp-bar__repo\" href=\"{}\" rel=\"noopener\">仓库</a>",
+                escape(url)
+            ));
+        }
+    }
+    let top = if inner.is_empty() {
+        String::new()
+    } else {
+        format!("<div class=\"mdpp-bar__inner\">\n{inner}\n</div>\n")
+    };
+    // 导航那一行：顶栏下面，mkdocs-material 的 tabs 那个位置
+    let nav = nav_bar(chrome);
+    if top.is_empty() && nav.is_empty() {
+        return String::new();
+    }
+    format!("<div class=\"mdpp-bar\">\n{top}{nav}</div>")
+}
+
+/// 导航栏：一行链接，当前页高亮。没有链接就整行没有
+fn nav_bar(chrome: &Chrome) -> String {
+    if chrome.nav.is_empty() {
+        return String::new();
+    }
+    let mut links = String::new();
+    for item in &chrome.nav {
+        let active = if item.active { " mdpp-nav__link--active" } else { "" };
+        links.push_str(&format!(
+            "<a class=\"mdpp-nav__link{active}\" href=\"{}\"{}>{}</a>",
+            escape(&item.href),
+            if item.active { " aria-current=\"page\"" } else { "" },
+            escape(&item.label),
         ));
     }
-    // 仓库链接：协议只认 http/https —— 配置里写个 `javascript:` 就点一下执行一段
-    if let Some(url) = web_url(chrome.repo_url.trim()) {
-        inner.push_str(&format!(
-            "\n<a class=\"mdpp-bar__repo\" href=\"{}\" rel=\"noopener\">仓库</a>",
-            escape(url)
-        ));
-    }
-    format!("<div class=\"mdpp-bar\">\n<div class=\"mdpp-bar__inner\">\n{inner}\n</div>\n</div>")
+    format!(
+        "<nav class=\"mdpp-nav\">\n<div class=\"mdpp-nav__inner\">\n{links}\n</div>\n</nav>"
+    )
 }
 
 /// 底下那一条。**没写 copyright 就没有底栏** —— 与 mkdocs 一个规矩：
@@ -421,7 +472,7 @@ fn close_tag(text: &str, tag: &str) -> String {
 }
 
 /// 进 HTML 属性或元素文字的转义。多转义 `&` 与引号没什么坏处
-fn escape(value: &str) -> String {
+pub fn escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for ch in value.chars() {
         match ch {
@@ -661,10 +712,71 @@ mod tests {
                 description: "有说明也没用".to_string(),
                 repo_url: "https://example.com".to_string(),
                 copyright: "有版权也没用".to_string(),
+                ..Chrome::default()
             },
             ..site_page("x")
         });
         assert!(!nameless.contains("mdpp-bar"), "{nameless}");
+    }
+
+    /// 导航栏：一行链接，当前页高亮；没有导航就不渲染那一行
+    #[test]
+    fn the_nav_bar_lists_links_and_highlights_the_current_page() {
+        let html = document(&Page {
+            chrome: Chrome {
+                name: "某站点".to_string(),
+                nav: vec![
+                    NavLink {
+                        label: "首页".to_string(),
+                        href: "./".to_string(),
+                        active: true,
+                    },
+                    NavLink {
+                        label: "指南".to_string(),
+                        href: "指南/".to_string(),
+                        active: false,
+                    },
+                ],
+                ..Chrome::default()
+            },
+            ..site_page("x")
+        });
+        assert!(
+            html.contains("<a class=\"mdpp-nav__link mdpp-nav__link--active\" href=\"./\" aria-current=\"page\">首页</a>"),
+            "{html}"
+        );
+        assert!(
+            html.contains("<a class=\"mdpp-nav__link\" href=\"指南/\">指南</a>"),
+            "{html}"
+        );
+        // 导航在顶栏里，正文之上
+        assert!(
+            html.find("mdpp-nav").expect("有导航") < html.find("mdpp-content").expect("有正文"),
+            "{html}"
+        );
+        // 没有导航就不渲染那一行
+        let plain = document(&site_page("x"));
+        assert!(!plain.contains("mdpp-nav"), "{plain}");
+    }
+
+    /// 导航链接里的文字与地址都要转义 —— 配置是人写的，带引号/尖括号不该跑出来
+    #[test]
+    fn the_nav_bar_escapes_labels_and_hrefs() {
+        let html = document(&Page {
+            chrome: Chrome {
+                name: "某站点".to_string(),
+                nav: vec![NavLink {
+                    label: "a\"b<c".to_string(),
+                    href: "x\"y>z/".to_string(),
+                    active: false,
+                }],
+                ..Chrome::default()
+            },
+            ..site_page("x")
+        });
+        assert!(!html.contains("<c"), "{html}");
+        assert!(html.contains("a&quot;b&lt;c"), "{html}");
+        assert!(html.contains("x&quot;y&gt;z/"), "{html}");
     }
 
     /// 底栏上是 `copyright` 那一句话，右端是写死的「由 mdpp 生成」；

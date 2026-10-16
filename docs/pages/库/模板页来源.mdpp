@@ -1,0 +1,90 @@
+# 模板页来源
+
+`::卡片` 这样的块名不在注册表里时，mdpp 去问一份「模板页来源」要同名的一页。**在哪里
+找那一页**是文档之外的事（目录？数据库？搜索索引？），库不猜，也不提供任何一种猜法
+—— 这里只有问法（`TemplateSource::page`）、答案（`TemplatePage`）与容器类型。
+
+## 实现它就是十行
+
+```rust
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use mdpp::{Mdpp, RenderContext};
+use mdpp::block::template::{TemplatePage, TemplateSource};
+
+#[derive(Debug, Default)]
+struct Pages(HashMap<String, TemplatePage>);
+
+impl TemplateSource for Pages {
+    fn page(&self, name: &str) -> Option<TemplatePage> {
+        // name 已经归一过了（小写、剥了前缀），所以直接查
+        self.0.get(name).cloned()
+    }
+}
+
+let mut pages = Pages::default();
+pages.0.insert(
+    "卡片".to_string(),
+    TemplatePage::Ready("::banner\n  **{{标题}}**\n\n  {{body}}\n".to_string()),
+);
+
+let context = RenderContext::new().with_templates(Arc::new(pages));
+let html = Mdpp::new().render_with("::卡片 标题=甲\n  正文\n", &context);
+```
+
+## 两种答案
+
+`TemplatePage` 有两个变体 —— 「没有这一页」用 `None` 表示：
+
+| 返回 | 意思 | 渲染成 |
+|---|---|---|
+| `TemplatePage::Ready(正文)` | 取到了 | 模板正文填好参数、解析出来 |
+| `TemplatePage::Unreadable { reason }` | 有这一页，但这一刻读不出来 | 「模板页读不出来」框 + 原因 |
+| `None` | 压根没有这一页 | 「未知块」框 |
+
+**「没有这一页」和「有，但此刻读不出来」必须分得开** —— 对作者来说是两件事。混成一句
+「取不到」最难查：块名是对的，作者会往错的方向找。所以 `Unreadable` 带着**够说给人听
+的原因**（「这一页是加密存的，需要口令」），而不是一个泛泛的错误码。
+
+::note
+  库**不为上锁的页出解锁框** —— 那是使用方的界面职责。「读不出来」只把原因说出来，
+  剩下怎么办由你决定。
+
+## 名字的归一
+
+`page` 收到的 `name` 已经归一过了（**小写**、剥掉了 `template:` 前缀），所以最简单的
+实现就是「拿它当键查一下」。实现方**不必**自己剥前缀、不必自己转小写。
+
+漏掉这一步的症状很隐蔽：`::卡片` 能用，`src=template:卡片` 却报「不存在」。
+
+```rust
+use mdpp::block::template::page_key;
+
+assert_eq!(page_key("卡片").as_deref(), Some("卡片"));
+assert_eq!(page_key("template:卡片").as_deref(), Some("卡片"));
+assert_eq!(page_key("Template: 卡片 ").as_deref(), Some("卡片"));
+// `帮助:入门` 是一页的名字，不是「入门页在 template 里」
+assert_eq!(page_key("帮助:入门").as_deref(), Some("帮助:入门"));
+```
+
+## 填空
+
+模板正文里的 `{{名字}}` 换成块头里 `名字=值` 的值，`{{body}}` 换成块的正文；**认不出
+的名字原样留着**。填空发生在解析之前，模板里可以随意安排这些位置，而块正文里写着
+`{{标题}}` 也不会被二次替换（那一层已经出栈了）。
+
+## 递归与上限
+
+模板页里可以再写模板页（`::甲` 的模板里嵌 `::乙`）。库记着展开到第几层，超过 12 层
+（多半是自己嵌自己）就不展开，改渲染一个「块嵌套太深」的框并记一条 warn。
+
+## 在项目里
+
+`mdpp` 命令行把 `templates/` 目录实现成一份 `TemplateSource`：`templates/卡片.mdpp`
+对应 `::卡片`，文件内容就是模板正文。见 [[方言/模板页]]。
+
+完整例子见 `mdpp/examples/template_pages.rs`。
+
+::本板块 标题="作为库使用"
+  [[库]] · [[库/内部链接]] · [[库/模板页来源]] · [[库/自定义块]] · [[库/构建选项]]

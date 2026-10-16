@@ -1,0 +1,80 @@
+# Markdown++
+
+给 [markdown-it](https://github.com/Markdown-it/markdown-it) 的一层扩展：在 markdown
+之外加一套块级方言，并把「内部链接指到哪、模板页正文从哪来」这类问题留给使用方回答。
+
+**它只做解析。** 产物是一段 HTML 片段 —— 外面套什么样式、点一下会发生什么，库一概
+不提供，那是使用方的事。官方那套样式与脚本在 `mdpp-cli/assets/`（与库同一个 MIT
+许可，可自取）。
+
+::banner color=#0055a4
+  **这一站本身就用 mdpp 写、用 mdpp 出** —— 顶上那条导航与「目录」那一页都是
+  `mdpp build` 生成的。
+
+## 四个板块
+
+::navbox title=文档导航 state=plain
+  [入门]
+  * [[方言]] —— 这套块级方言怎么写：`::名字 参数=值` 开块、缩进划边界
+  * [[方言/模板页]] —— 不在注册表里的块名，去模板页里找正文
+
+  [进阶]
+  * [[库]] —— 把 mdpp 当库用：解析、链接、模板页与自定义块
+  * [[命令行]] —— `mdpp` 五个子命令与 `mdpp.toml` 的每一个字段
+  * [[命令行/配置]] —— `mdpp.toml` 的每一个字段（含 `nav`、`toc`、`theme`）
+
+  [附录]
+  * [[附录/markdown]] —— 普通 markdown 的语法速查，以及 mdpp 默认开哪几条
+  * [[方言/分节块]] —— `tabs` `theme` `columns`：各节各自解析、并排摆出来
+
+## 四个板块各有什么
+
+::columns labels=off
+  [方言语法]
+  块、参数、缩进边界，以及标准库那 24 个块各页演示。从 [[方言]] 进。
+
+  [作为库]
+  解析、链接解析器、模板页来源、自定义块、构建选项。从 [[库]] 进。
+
+  [命令行]
+  `render`/`init`/`new`/`build`/`serve` 与 `mdpp.toml` 每个字段。从 [[命令行]] 进。
+
+  [附录]
+  普通 markdown 的语法速查，与 mdpp 默认开哪几条。从 [[附录/markdown]] 进。
+
+## 一分钟看它长什么样
+
+```text
+# 十四门桥
+
+::aside title="某年建成"
+  与某桥并称。
+
+::note
+  这里可以写 **markdown** 与 [[内部链接]]。
+
+::tabs
+  [读法一]
+  照着念。
+
+  [读法二]
+  自己试。
+```
+
+渲染出来是一段 HTML 片段（略去属性）：
+
+```html
+<h1 id="十四门桥">十四门桥</h1>
+<aside class="aside"><p class="aside__title">某年建成</p>…</aside>
+<div class="callout callout--note">
+<p class="callout__title"><span class="callout__mark">ℹ</span>说明</p>…
+</div>
+<div class="tabs"><div class="tabs__bar" role="tablist">…</div>…</div>
+```
+
+## 从哪儿开始
+
+- 想**写正文**：看 [[方言]]。
+- 想**搭一个站**：看 [[命令行]]。
+- 想**写代码接进去**：看 [[库]]。
+- 记不清 markdown 本身怎么写：翻 [[附录/markdown]]。
