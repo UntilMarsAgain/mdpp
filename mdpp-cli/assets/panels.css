@@ -47,3 +47,31 @@
 /* 页面明确指定了主题：它说了算，且写在最后 —— 同优先级时后者胜出。 */
 :root[data-mdpp-theme='dark'] .mdpp-content .theme__part--dark { display: block; }
 :root[data-mdpp-theme='light'] .mdpp-content .theme__part--light { display: block; }
+
+/* ---- 分栏 --------------------------------------------------------- */
+
+/* 几栏一起摆出来（`::columns`）。等宽、随内容伸缩；每栏给了 `12em` 的
+ * 起步宽度，挤不下时 `wrap` 自动把多出来的栏换到下一行 —— 窄屏因此
+ * 自然堆成一竖列，不必问渲染器屏幕多宽。 */
+.mdpp-content .columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mdpp-gap);
+  align-items: flex-start;
+  margin: var(--mdpp-gap) 0;
+}
+
+.mdpp-content .columns__col {
+  flex: 1 1 12em;
+  min-width: 0; /* 栏里的长代码/表格能自己滚，不把栏撑破 */
+}
+
+.mdpp-content .columns__head {
+  font-weight: 600;
+  font-size: 0.9em;
+  color: var(--mdpp-text-dim);
+  margin-bottom: 0.4em;
+}
+
+/* labels=off：纯摆版面，栏头本就不渲染，这里只作保险 */
+.mdpp-content .columns--nolabels .columns__head { display: none; }

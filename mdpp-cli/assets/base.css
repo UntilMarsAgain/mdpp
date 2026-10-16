@@ -196,6 +196,23 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* 带了 color= 的横条：字色由渲染器按底色挑过（深底配白字、浅底配
+ * 黑字），所以这一处的行内代码绝不能再用主题的 surface 当芯子底 ——
+ * 深横条上那是一块浅底配白字，读不出来。
+ * 芯子取「字色往中灰掺一点」：白字得一块略暗的灰，黑字得一块略亮
+ * 的灰，两种主题、任意 color= 都落在「与字色差一段」的中间地带，
+ * 不必另配一个变量。 */
+/* 注意没有空格：code 的父元素**就是**横条自己（`<p class="banner …">`），
+ * 写成 `.banner--tinted :not(pre)` 就成了「在横条里面」，永远匹配不上。 */
+.mdpp-content .banner--tinted:not(pre) > code {
+  background: color-mix(in srgb, currentColor 22%, #808080);
+}
+
+.mdpp-content .banner--tinted pre {
+  background: color-mix(in srgb, currentColor 28%, #808080);
+  border-color: color-mix(in srgb, currentColor 42%, #808080);
+}
+
 .mdpp-content pre {
   margin: var(--mdpp-gap) 0;
   padding: 0.8rem 1rem;

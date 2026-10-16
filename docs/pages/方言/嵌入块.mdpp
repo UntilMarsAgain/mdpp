@@ -1,0 +1,122 @@
+# 嵌入块
+
+这一组把内容**原样写出去**：`code` / `mermaid` / `math` / `css` / `html` / `js`。
+共同规矩是**正文一概不按 markdown 解析**，但理由分三种：
+
+- `code` / `mermaid` / `math`：内容是**另一种语言**，里面的 `*`、`_`、`\`、`-->`、`[]`
+  都是它自己的记号；
+- `css` / `js`：内容是**要执行的东西**；
+- `html`：内容是**要落进页面的标记**。
+
+## 代码：`::code`
+
+像 markdown 的围栏代码块，但能控制行号与要强调的行：
+
+::code lang=rust lines=off start=10 highlight=2-3
+  fn main() {
+      // 这里的 * 与 _ 不该被当成强调
+      println!("{:#?}", &[1, 2, 3]);
+  }
+
+```text
+::code lang=rust lines=off start=10 highlight=2-3
+  fn main() {}
+```
+
+渲染出的只是**代码原文与几个 `data-*` 提示**（`data-lines` / `data-line-start` /
+`data-highlight`）—— 行号列与强调色带由使用方落地，因为拆行会破坏 highlight.js 的
+分词。「界面怎么显示」属于界面那一层。
+
+## 图：`::mermaid`
+
+[mermaid](https://mermaid.js.org) 的图定义，原文放进 `<div class="diagram">` 里的
+`<pre class="mermaid">`，画图在前端（mermaid 是 JS 库）：
+
+::mermaid
+  graph TD
+    A[开始] --> B{行不行}
+    B -->|行| C[干活]
+
+原文同时留一份在 `data-source` 上：mermaid 画完会把元素内容换成 SVG，切主题要重画时
+就靠这份原文还原。
+
+## 公式：`::math` 与 `$…$`
+
+独立成段（或多行）的公式用 `::math`，TeX 原文，前端用 KaTeX 排版：
+
+::math
+  \frac{a}{b} = c_1 * d
+
+只写一行的也可以用行内写法：$E = mc^2$（`$…$`）与 $$\int_0^1 x^2 \, dx$$（`$$…$$`）。
+
+行内公式认得**很谨慎**：两个 `$` 都紧挨着内容（`$ 5 $` 不算），中间不能再有 `$` ——
+宁可漏认，也别把正文里的美元符号吞掉。
+
+::tip
+  `mermaid` 与 `math` 渲染出的是**原文加几个 `data-*` 提示**：取不到 KaTeX / mermaid
+  时看到的是公式原文，而不是一片空白。
+
+## 样式：`::css`
+
+把内容当 CSS 注入这一页。注入的 CSS 与正文在**同一个文档**里，所以默认样式表里那些
+CSS 变量（`--mdpp-accent`、`--mdpp-link` …）在这里用 `var()` 直接就能取到：
+
+::css
+  .我有自己的样式 {
+    color: var(--mdpp-accent);
+  }
+
+几条规矩：
+
+- 所有选择器都会被**收进正文**（加 `.mdpp-content` 前缀）—— 一条 `* { }` 影响不到
+  顶栏与底栏。写给 `html` / `body` / `:root` 的规则收成正文本身；
+- `@import` 一律丢掉（不让页面去外部拉样式）；`@media` 之类的条件规则递归处理；
+- 内容里的 `{{参数}}` 会被替换成块头里给的值；
+- 内容可以来自 `src="页面名"` 指的**模板页**（见 [[方言/模板页]]）。
+
+## 原始 HTML：`::html`
+
+把内容当原始 HTML 注入。**默认过滤**掉会执行脚本的东西（`<script>`、`on*=` 事件属性、
+`javascript:` 协议），要放行得显式写 `::html js` —— 写下它本身就是一次决定。
+
+::html
+  <div class="card" title="白名单里的属性都留着">
+    <markdown>
+    **HTML 里反过来写 markdown**：可以写列表、写内部链接、写 ::note 这样的块。
+    </markdown>
+  </div>
+
+```text
+::html
+  <div class="card">
+    <markdown>
+    这里仍然是 **markdown**。
+    </markdown>
+  </div>
+```
+
+净化按 HTML5 规范解析后按白名单重建，因此：
+
+- 整棵子树丢掉：`script` `style` `link` `meta` `base` `object` `embed` `form` 及其控件
+  `template` `noscript` `svg` `math`（后两个是外来内容，有自己的命名空间规则）；
+- 不保留 `style` 属性（内联样式能 `url()` 出去，要样式用 `::css`）；
+- 链接只认 `http` / `https` / `mailto` 与相对地址；
+- 不给 `id`（撞了会串，锚点用 `data-*` 与 class）。
+
+## 脚本：`::js`
+
+把内容当**原始 JavaScript** 注入这一页，随页面加载执行。内容原样，`{{参数}}` 会替换；
+**不过滤** —— 写下 `::js` 本身就是一次显式的决定（与 `::html js` 一个意思）。
+
+```text
+::js
+  console.log("这一段原样注入");
+```
+
+注入的脚本里若出现 `</script`，HTML 解析器会当场收尾，所以库会先把它转义成
+`<\/script`（JS 里这两种写法等价）—— 大小写照原样留着。
+
+::本板块 标题=方言语法
+  [[方言/文字块]] · [[方言/提示框]] · [[方言/分节块]]
+  [[方言/导航框]] · [[方言/嵌入块]] · [[方言/媒体]] · [[方言/模板页]]
+

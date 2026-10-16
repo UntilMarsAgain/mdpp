@@ -8,6 +8,7 @@
 //!
 //! 每个字段都有默认值，所以一份**空的** `mdpp.toml` 也是好配置。
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -84,6 +85,40 @@ pub struct Config {
     /// 不写就没有这一层。相对项目根，默认 `override`。
     #[serde(default = "default_override_dir")]
     pub override_dir: PathBuf,
+
+    /// 导航栏：顶栏下面那一行链接，mkdocs 的 `nav` 那套写法。
+    ///
+    /// 每一项要么是一个字符串（显示文字，指「全站唯一叫这个名字的页」），
+    /// 要么是一个单项表（显示文字 → 站内页的键）。例如：
+    ///
+    /// ```toml
+    /// nav = ["首页", { "指南" = "指南/入门" }]
+    /// ```
+    ///
+    /// 站内页的键就是 `pages/` 下的路径（不带后缀）；`index` 是首页。
+    /// 不写就没有那一行。
+    #[serde(default)]
+    pub nav: Vec<NavEntry>,
+
+    /// 目录页的名字（键）。`mdpp build` 会额外生成一页「页面清单」——
+    /// 列出全站每一页，并自动在导航栏末尾加一个按钮指过去。
+    /// 默认「目录」，也就是 `build/目录/`；写空串（`toc = ""`）就不生成。
+    #[serde(default = "default_toc")]
+    pub toc: String,
+}
+
+/// 导航栏里的一项。两种写法：
+///
+/// - 纯字符串：`"首页"` —— 显示文字是「首页」，指全站**唯一**叫这个名字的页
+///   （按 `[[名字]]` 那套规则找：键名、或全站唯一的文件名）；
+/// - 单项表：`{ "指南" = "指南/入门" }` —— 显示文字是「指南」，指 `pages/指南/入门`。
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum NavEntry {
+    /// 字符串：显示文字 = 站内页的名字（全站唯一）
+    SameName(String),
+    /// 单项表：显示文字 → 站内页的键
+    Named(BTreeMap<String, String>),
 }
 
 /// `Default` 与 serde 的那些 `default = …` 是**同一批**函数 ——
@@ -106,6 +141,8 @@ impl Default for Config {
             extra_css: Vec::new(),
             extra_js: Vec::new(),
             override_dir: default_override_dir(),
+            nav: Vec::new(),
+            toc: default_toc(),
         }
     }
 }
@@ -132,6 +169,10 @@ fn default_lang() -> String {
 
 fn default_override_dir() -> PathBuf {
     PathBuf::from("override")
+}
+
+fn default_toc() -> String {
+    "目录".to_string()
 }
 
 /// 认这两个主题，与 `render --theme` 同一套取值
@@ -168,6 +209,29 @@ impl Config {
                 return Err(format!(
                     "site_url 要以 http:// 或 https:// 开头，写成了「{trimmed}」"
                 ));
+            }
+        }
+        // 导航里每一项都得「看得懂」：单项表只能有一项，显示文字与键都不能是空的
+        for entry in &self.nav {
+            match entry {
+                NavEntry::SameName(label) => {
+                    if label.trim().is_empty() {
+                        return Err("nav 里有一项是空的 —— 写 `{ \"首页\" = \"index\" }` 那样".to_string());
+                    }
+                }
+                NavEntry::Named(map) => {
+                    if map.len() != 1 {
+                        return Err(format!(
+                            "nav 里的单项表只能写一项（显示文字 → 站内页的键），写成了 {map:?}"
+                        ));
+                    }
+                    let (label, key) = map.iter().next().expect("上面刚验过只有一项");
+                    if label.trim().is_empty() || key.trim().is_empty() {
+                        return Err(format!(
+                            "nav 里的 {label:?} → {key:?} 有一头是空的"
+                        ));
+                    }
+                }
             }
         }
         Ok(())
@@ -280,5 +344,59 @@ mod tests {
             .check()
             .is_ok()
         );
+    }
+
+    /// 导航的两种写法都能解析；写坏了（空文字、多项表）在解析时就该说
+    #[test]
+    fn nav_accepts_both_shapes_and_refuses_bad_ones() {
+        let config: Config = toml::from_str(
+            r#"
+nav = ["首页", { "指南" = "指南/入门" }]
+"#,
+        )
+        .expect("该解析得动");
+        assert_eq!(config.nav.len(), 2);
+        assert_eq!(config.nav[0], NavEntry::SameName("首页".to_string()));
+        assert_eq!(
+            config.nav[1],
+            NavEntry::Named(BTreeMap::from([("指南".to_string(), "指南/入门".to_string())]))
+        );
+
+        // 空 nav 也是好配置
+        assert!(Config::default().check().is_ok());
+
+        // 单项表里写了两项 —— 解析得过（毕竟是个表），check 时该说
+        let config: Config = toml::from_str(r#"nav = [{ "甲" = "a", "乙" = "b" }]"#)
+            .expect("表里多少项都能解析");
+        assert!(
+            config.check().is_err(),
+            "多项表不该被接受"
+        );
+    }
+
+    /// 导航里空显示文字 / 空键是配置错误；`toc` 默认「目录」，空串不生成
+    #[test]
+    fn nav_and_toc_defaults_and_validation() {
+        assert_eq!(Config::default().toc, "目录");
+        assert!(Config {
+            nav: vec![NavEntry::Named(BTreeMap::from([("".to_string(), "a".to_string())]))],
+            ..Config::default()
+        }
+        .check()
+        .is_err());
+        assert!(Config {
+            nav: vec![NavEntry::SameName("   ".to_string())],
+            ..Config::default()
+        }
+        .check()
+        .is_err());
+        // 正常的写法要能过
+        assert!(Config {
+            toc: String::new(),
+            nav: vec![NavEntry::SameName("首页".to_string())],
+            ..Config::default()
+        }
+        .check()
+        .is_ok());
     }
 }

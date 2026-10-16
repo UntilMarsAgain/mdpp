@@ -1,0 +1,91 @@
+# 作为库使用
+
+`mdpp` 这个 crate（`mdpp/` 目录）是**解析器**，不是界面：它把一段 Markdown++ 渲染成
+一段 HTML **片段**，样式表、脚本、`<html>` 一概不提供。「目标存不存在、模板页正文从
+哪来」这类问题由使用方通过 trait 递进来。
+
+## 一分钟上手
+
+```rust
+use mdpp::Mdpp;
+
+let mdpp = Mdpp::new();
+let html = mdpp.render("::note title=\"提醒\"\n  这里可以写 **markdown**。\n");
+assert!(html.contains(r#"class="callout callout--note""#));
+assert!(html.contains("<strong>markdown</strong>"));
+```
+
+::aside title="这一层不认站点"
+  库里没有 `mdpp.toml`、没有 `pages/`、没有顶栏那一条 —— 「站」是
+  `mdpp-cli` 这一层的事（见 [[命令行]]）。库只回答「一段 markdown → 一段 HTML」。
+
+## 带上下文渲染
+
+`render` 用**默认上下文**：没有链接解析器、没有模板页，于是所有 `[[…]]` 落成红链，
+所有非内置的 `::名字` 落成「未知块」框。要让它认得东西，走 `render_with`，上下文放在
+`RenderContext` 里：
+
+```rust
+use std::sync::Arc;
+use mdpp::{Mdpp, RenderContext};
+use mdpp::link::{LinkResolver, LinkTarget, ResolvedLink};
+
+struct Mine;
+
+impl LinkResolver for Mine {
+    fn resolve(&self, target: &str) -> Option<ResolvedLink> {
+        Some(ResolvedLink::Link(LinkTarget::new(format!("/notes/{target}"))))
+    }
+}
+
+let html = Mdpp::new().render_with(
+    "[[另一篇]]",
+    &RenderContext::new().with_links(Arc::new(Mine)),
+);
+assert!(html.contains(r#"href="/notes/另一篇""#));
+```
+
+## 三条设计线索
+
+::quote
+  这一层不知道外面有什么 —— 目标存不存在、模板页正文从哪来、正文写到哪去，一概不问。
+
+这句话在库里处处成立，拆成三条：
+
+1. **这一层不知道外面有什么。** 目标存不存在、模板页正文从哪来、正文写到哪去，一概
+   不问 —— 都由调用方通过 trait 递进来（`LinkResolver`、`TemplateSource`）。库里每个
+   「需要知道外部」的地方都是一个 trait 方法，没有一个是全局函数。
+2. **要能扩展，且扩展不 fork。** `::` 语法由一张**注册表**（`BlockRegistry`）驱动，
+   注册表是普通数据：外部构造自己那份，灌进构建器即可。
+3. **渲染状态是每次调用各自一份。** 两个线程同时渲染时互不干扰 —— 见
+   [[库/构建选项]] 里关于并发的说明。
+
+## 不做的那些事
+
+- **不带样式表、不带脚本、不套整页。** 只给片段。官方那套 CSS/JS 在 `mdpp-cli/assets/`
+  （同一个 MIT 许可，可自取）。要一个能双击打开的整页，用 `mdpp render --full`，或者
+  看 `mdpp/examples/standalone_page.rs` 自己写一份外壳。
+- **`Mdpp` 既不是 `Send` 也不是 `Sync`。** 一个线程建一个 —— 建一次是微秒级的事。
+- **默认关掉 raw HTML。** 渲染出来的 HTML 常常被直接注入页面，开着它等于把 XSS 入口
+  交给正文作者。要开得显式写 `raw_html(true)`（见 [[库/构建选项]]）。
+
+## 往下看
+
+- [[库/内部链接]] —— 实现 `LinkResolver`，决定 `[[目标]]` 落到哪
+- [[库/模板页来源]] —— 实现 `TemplateSource`，决定 `::卡片` 的正文从哪来
+- [[库/自定义块]] —— 往注册表里加自己的 `::` 块
+- [[库/构建选项]] —— `MdppBuilder` 的每一项开关与并发说明
+
+## 可运行的例子
+
+仓库的 `mdpp/examples/` 下每个 trait 都有一份完整、可运行的小例子：
+
+```sh
+cargo run -p mdpp --example standalone_page   # 自己写一份整页外壳
+cargo run -p mdpp --example link_resolver     # [[目标]] 的三种结局
+cargo run -p mdpp --example template_pages    # 模板页来源的三种结局
+cargo run -p mdpp --example custom_block      # 三种内容档各加一块
+```
+
+::本板块 标题="作为库使用"
+  [[库]] · [[库/内部链接]] · [[库/模板页来源]] · [[库/自定义块]] · [[库/构建选项]]

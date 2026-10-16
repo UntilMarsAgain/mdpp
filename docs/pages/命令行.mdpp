@@ -1,0 +1,106 @@
+# 命令行
+
+`mdpp` 是这个项目的官方二进制，五个子命令：一个当场渲染，四个管一个站点。
+
+## 五个子命令
+
+::columns
+  [render]
+  不碰站点，读文件（或标准输入）就出结果 —— 调样式、接自己的脚本时最好使。
+
+  [init / new / build]
+  建骨架、新建一页、整站出产物。三步就是一个站点的一生。
+
+  [serve]
+  本机预览：内部是 build + 本地服务器，改一个字浏览器自己刷新。
+
+```text
+mdpp render [选项] [文件]...     把文件渲染成 HTML（默认是片段）
+mdpp init   [选项] [目录]        建一个新站点的骨架
+mdpp new    [选项] <页名>        在当前站点里新建一页
+mdpp build  [选项]               整站构建
+mdpp serve  [选项]               本机预览（内部就是 build + 本地服务器）
+```
+
+## 装上
+
+```sh
+cargo install --path mdpp-cli
+```
+
+或者直接跑仓库里的（不装）：
+
+```sh
+cargo run -p mdpp-cli -- render 正文.mdpp
+```
+
+## 输出与退出码
+
+- **产物走 stdout，诊断走 stderr。** `mdpp render 正文.mdpp > out.html` 是干净的重定向，
+  报错不会污染产物；`2>/dev/null` 才会把报错一起扔掉。
+- **退出码 0 成功、1 失败、2 用法错误。** `--help` / `--version` / 参数写错是 2，
+  「跑起来了但失败」（文件不存在、nav 指到没有的页）是 1。
+
+## 三个当场用的
+
+`mdpp render` 不碰站点，读文件（或 stdin）就出结果 —— 调样式、接自己的脚本时最好使。
+全部选项在 [[命令行/render]]。
+
+`mdpp init` 建骨架：`mdpp.toml`、`pages/`、`templates/`、`build/`、一份 `.gitignore`。
+
+```sh
+mdpp init docs            # 站点名默认取目录名
+mdpp init docs --name "我的笔记"
+```
+
+`mdpp new <页名>` 在当前站点里新建一页（从这里往上找 `mdpp.toml`）：
+
+```sh
+mdpp new 指南                 # → pages/指南.mdpp
+mdpp new 指南/开篇 --title 开篇   # 子目录就是子键
+```
+
+## 两个管整站的
+
+`mdpp build` 递归扫 `pages/`（`.md` 与 `.mdpp` 都算），每一页出一个
+`build/<键>/index.html`：`pages/index.mdpp` 是首页、`pages/甲.mdpp` 是 `build/甲/`、
+`pages/甲/乙.mdpp` 是 `build/甲/乙/` —— 页面在源里的层级原样带进产物，**页内链接全是
+相对的**，整站能挂在任意子路径下。
+
+::tip
+  完整的构建流程、产物布局与红链报告在 [[命令行/项目]]；`mdpp.toml` 的每一个字段在
+  [[命令行/配置]]。
+
+`mdpp serve` 起一个只读的本地服务器：先出一遍到**临时目录**（不是你的 `build/` ——
+预览到一半的东西不该被当成产物），再盯着 `pages/`、`templates/`、`mdpp.toml` 与配置里
+指的那几个文件，**一有改动就重出**，浏览器自己刷新。细节在 [[命令行/预览]]。
+
+## 导航栏与目录页
+
+`mdpp.toml` 里写 `nav`，顶栏下面就会多一行链接（mkdocs 的那套写法）；写 `toc`，
+build 会额外生成一页「页面清单」并在导航栏末尾加一个按钮。本站顶上那一行就是这样来的：
+
+```toml
+nav = [
+  { "首页" = "index" },
+  { "方言语法" = "方言" },
+  { "命令行" = "命令行" },
+]
+toc = "目录"
+```
+
+两种写法与全部规则在 [[命令行/配置]]。
+
+## 一个最快的试用流程
+
+```sh
+mdpp init 我的站
+cd 我的站
+mdpp new 第一页
+mdpp build --strict
+```
+
+`--strict` 让红链与缺文件**算失败**：页面还没写就红着是正常的，正文写错了应当有话说。
+
+::本板块 标题="命令行"
+  [[命令行]] · [[命令行/render]] · [[命令行/项目]] · [[命令行/预览]] · [[命令行/配置]]

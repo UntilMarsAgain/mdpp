@@ -1,0 +1,97 @@
+# render：把文件渲染成 HTML
+
+`mdpp render [选项] [文件]...` 不碰站点，读文件（或标准输入）就往 stdout 写结果 ——
+调样式、接自己的脚本、写测试时最好使。
+
+```sh
+mdpp render 正文.mdpp            # 片段
+mdpp render --full 正文.mdpp     # 完整文档，内联默认样式与脚本
+mdpp render                      # 不给文件就从标准输入读
+```
+
+::tip
+  **产物走 stdout，诊断走 stderr。** 所以 `mdpp render 正文.mdpp > out.html` 是干净的
+  重定向；`2>/dev/null` 才会把报错一起扔掉 —— 那时你只看得到产物变没变。
+
+## 输出什么
+
+| 写法 | 得到 |
+|---|---|
+| 默认 | **片段**（像 `cmark` 那样）：一段 HTML，往哪去、外面套什么样式是你的事 |
+| `--full` / `-f` | 完整 HTML 文档，内联本包那份默认样式表与脚本 |
+
+完整文档可配的几个：
+
+| 选项 | 说明 |
+|---|---|
+| `--title` / `-t <标题>` | `<title>`；不给就取第一个文件的文件名 |
+| `--theme <light\|dark>` | 整页主题；`::theme` 的两节由它挑（只认这两个值，写错在**解析时**就报） |
+| `--css <文件>` | 附加 CSS，**可多次**，按给定次序接在默认之后 |
+| `--js <文件>` | 附加 JS，同上 |
+
+`--css` / `--js` 需要 `--full`：片段里没有地方放它们。**静默忽略才是坑** —— 人会以为
+自己的样式进去了，所以那是个用法错误（退出码 2）。
+
+## 改语法开关的那几项
+
+这一拨对应 `MdppBuilder` 的开关（理由见 [[库/构建选项]]）：
+
+| 选项 | 效果 |
+|---|---|
+| `--unsafe-html` / `-u` | 允许正文里的原始 HTML（**默认转义**） |
+| `--typographer` | 启用排版替换（`--` 变 `–`、直引号变弯引号） |
+| `--setext` | 启用 Setext 标题（标题下一行写 `===`） |
+| `--indented-code` | 启用缩进代码块（四空格开头） |
+| `--no-math` | 关掉行内公式 `$…$` |
+| `--no-wikilink` | 关掉内部链接 `[[…]]` |
+
+```sh
+mdpp render --typographer --setext 正文.mdpp
+```
+
+## 内部链接与模板页
+
+| 选项 | 说明 |
+|---|---|
+| `--link-prefix` / `-p <前缀>` | `[[目标]]` 的 href 前缀，比如 `-p /notes/` |
+| `--template-dir` / `-T <目录>` | 模板页目录；`<目录>/<名字>.mdpp` 是一页，`::名字` 从这里取 |
+
+不带 `--link-prefix` 跑一遍，`[[…]]` 全部落成**红链**（库不知道目标存不存在）；带上前缀
+才配出地址：
+
+```sh
+mdpp render --link-prefix /notes/ examples/links.mdpp
+```
+
+仓库的 examples 目录就是这么用的：
+
+```sh
+cargo run -p mdpp-cli -- render -T examples/templates examples/tour.mdpp
+```
+
+## 两个不用出产物的
+
+```sh
+mdpp render --list-blocks    # 列出这一版带的全部块名后退出
+mdpp render -s               # 把统计写到标准错误（--stats 的短选项）
+```
+
+`--stats` 写 stderr，所以它与 `> out.html` 互不干扰。
+
+## 组合起来
+
+```sh
+mdpp render --full --title "卷首" --theme dark \
+            --css 我的.css --js 我的.js \
+            --link-prefix /notes/ \
+            正文.mdpp > index.html
+```
+
+`--` 之后的一律当文件名（路径以 `-` 开头的那种）：
+
+```sh
+mdpp render -- --full
+```
+
+::本板块 标题="命令行"
+  [[命令行]] · [[命令行/render]] · [[命令行/项目]] · [[命令行/预览]] · [[命令行/配置]]

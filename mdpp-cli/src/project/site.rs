@@ -68,7 +68,7 @@ pub struct Missing {
 }
 
 /// 站点：页表 + 查表
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Site {
     pages: Vec<Page>,
     /// 归一后的键 → 页下标
@@ -128,6 +128,26 @@ impl Site {
     /// 全部页，按扫描次序
     pub fn pages(&self) -> &[Page] {
         &self.pages
+    }
+
+    /// 往站点里加一页**不是从 `pages/` 扫出来的**页（目录页之类）。
+    ///
+    /// 键撞了现有的（或者撞了之前加进来的）就报错 —— 生成页不该默默
+    /// 盖住作者自己写的那一页。
+    pub fn insert(&mut self, page: Page) -> Result<(), String> {
+        let key = normalize(&page.key).unwrap_or_default();
+        if self.by_key.contains_key(&key) {
+            return Err(format!(
+                "站点里已经有「{}」这一页了 —— 目录页起个别的名字（mdpp.toml 的 toc）",
+                page.key
+            ));
+        }
+        let at = self.pages.len();
+        self.by_key.insert(key.clone(), at);
+        let stem = key.rsplit('/').next().unwrap_or(&key).to_string();
+        self.by_stem.entry(stem).or_default().push(at);
+        self.pages.push(page);
+        Ok(())
     }
 
     /// 撞键的页（键）
@@ -235,7 +255,7 @@ fn strip_suffix(text: &str) -> &str {
 ///
 /// **首页是个例外**：`index` 落在 `build/index.html`，而不是
 /// `build/index/index.html` —— 后者会让站点根上多出一层没人访问得到的目录。
-fn output_of(key: &str) -> PathBuf {
+pub fn output_of(key: &str) -> PathBuf {
     let mut out = PathBuf::new();
     if key != INDEX_KEY {
         for segment in key.split('/').filter(|segment| !segment.is_empty()) {
