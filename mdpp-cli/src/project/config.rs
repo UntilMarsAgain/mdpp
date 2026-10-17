@@ -65,7 +65,9 @@ pub struct Config {
     #[serde(default)]
     pub favicon: Option<PathBuf>,
 
-    /// 整页的主题：`light` 或 `dark`。不写就是默认的 `light`
+    /// 整页的主题：`light` / `dark` 是钉死，`system` 是**跟随系统**。
+    /// 不写与写 `system` 等价 —— 页面上不落 `data-mdpp-theme`，
+    /// 深浅色由 `prefers-color-scheme` 当场定（`base.css` 里那条 `@media`）
     #[serde(default)]
     pub theme: Option<String>,
 
@@ -176,8 +178,9 @@ fn default_toc() -> String {
     "目录".to_string()
 }
 
-/// 认这两个主题，与 `render --theme` 同一套取值
-pub const THEMES: [&str; 2] = ["light", "dark"];
+/// `theme` 认的三个取值，与 `render --theme` 同一套。
+/// `system` 不是一种配色，是「跟着系统走」
+pub const THEMES: [&str; 3] = ["system", "light", "dark"];
 
 impl Config {
     /// 读一份配置。读不了或写错了就说清是**哪一处**写错了
@@ -191,12 +194,14 @@ impl Config {
         Ok(config)
     }
 
-    /// 能在解析时查出来的错就在解析时查 —— 「主题只能是 light 或 dark」这种事，
+    /// 能在解析时查出来的错就在解析时查 —— 「主题只能是那三个值」这种事，
     /// 不该等到 `build` 跑了一半才发现。
     pub fn check(&self) -> Result<(), String> {
         if let Some(theme) = &self.theme {
             if !THEMES.contains(&theme.as_str()) {
-                return Err(format!("theme 只能是 light 或 dark，写成了「{theme}」"));
+                return Err(format!(
+                    "theme 只能是 system、light 或 dark，写成了「{theme}」"
+                ));
             }
         }
         // 协议只认 http/https —— 配错了的话 canonical 就是一个坏地址，
@@ -259,8 +264,9 @@ mod tests {
         assert_eq!(config.pages_dir, PathBuf::from("pages"));
         assert_eq!(config.site_dir, PathBuf::from("build"));
         assert_eq!(config.templates_dir, PathBuf::from("templates"));
-        // 模板里主题写明了「light」，而「不写主题」是另一回事（`None`）
-        assert_eq!(config.theme.as_deref(), Some("light"));
+        // 模板里主题写明了「system」—— 它与「不写」（`None`）是一回事，
+        // 两者都跟随系统；写成 light / dark 才是另一件事（钉死）
+        assert_eq!(config.theme.as_deref(), Some("system"));
         assert!(config.check().is_ok(), "骨架自己该是份好配置");
 
         // 除主题之外，模板里写的都等于默认值 —— 写重复了就有两份答案
@@ -287,24 +293,30 @@ mod tests {
         assert!(error.to_string().contains("page_dir"), "{error}");
     }
 
-    /// 主题只认那两个值，写错的在**读配置时**就说；不写主题本身也得是好的 ——
+    /// 主题只认那三个值，写错的在**读配置时**就说；不写主题本身也得是好的 ——
     /// 放过去的话页面照出得来，只是配色没变，而没人会想到去翻 `mdpp.toml`
     #[test]
-    fn theme_only_takes_light_or_dark() {
+    fn theme_only_takes_system_light_or_dark() {
         let config = Config {
             theme: Some("blue".to_string()),
             ..Config::default()
         };
-        assert!(config.check().is_err());
+        let error = config.check().expect_err("blue 本该报错");
+        for value in ["system", "light", "dark"] {
+            assert!(error.contains(value), "{error}");
+        }
         assert!(Config::default().check().is_ok(), "不写主题该是好的");
-        assert!(
-            Config {
-                theme: Some("dark".into()),
-                ..Config::default()
-            }
-            .check()
-            .is_ok()
-        );
+        for theme in ["system", "light", "dark"] {
+            assert!(
+                Config {
+                    theme: Some(theme.to_string()),
+                    ..Config::default()
+                }
+                .check()
+                .is_ok(),
+                "{theme} 该是好的"
+            );
+        }
     }
 
     /// `site_url` 只认 http/https —— 写别的那个地址在产物里完全看不出来

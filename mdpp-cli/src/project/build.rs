@@ -366,7 +366,7 @@ fn favicon(project: &Project, site_dir: &Path) -> Result<Option<String>, String>
 }
 
 /// 顶栏与底栏那几句话 —— 配置里那几个单行字段，原样递过去。
-/// `nav` 是这一页要用的那一份（每页的导航里高亮项不一样）
+/// `nav` 是这一页要用的那一份（每页里「哪一项是当前页」不一样）
 fn chrome(project: &Project, nav: &[NavLink]) -> page::Chrome {
     page::Chrome {
         name: project.config.site_name.clone(),
@@ -379,8 +379,8 @@ fn chrome(project: &Project, nav: &[NavLink]) -> page::Chrome {
 
 /// 导航栏解析：配置里那几项 + 自动补上的目录按钮，对着站点查好**相对这一页的地址**。
 ///
-/// 导航是「站点级」的（各页都同一条），只有高亮项随页变 —— 所以这里先解析出
-/// 一份「键 → 目标页键」的清单，等到渲染某一页时再配上相对地址与高亮
+/// 导航是「站点级」的（各页都同一条），只有「哪一项是当前页」随页变 —— 所以这里先
+/// 解析出一份「键 → 目标页键」的清单，等到渲染某一页时再配上相对地址与当前项
 /// （见 [`nav_for`]）。
 ///
 /// 解析不出来的**报错**而不是当红链报：导航是作者手写的配置，写错了该当场知道，
@@ -439,7 +439,7 @@ fn resolve_target(label: &str, site: &Site) -> Option<String> {
     }
 }
 
-/// 一页的导航：把「站点级」的那份清单配上相对地址与高亮。
+/// 一页的导航：把「站点级」的那份清单配上相对地址与当前项。
 /// `from` 是当前页的键（算相对地址用）
 fn nav_for(list: &[(String, String)], from: &str) -> Vec<NavLink> {
     list.iter()
@@ -766,7 +766,7 @@ mod tests {
         assert!(error.contains("指南/不存在"), "{error}");
     }
 
-    /// 一页的导航：地址是相对那一页的，当前页高亮
+    /// 一页的导航：地址是相对那一页的，当前页只多一个 `aria-current`
     #[test]
     fn nav_for_marks_the_current_page_and_uses_relative_hrefs() {
         let list = vec![

@@ -13,6 +13,8 @@
  *   mkdocs 那边是白底平铺，列与页没有边界。
  * - 顶栏是**贴着顶**的（`sticky`）而不是 `fixed` —— 不用给正文留一段魔法偏移。
  * - 底栏只有一句话加一句「由 mdpp 生成」，没有 mkdocs 那一串社交图标。
+ * - 导航是**一排链接按钮**，当前页那一个不另给颜色（mkdocs-material 那边是
+ *   accent 色的 active tab）。是哪一页由 `aria-current` 报给读屏软件，眼睛不必分。
  *
  * 这些都是写死的：**这一层不提供开关**。能配的只有顶栏与底栏上那几句话
  * （`mdpp.toml` 里的 `site_name` / `site_description` / `repo_url` / `copyright`）、
@@ -101,32 +103,33 @@
   background: var(--mdpp-surface);
 }
 
+/* 每一项都等高，按**居中**对齐才齐 —— 带边框的盒子按基线摆会错开一截 */
 .mdpp-nav__inner {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.1rem 0.4rem;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0 1.5rem;
 }
 
+/* 一排**同款的链接按钮**：当前页那一个只在 HTML 上多个 `aria-current`，
+ * 这里不认它（`page::nav_bar` 也就不再多拼一个 class）——
+ * 「你在哪一页」交给读屏软件，颜色交给所有人统一的这一套 */
 .mdpp-nav__link {
   display: inline-block;
-  padding: 0.55rem 0.7rem 0.6rem;
+  padding: 0.3rem 0.75rem;
   font-size: 0.95em;
+  line-height: 1.4;
   color: var(--mdpp-text-dim);
   text-decoration: none;
-  border-bottom: 2px solid transparent;
+  border: 1px solid var(--mdpp-border);
+  border-radius: calc(var(--mdpp-radius) / 2);
 }
 
+/* hover 只把文字与边框换成 accent：按钮的反馈，不是「当前页」的记号 */
 .mdpp-nav__link:hover {
   color: var(--mdpp-accent);
-}
-
-/* 当前页：底下那条 accent 色的线，mkdocs-material 的 active tab 那个样子 */
-.mdpp-nav__link--active {
-  color: var(--mdpp-accent);
-  border-bottom-color: var(--mdpp-accent);
-  font-weight: 600;
+  border-color: var(--mdpp-accent);
 }
 
 /* ---- 卡片 ------------------------------------------------------------- */
@@ -225,6 +228,11 @@ body {
     border: 0;
     border-radius: 0;
     box-shadow: none;
+  }
+
+  /* 纸上没有按钮这一说：导航那排的边框是屏幕上的排版，印出来只是一圈噪声 */
+  .mdpp-nav__link {
+    border: 0;
   }
 
   body {

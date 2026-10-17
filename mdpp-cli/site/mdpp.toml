@@ -31,8 +31,8 @@ templates_dir = "templates"
 # 站点输出到哪。mdpp build 写在这里
 site_dir = "build"
 
-# 整页的主题：light 或 dark。不写就是 light
-theme = "light"
+# 整页的主题：light / dark 是钉死，system 或不写 = 跟随系统（prefers-color-scheme）
+theme = "system"
 
 # <html lang>
 lang = "zh-Hans"

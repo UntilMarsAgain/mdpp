@@ -28,7 +28,7 @@
 //! | 占位符 | 填什么 |
 //! |---|---|
 //! | `{{lang}}` | `<html lang>`，如 `zh-Hans` |
-//! | `{{theme_attr}}` | 主题属性，如 ` data-mdpp-theme="dark"`；没主题就是空 |
+//! | `{{theme_attr}}` | 主题属性，如 ` data-mdpp-theme="dark"`；不钉主题（`system` 或不写）就是空 |
 //! | `{{title}}` | `<title>` 的内容 |
 //! | `{{icons}}` | `<link rel="icon">`；没配 favicon 就是空 |
 //! | `{{meta}}` | `<meta name="description">` 与 `<link rel="canonical">`；**哪样没配就没有哪样** |
@@ -171,7 +171,7 @@ pub struct NavLink {
     pub label: String,
     /// 相对**这一页**的地址（`../手册/` 那样）
     pub href: String,
-    /// 这一项是不是当前页（导航里高亮那一个）
+    /// 这一项是不是当前页 —— 只落 `aria-current="page"`，**不改样式**
     pub active: bool,
 }
 
@@ -207,7 +207,8 @@ pub struct Page<'a> {
     pub title: &'a str,
     /// `<html lang>`
     pub lang: &'a str,
-    /// 主题：`Some("light" | "dark")` 时设 `data-mdpp-theme`，`::theme` 那两节由它挑
+    /// 主题：`Some("light" | "dark")` 时设 `data-mdpp-theme`，`::theme` 那两节由它挑。
+    /// `Some("system")` 与 `None` **一样**，都是跟随系统 —— 于是属性不落
     pub theme: Option<&'a str>,
     /// 顶栏与底栏那几个字段。`render --full` 那条路给默认的一份（全空，于是两样都不出）
     pub chrome: Chrome,
@@ -247,9 +248,16 @@ pub fn document(page: &Page) -> String {
     };
     let scripts = join_blocks(scripts, inline_blocks(page.extra_js, "script"));
 
+    // 只认 `light` / `dark` 两个值。`system` 与**不写**是一回事：属性不落，
+    // `base.css` 里那条 `prefers-color-scheme` 就是它，深浅色当场跟系统走。
+    //
+    // 白名单之外的字符串连 `<html>` 都碰不到 —— 于是这里没有「转义得对不对」这回事，
+    // 配置写错也轮不到这一层来兜（`Config::check` 与 clap 的 value_parser 先就报了）
     let theme_attr = match page.theme {
-        Some(theme) => format!(" data-mdpp-theme=\"{}\"", escape(theme)),
-        None => String::new(),
+        Some(theme) if matches!(theme, "light" | "dark") => {
+            format!(" data-mdpp-theme=\"{theme}\"")
+        }
+        _ => String::new(),
     };
 
     fill(
@@ -339,16 +347,18 @@ fn top_bar(chrome: &Chrome) -> String {
     format!("<div class=\"mdpp-bar\">\n{top}{nav}</div>")
 }
 
-/// 导航栏：一行链接，当前页高亮。没有链接就整行没有
+/// 导航栏：一行**同款的链接按钮**。没有链接就整行没有
+///
+/// 当前页那一个只多一个 `aria-current="page"` —— 那是回答读屏软件的「你在这儿」，
+/// **不带任何样式**，于是 `site.css` 里也就没有 `.mdpp-nav__link--active` 那条规则
 fn nav_bar(chrome: &Chrome) -> String {
     if chrome.nav.is_empty() {
         return String::new();
     }
     let mut links = String::new();
     for item in &chrome.nav {
-        let active = if item.active { " mdpp-nav__link--active" } else { "" };
         links.push_str(&format!(
-            "<a class=\"mdpp-nav__link{active}\" href=\"{}\"{}>{}</a>",
+            "<a class=\"mdpp-nav__link\" href=\"{}\"{}>{}</a>",
             escape(&item.href),
             if item.active { " aria-current=\"page\"" } else { "" },
             escape(&item.label),
@@ -598,6 +608,14 @@ mod tests {
         assert!(fold.contains("textContent = next"), "\n{fold}");
     }
 
+    /// `<html …>` 那一整行。主题属性只可能落在这一行上 —— 正文里别的 `data-mdpp-theme`
+    /// 都是内联进来的样式表自己的选择器（`base.css` / `panels.css`），与属性落没落无关
+    fn html_tag(html: &str) -> &str {
+        html.lines()
+            .find(|line| line.starts_with("<html"))
+            .expect("<html> 这一行")
+    }
+
     /// 主题要落在 `<html>` 上 —— 配色那两节靠 `:root[data-mdpp-theme]` 挑，
     /// 落到别处（或干脆不落），主题就成了一个没人听的值
     #[test]
@@ -606,9 +624,9 @@ mod tests {
             theme: Some("dark"),
             ..page("x", Assets::Inline)
         });
-        assert!(
-            html.contains(r#"<html lang="zh-Hans" data-mdpp-theme="dark">"#),
-            "{html}"
+        assert_eq!(
+            html_tag(&html),
+            r#"<html lang="zh-Hans" data-mdpp-theme="dark">"#
         );
     }
 
@@ -626,16 +644,40 @@ mod tests {
         assert!(!html.contains("<d"), "{html}");
     }
 
-    /// 主题值是配置里写来的，进属性前要转义 —— 引号跑出去，
-    /// `<html>` 上就能多挂一段 `onload`
+    /// 不在白名单里的字符串**进不了属性** —— 引号挂 `onload` 那种写法现在连机会都没有：
+    /// 要么是 `light` / `dark`，要么整条属性不出现
     #[test]
-    fn a_hostile_theme_value_cannot_break_out_of_the_attribute() {
+    fn a_value_outside_the_theme_whitelist_never_reaches_the_html_element() {
         let html = document(&Page {
             theme: Some("dark\" onload=\"alert(1)"),
             ..page("x", Assets::Inline)
         });
-        assert!(!html.contains("onload=\"alert"), "{html}");
-        assert!(html.contains("&quot;"), "{html}");
+        assert!(!html_tag(&html).contains("data-mdpp-theme"), "{html}");
+        assert!(!html.contains("onload"), "{html}");
+    }
+
+    /// `theme = "system"` 与**不写**一样：`<html>` 上不落属性，深浅色因此由
+    /// `prefers-color-scheme` 当场定（`base.css` 里那条 `@media`）；
+    /// 而钉死的那两个照旧落属性
+    #[test]
+    fn system_theme_leaves_the_html_element_without_an_attribute() {
+        for theme in [None, Some("system")] {
+            let html = document(&Page {
+                theme,
+                ..site_page("x")
+            });
+            assert!(!html_tag(&html).contains("data-mdpp-theme"), "{theme:?}");
+        }
+
+        let pinned = document(&Page {
+            theme: Some("light"),
+            ..site_page("x")
+        });
+        assert_eq!(
+            html_tag(&pinned),
+            r#"<html lang="zh-Hans" data-mdpp-theme="light">"#,
+            "钉死的那个该照旧"
+        );
     }
 
     /// 外链那一路：页面里只有一个 `<link>` 一个 `<script src>`，资源由 `copy_assets` 拷出去
@@ -731,9 +773,10 @@ mod tests {
         assert!(!nameless.contains("mdpp-bar"), "{nameless}");
     }
 
-    /// 导航栏：一行链接，当前页高亮；没有导航就不渲染那一行
+    /// 导航栏：每一项都是**同一个链接按钮**，当前页那一个只多 `aria-current`
+    /// （语义，不给颜色）；没有导航就不渲染那一行
     #[test]
-    fn the_nav_bar_lists_links_and_highlights_the_current_page() {
+    fn the_nav_bar_gives_every_item_the_same_class_and_only_marks_the_current_one() {
         let html = document(&Page {
             chrome: Chrome {
                 name: "某站点".to_string(),
@@ -754,12 +797,19 @@ mod tests {
             ..site_page("x")
         });
         assert!(
-            html.contains("<a class=\"mdpp-nav__link mdpp-nav__link--active\" href=\"./\" aria-current=\"page\">首页</a>"),
+            html.contains("<a class=\"mdpp-nav__link\" href=\"./\" aria-current=\"page\">首页</a>"),
             "{html}"
         );
         assert!(
             html.contains("<a class=\"mdpp-nav__link\" href=\"指南/\">指南</a>"),
             "{html}"
+        );
+        // 当前页**不能**比别人多出一个 class —— 「另给一套样式」正是这条要钉住的事
+        assert!(!html.contains("--active"), "{html}");
+        // 样式侧同理：HTML 里没有那个 class，CSS 里再留着就是一条死规则
+        assert!(
+            !asset(SITE_CSS).contains("mdpp-nav__link--active"),
+            "site.css 里还留着 --active 那条选择器"
         );
         // 导航在顶栏里，正文之上
         assert!(
