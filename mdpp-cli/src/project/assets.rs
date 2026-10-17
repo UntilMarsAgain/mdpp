@@ -66,11 +66,19 @@ pub fn scan(html: &str, context: &Context) -> Scan {
         ..Scan::default()
     };
     let mut rest = html;
+    // 当前在不在 `<script>` / `<style>` 里：那里的 `src=` / `href=` 是脚本/样式的内容，
+    // 不是要改写的属性 —— `::js` 里写 `document.write('<img src="图.png">')` 是字面量，
+    // 改写它等于改了一段程序的语义（见 `update_raw` 那一段的说明）
+    let mut raw = Raw::None;
     loop {
         let Some(at) = rest.find("=\"") else {
             out.html.push_str(rest);
             return out;
         };
+        // 先把这 `="` 前面的那一段喂给状态机：`<script …>` 从这儿进来、
+        // `</script>` 从这儿出去，状态翻对了，`="` 落在哪一边才判得准
+        update_raw(&mut raw, &rest[..at]);
+
         let value = match value_of(rest, at + 2) {
             Some(value) => value,
             // 引号没关上：这一段不是属性。跳过 `="` 接着找（往下走了，不会卡住）
@@ -81,10 +89,16 @@ pub fn scan(html: &str, context: &Context) -> Scan {
             }
         };
 
-        // 三个属性之一、且看着像本地文件，才去解它
-        let resolved = ATTRIBUTES
-            .contains(&identifier_before(rest, at))
-            .then(|| resolve(value, context));
+        // 三个属性之一、且看着像本地文件，才去解它。
+        // **`<script>` / `<style>` 里的不算** —— 那是内容不是属性（`::js` 的字符串、
+        // `::html js` 的原样 HTML 都从这里经过），照原样留着。
+        let resolved = if raw == Raw::None {
+            ATTRIBUTES
+                .contains(&identifier_before(rest, at))
+                .then(|| resolve(value, context))
+        } else {
+            None
+        };
 
         out.html.push_str(&rest[..at + 2]);
         match resolved {
@@ -115,6 +129,90 @@ pub fn scan(html: &str, context: &Context) -> Scan {
 
         // 从闭引号后面接着扫
         rest = &rest[at + 2 + value.len() + 1..];
+    }
+}
+
+/// 扫描时在不在 `<script>` / `<style>` 里。
+///
+/// 脚本与样式的**内容**（`::js` / `::css` 块、`::html js` 的原样 HTML）里出现
+/// `src="图.png"` 是字面量 —— `document.write('<img src="图.png">')` 里的那一处是
+/// 一段程序的字符串，不是 HTML 属性。扫到它就给改写成 `../assets/…`、再拷一份文件，
+/// 等于**改写了脚本的语义**（输出内容变了），而且拷出来的文件还指错了地方。
+///
+/// 只认成对的标签（`<script …>` 到 `</script>`、`<style …>` 到 `</style>`），大小写
+/// 不敏感；开标签里的 `>` 之后的才算内容，所以 `<script src="x">` 自己的属性不在此列。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Raw {
+    /// 不在任何一块里 —— 正常扫属性
+    None,
+    /// 在 `<script>…</script>` 里
+    Script,
+    /// 在 `<style>…</style>` 里
+    Style,
+}
+
+/// 喂一段 HTML，翻 [`Raw`] 的状态。只数成对的开关标签，不嵌套。
+///
+/// 找 `<` 之后的标签名，逐位置看是不是 `<script` / `</script` / `<style` / `</style`
+/// 之一（大小写不敏感）。只认**标签名后面**是空白、`>`、`/` 或行尾的（`<scriptx>` 不是
+/// `<script>`，`<scripted>` 也不是）。
+fn update_raw(state: &mut Raw, chunk: &str) {
+    let mut at = 0usize;
+    while at < chunk.len() {
+        let Some(rel) = chunk[at..].find('<') else {
+            return;
+        };
+        let start = at + rel;
+        let rest = &chunk[start + 1..];
+        // 开标签 `<script`；闭标签 `</script` 先剥那个 `/`
+        let (name, closing) = match rest.strip_prefix('/') {
+            Some(tail) => (tag_name(tail), true),
+            None => (tag_name(rest), false),
+        };
+        match (name, closing) {
+            (Some("script"), false) => *state = Raw::Script,
+            (Some("script"), true) => {
+                if *state == Raw::Script {
+                    *state = Raw::None;
+                }
+            }
+            (Some("style"), false) => *state = Raw::Style,
+            (Some("style"), true) => {
+                if *state == Raw::Style {
+                    *state = Raw::None;
+                }
+            }
+            _ => {}
+        }
+        at = start + 1;
+    }
+}
+
+/// 从 `<`（或 `</`）之后那一段取出标签名（小写）。名字后必须是空白、`>`、`/` 或行尾，
+/// 否则不是那个标签（`<scripted>` 不是 `<script>`）。只认 `script` / `style` 两个，
+/// 别的名字一律 `None`。
+fn tag_name(after: &str) -> Option<&'static str> {
+    let name_end = after
+        .char_indices()
+        .find(|(_, ch)| !ch.is_ascii_alphanumeric())
+        .map(|(at, _)| at)
+        .unwrap_or(after.len());
+    let (name, tail) = after.split_at(name_end);
+    if name.is_empty() {
+        return None;
+    }
+    let boundary_ok = tail.chars().next().is_none_or(|ch| {
+        matches!(ch, ' ' | '\t' | '\n' | '\r' | '>' | '/')
+    });
+    if !boundary_ok {
+        return None;
+    }
+    if name.eq_ignore_ascii_case("script") {
+        Some("script")
+    } else if name.eq_ignore_ascii_case("style") {
+        Some("style")
+    } else {
+        None
     }
 }
 
@@ -411,5 +509,79 @@ mod tests {
         for value in ["a/b:c.png", "./图.png", "../图.png", "图.png"] {
             assert!(!has_scheme(value), "{value} 不该当协议");
         }
+    }
+
+    /// `<script>` / `<style>` **内容**里的 `src=` / `href=` 是脚本/样式的字面量，
+    /// 不是要改写的 HTML 属性 —— `::js` 里写 `document.write('<img src="图.png">')`
+    /// 是一段程序的字符串，改它等于改语义，拷出来的文件还指错地方
+    #[test]
+    fn script_and_style_content_is_left_alone() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let pages = dir.path().join("pages");
+        let assets = dir.path().join("assets");
+        std::fs::create_dir_all(&pages).expect("建得出");
+        std::fs::write(pages.join("图.png"), "图片").expect("写得下");
+
+        // 脚本字符串里的 `src="图.png"` 一个都不动 —— 即使文件真的在 pages/ 里
+        let html = concat!(
+            r#"<script>document.write('<img src="图.png">')</script>"#,
+            r#"<img src="图.png">"#,
+        );
+        let scan = scan(html, &context(&pages, &pages, &assets));
+        assert_eq!(
+            scan.html,
+            concat!(
+                r#"<script>document.write('<img src="图.png">')</script>"#,
+                r#"<img src="../assets/图.png">"#,
+            ),
+            "{}",
+            scan.html
+        );
+        // 只拷了脚本外面那一个 `img` 的引用
+        assert_eq!(scan.wanted.len(), 1, "{:?}", scan.wanted);
+        // 脚本里那句不算缺资源
+        assert!(scan.missing.is_empty(), "{:?}", scan.missing);
+    }
+
+    /// `<style>` 里的 `url("图.png")` 同样不动 —— 那是样式内容的字面量
+    #[test]
+    fn style_content_urls_are_left_alone() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let pages = dir.path().join("pages");
+        let assets = dir.path().join("assets");
+        std::fs::create_dir_all(&pages).expect("建得出");
+        std::fs::write(pages.join("图.png"), "图片").expect("写得下");
+
+        let html = r#"<style>.a { background: url("图.png") }</style>"#;
+        let scan = scan(html, &context(&pages, &pages, &assets));
+        assert_eq!(scan.html, html, "样式里的地址不该动");
+        assert!(scan.wanted.is_empty(), "{:?}", scan.wanted);
+        assert!(scan.missing.is_empty(), "{:?}", scan.missing);
+    }
+
+    /// 只有**成对**的 `<script …>` 才进「脚本区」—— 不闭合的 `<script>` 一路吞下去，
+    /// 与 HTML 解析器的行为一致（脚本内容到 `</script>` 为止）
+    #[test]
+    fn script_tag_boundaries_are_paired() {
+        let mut state = Raw::None;
+        // 开 → 进脚本
+        update_raw(&mut state, "<script>");
+        assert_eq!(state, Raw::Script);
+        // 关 → 出来
+        update_raw(&mut state, "</script>");
+        assert_eq!(state, Raw::None);
+        // 大写、带属性都认
+        update_raw(&mut state, "<SCRIPT type=\"x\">");
+        assert_eq!(state, Raw::Script);
+        update_raw(&mut state, "</SCRIPT>");
+        assert_eq!(state, Raw::None);
+        // `<scriptx>` 不是 `<script>` —— 名字后那个边界字符得对
+        update_raw(&mut state, "<scripted>");
+        assert_eq!(state, Raw::None, "<scripted> 不该进脚本区");
+        // `<style>` 与 `<script>` 各归各
+        update_raw(&mut state, "<style>");
+        assert_eq!(state, Raw::Style);
+        update_raw(&mut state, "</style>");
+        assert_eq!(state, Raw::None);
     }
 }
