@@ -114,8 +114,15 @@ pub struct Render {
     #[arg(short, long, value_name = "标题")]
     pub title: Option<String>,
 
-    /// 完整文档的主题（light 或 dark）；::theme 的两节由它挑
-    #[arg(long, value_name = "主题", value_parser = ["light", "dark"], hide_possible_values = true)]
+    // 取值与 `config::THEMES` 是同一套，但 clap 的 derive 宏只吃字面量，引不了那个常量 ——
+    // 改一边就得改另一边（`only_system_light_and_dark_are_themes` 盯着这一处）
+    /// 完整文档的主题（system / light / dark，不给就是跟随系统）；::theme 的两节由它挑
+    #[arg(
+        long,
+        value_name = "主题",
+        value_parser = ["light", "dark", "system"],
+        hide_possible_values = true
+    )]
     pub theme: Option<String>,
 
     /// 附加 CSS，可多次；按给定次序接在默认样式之后
@@ -447,18 +454,23 @@ mod tests {
         assert_eq!(render(&["render"]).title_or(), "未命名");
     }
 
-    /// 主题只认两个值：写错时要在**解析时**就说，而不是渲染到一半才发现
+    /// 主题只认那三个值：写错时要在**解析时**就说，而不是渲染到一半才发现。
+    /// `system` 是「跟随系统」，与干脆不给 `--theme` 一样
     #[test]
-    fn only_light_and_dark_are_themes() {
-        assert_eq!(
-            render(&["render", "--theme", "dark"]).theme.as_deref(),
-            Some("dark")
-        );
+    fn only_system_light_and_dark_are_themes() {
+        for theme in ["system", "light", "dark"] {
+            assert_eq!(
+                render(&["render", "--theme", theme]).theme.as_deref(),
+                Some(theme),
+                "{theme} 该认得"
+            );
+        }
+        assert!(render(&["render"]).theme.is_none(), "不给就是跟随系统");
+
         let message = fail(&["render", "--theme", "auto"]);
-        assert!(
-            message.contains("light") && message.contains("dark"),
-            "{message}"
-        );
+        for value in ["system", "light", "dark"] {
+            assert!(message.contains(value), "{message}");
+        }
     }
 
     /// `--css` / `--js` 可以给多次，按给的次序
