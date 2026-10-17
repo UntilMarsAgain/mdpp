@@ -16,23 +16,69 @@ use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use crate::url;
 
 use tracing::debug;
 
+/// 正在被服务的那一份产物
+///
+/// 换的是**指针**，不是目录里的内容：重建时写进另一个目录，全部写完了才把指针挪过去。
+/// 于是每个请求读到的要么是完整的一遍旧产物、要么是完整的一遍新产物，**中间没有
+/// 「正被 `remove_dir_all`、正写一半」的窗口** —— 那个窗口里 `File::open` 要么拿到
+/// `ENOENT`（CSS 突然没了、页面半白），要么拿到半截的 HTML。
+///
+/// `mdpp build` 犯不上这个：那个目录没人读，只有 `serve` 把它挂在 HTTP 上。
+#[derive(Debug, Clone)]
+pub struct Root {
+    dir: Arc<RwLock<PathBuf>>,
+}
+
+impl Root {
+    /// 指着一个还没有产物的目录 —— 那时的请求该是「没有这一页」，不是「空文件」
+    pub fn new(dir: PathBuf) -> Self {
+        Root {
+            dir: Arc::new(RwLock::new(dir)),
+        }
+    }
+
+    /// 这一遍服务的是哪个目录。**每个请求取一次**，不是建一次就定死
+    pub fn serving(&self) -> PathBuf {
+        match self.dir.read() {
+            Ok(dir) => dir.clone(),
+            // 锁中毒只发生在上一个持锁的线程 panic 的时候 —— 那时里面的值仍然是
+            // 好值，预览该继续能用（崩的那一次早就报过错了）
+            Err(poisoned) => poisoned.into_inner().clone(),
+        }
+    }
+
+    /// 换到新的一遍。**在全部内容写完之后才调**
+    pub fn point_at(&self, dir: &Path) {
+        match self.dir.write() {
+            Ok(mut current) => *current = dir.to_path_buf(),
+            Err(poisoned) => *poisoned.into_inner() = dir.to_path_buf(),
+        }
+    }
+}
+
 /// 那条长连接。页面脚本连的是它，服务器靠它通知「重出好了」
 pub const EVENTS_PATH: &str = "/__mdpp/events";
 
 /// 塞进每个页面里的那一小段。**只在 `serve` 出的页面里有**
+///
+/// 挂的是 `message` 而不是 `reload` —— 服务器发的是 `data: reload`，
+/// 在 SSE 里那是「一条 `message` 事件，载荷是 `reload`」，**不是**一个名叫 `reload`
+/// 的事件。挂错名字的那一版**哪个浏览器都不触发**，而 `EventSource` 对「你监听了
+/// 我没发的事件」**不报任何错**（控制台干净、控制台干净得像对的），于是它看起来像
+/// 「Firefox 不行」而其实是所有浏览器都不行（这个坑踩过一次）
 pub const LIVE_RELOAD: &str = concat!(
     "new EventSource(\"",
     "/__mdpp/events",
     "\")",
-    ".addEventListener(\"reload\", () => location.reload());",
+    ".addEventListener(\"message\", () => location.reload());",
 );
 
 /// 重出的次数。浏览器那边盯着它变没变
@@ -49,16 +95,16 @@ pub fn bump(generation: &Generation) {
 }
 
 /// 收连接，一直收到关掉为止。每个连接一个线程（SSE 那条会一直占着）
-pub fn serve(listener: TcpListener, dir: PathBuf, generation: Generation) {
+pub fn serve(listener: TcpListener, root: Root, generation: Generation) {
     for stream in listener.incoming() {
         let Ok(stream) = stream else {
             debug!("有个连接没能接上");
             continue;
         };
-        let dir = dir.clone();
+        let root = root.clone();
         let generation = Arc::clone(&generation);
         std::thread::spawn(move || {
-            if let Err(error) = handle(stream, &dir, &generation) {
+            if let Err(error) = handle(stream, &root, &generation) {
                 debug!(%error, "这个连接断了");
             }
         });
@@ -73,7 +119,7 @@ pub fn address_of(listener: &TcpListener) -> String {
         .unwrap_or_else(|_| "?".to_string())
 }
 
-fn handle(mut stream: TcpStream, dir: &Path, generation: &Generation) -> std::io::Result<()> {
+fn handle(mut stream: TcpStream, root: &Root, generation: &Generation) -> std::io::Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut request = String::new();
     if reader.read_line(&mut request)? == 0 {
@@ -85,7 +131,10 @@ fn handle(mut stream: TcpStream, dir: &Path, generation: &Generation) -> std::io
     if path == EVENTS_PATH {
         return events(&mut stream, generation);
     }
-    match resolve(dir, path) {
+    // 目录**这一次请求才取**：换根是重建完之后的事，于是这一请求要么看到完整的一遍
+    // 旧的、要么看到完整的一遍新的
+    let dir = root.serving();
+    match resolve(&dir, path) {
         Some(Target::File(file)) => send_file(&mut stream, &file),
         Some(Target::Directory(to)) => redirect(&mut stream, &to),
         None => not_found(&mut stream),
@@ -141,29 +190,150 @@ fn redirect(stream: &mut TcpStream, to: &str) -> std::io::Result<()> {
 }
 
 /// 那条长连接：连着，直到浏览器关掉页面
+///
+/// **响应体不能靠连接关闭来界定**：HTTP/1.1 里没有 `Content-Length` 也没有
+/// `Transfer-Encoding` 的响应，长度只能等连接关掉才算数 —— 而那与 `keep-alive`
+/// 自相矛盾，各家浏览器的处理并不一致（有的会先攒够再交给上层，于是「流」没了）。
+/// `Transfer-Encoding: chunked` 把这件事说死：每一段自己带长度，连接不必关。
+///
+/// 心跳用**注释行**（`: 心跳`）而不是 `data:`：注释行不算事件，页面脚本不会因为它动。
+/// 而它非发不可 —— 中间什么都不写的连接会被当成死的（代理、浏览器各有各的超时），
+/// 心跳是唯一能让「还活着」这件事被看出来又不打扰页面的办法。
 fn events(stream: &mut TcpStream, generation: &Generation) -> std::io::Result<()> {
     stream.write_all(
         "HTTP/1.1 200 OK\r\n\
          Content-Type: text/event-stream; charset=utf-8\r\n\
          Cache-Control: no-store\r\n\
-         Connection: keep-alive\r\n\r\n\
-         : 连上了\r\n\r\n"
+         Connection: keep-alive\r\n\
+         Transfer-Encoding: chunked\r\n\r\n"
             .as_bytes(),
     )?;
+    chunk(stream, ": 连上了\n\n")?;
     let mut seen = generation.load(Ordering::Relaxed);
     loop {
         std::thread::sleep(Duration::from_millis(300));
-        if stream.write_all(": 心跳\r\n\r\n".as_bytes()).is_err() {
+        if chunk(stream, ": 心跳\n\n").is_err() {
             return Ok(());
         }
         let now = generation.load(Ordering::Relaxed);
         if now != seen {
             seen = now;
-            if stream.write_all(b"data: reload\n\n").is_err() {
+            // `data: reload` —— 一条 `message` 事件，载荷是 `reload`，与
+            // `LIVE_RELOAD` 里挂的那个 `message` 配对（那上面写了为什么不是 `reload`）
+            if chunk(stream, "data: reload\n\n").is_err() {
                 return Ok(());
             }
         }
     }
+}
+
+/// 按 chunked 编码发一段：`长度\r\n` + 内容 + `\r\n`
+fn chunk(stream: &mut TcpStream, body: &str) -> std::io::Result<()> {
+    write!(stream, "{:x}\r\n", body.len())?;
+    stream.write_all(body.as_bytes())?;
+    stream.write_all(b"\r\n")
+}
+
+/// 把 [`events`] 说的话取回来 —— 真的走一次 TCP，不是对着源码字符串看
+///
+/// 返回 `(响应头, 各段的内容)`：头到第一个空行为止；各段是从 chunked 里剥出来的。
+/// 心跳是注释行（以 `:` 开头），一并留着 —— 断言「每 300ms 有一条」用得上
+///
+/// **喊「重出好了」的时机不能猜**。[`events`] 进循环前就把当前计数收进 `seen`，
+/// 早了那一次它就 `now == seen`、那条事件永远不发，而下面死等它。
+///
+/// 时机靠一个**看得见的信号**对齐，不用 `sleep` 猜：第一条心跳是在 `seen` 收好
+/// **之后**才写出去的（见 [`events`] 里那两行的先后），所以「客户端收到了心跳」
+/// 就等于「服务器已经准备好了」。机器忙的时候 `sleep(20ms)` 会不够——
+/// 这个用例单跑时过、并行跑时不过，就是这么来的（猜时间的那种写法迟早这样）
+///
+/// 那个 5 秒上限是**保底**：服务器要是不发东西，该「读到空」然后断言失败，
+/// 而不是把整个测试挂住（挂过一次，排查花的时间比写它还长）
+#[cfg(test)]
+fn events_over_loopback(generation: &Generation) -> (String, Vec<String>) {
+    let listener = TcpListener::bind(("127.0.0.1", 0)).expect("绑得上");
+    let address = listener.local_addr().expect("有地址");
+    let (beating, beat_seen) = std::sync::mpsc::channel();
+
+    // 客户端：连上、问一句、读。见到心跳就报一声，见到事件就收工
+    let client = std::thread::spawn(move || {
+        let mut stream = TcpStream::connect(address).expect("连得上");
+        stream
+            .write_all(b"GET /__mdpp/events HTTP/1.1\r\nHost: x\r\n\r\n")
+            .expect("说得出去");
+
+        let mut raw = Vec::new();
+        let mut buf = [0u8; 1024];
+        let mut alive = false;
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            match stream.read(&mut buf) {
+                // **把「为什么停了」写进结果里** —— 吞掉它的话，断言失败时看到的
+                // 只有「没有事件」，得再加一轮打印才猜得出是对端挂了还是读出错
+                Ok(0) => {
+                    raw.extend_from_slice("\n[客户端：连接被关]\n".as_bytes());
+                    break;
+                }
+                Err(error) => {
+                    raw.extend_from_slice(format!("\n[客户端：读出错 {error}]\n").as_bytes());
+                    break;
+                }
+                Ok(n) => {
+                    raw.extend_from_slice(&buf[..n]);
+                    let text = String::from_utf8_lossy(&raw);
+                    if !alive && text.contains(": 心跳") {
+                        alive = true;
+                        let _ = beating.send(());
+                    }
+                    let events = text
+                        .lines()
+                        .filter(|line| line.starts_with("data: ") || line.starts_with("event: "))
+                        .count();
+                    if events >= 1 {
+                        break;
+                    }
+                }
+            }
+        }
+        raw
+    });
+
+    let (server, _) = listener.accept().expect("等得到连接");
+    let writer = server.try_clone().expect("克隆得出");
+    let counter = generation.clone();
+    // [`events`] 那个线程**不等它自己回得来**：读够之后我们会断开，它的下一次
+    // `write_all` 就会拿到错误。不 join —— 万一它没回得来，那正是要避免的挂死，
+    // 不该在测试里再等一遍
+    std::thread::spawn(move || {
+        let mut writer = writer;
+        let _ = events(&mut writer, &counter);
+    });
+
+    // 等心跳到达（= 服务器收好 `seen` 了），再喊「重出好了」
+    beat_seen
+        .recv_timeout(Duration::from_secs(5))
+        .expect("该收到心跳 —— 服务器连上了吗");
+    bump(generation);
+
+    let raw = client.join().expect("读得出来");
+    // 断开对端：`events` 的下一次 `write_all` 会拿到错误，它就从那个死循环回来了
+    let _ = server.shutdown(std::net::Shutdown::Both);
+
+    let text = String::from_utf8_lossy(&raw).into_owned();
+    let (head, body) = text.split_once("\r\n\r\n").unwrap_or((text.as_str(), ""));
+    // chunked：一段一段剥（长度行 + 内容 + 空行）
+    let mut rest = body;
+    let mut lines = Vec::new();
+    while let Some(at) = rest.find("\r\n") {
+        let size = usize::from_str_radix(&rest[..at], 16).unwrap_or(0);
+        let start = at + 2;
+        let Some(after) = rest.get(start + size + 2..) else {
+            break;
+        };
+        lines.extend(rest[start..start + size].lines().map(str::to_string));
+        rest = after;
+    }
+    (head.to_string(), lines)
 }
 
 fn send_file(stream: &mut TcpStream, file: &Path) -> std::io::Result<()> {
@@ -463,6 +633,69 @@ mod tests {
         assert!(LIVE_RELOAD.contains("location.reload()"));
         // 里面不能出现能提前闭合标签的字样
         assert!(!LIVE_RELOAD.contains("</script"));
+    }
+
+    /// **服务器真的发出来的那些字，要与页面挂的那个事件名对得上**
+    ///
+    /// 对不上时刷新**静悄悄地不响**：`EventSource` 对「你监听了我没发的事件」不报
+    /// 任何错，控制台干净得像对的。错法是 `data: reload` 配 `addEventListener("reload")`
+    /// —— SSE 里 `data:` 造的是一条 **`message`** 事件（载荷才是 `reload`），而
+    /// `addEventListener` 的名字是**事件名**，两个名字空间根本不通。
+    ///
+    /// 现象是「Firefox 不刷新」，而其实所有浏览器都不刷新（这个坑踩过一次）
+    #[test]
+    fn the_server_and_the_script_agree_on_the_event_name() {
+        let (head, lines) = events_over_loopback(&generation());
+        assert!(
+            head.contains("text/event-stream"),
+            "那不是一条事件流：\n{head}"
+        );
+        let sent: Vec<&str> = lines
+            .iter()
+            .filter(|line| line.starts_with("data: ") || line.starts_with("event: "))
+            .map(String::as_str)
+            .collect();
+        assert!(!sent.is_empty(), "一条事件也没发出去：\n{lines:?}");
+
+        // 页面挂的是哪个名字
+        let listens = LIVE_RELOAD
+            .split("addEventListener(\"")
+            .nth(1)
+            .and_then(|rest| rest.split('"').next())
+            .expect("脚本该挂一个监听");
+
+        for line in sent {
+            if let Some(name) = line.strip_prefix("event: ") {
+                assert_eq!(
+                    name.trim(),
+                    listens,
+                    "服务器发了事件 {name}，页面挂的却是 {listens} —— 它永远不响"
+                );
+            } else if let Some(data) = line.strip_prefix("data: ") {
+                // `data:` 造的那条事件**永远叫 message**，与载荷无关
+                assert_eq!(
+                    listens, "message",
+                    "服务器发的是 `data: {data}`，页面挂的却是 {listens} —— \
+                     它永远不响（`data:` 造的是 message 事件，载荷才是 \"{data}\"）"
+                );
+            }
+        }
+    }
+
+    /// 那条长连接得说清自己有多长 —— `keep-alive` 与「靠连接关闭来界定长度」是
+    /// 自相矛盾的，各家浏览器的处理并不一致（有的先攒够再交给上层，于是「流」没了）。
+    /// `chunked` 把这件事说死
+    #[test]
+    fn the_event_stream_declares_its_length_with_chunked_encoding() {
+        let (head, _) = events_over_loopback(&generation());
+        assert!(
+            head.contains("Transfer-Encoding: chunked"),
+            "长连接得带 chunked：\n{head}"
+        );
+        assert!(
+            !head.contains("Content-Length"),
+            "chunked 与 Content-Length 只能有一个：\n{head}"
+        );
     }
 
     /// 计数从 0 起、每重出加一 —— 长连接全靠这个数的变化喊「刷新」，

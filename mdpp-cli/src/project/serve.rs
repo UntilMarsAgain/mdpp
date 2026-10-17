@@ -43,14 +43,18 @@ pub fn run(options: &Serve) -> Result<(), String> {
         .map_err(|error| format!("{}:{} 上起不来：{error}", options.host, options.port))?;
     let address = http::address_of(&listener);
 
-    let site_dir = temp_dir()?;
+    // 缓存目录：每一遍出在**自己的子目录**里（`第 N 遍`），出齐了才把指针挪过去。
+    // 于是「清空产物目录」删的永远是没人读的那个 —— 改到一半刷新也不会撞见半截的
+    // 页面或凭空消失的 CSS
+    let cache = cache_dir()?;
+    let root = http::Root::new(cache.join("第 0 遍"));
     let generation = http::generation();
-    let root = site_dir.clone();
     let for_server = std::sync::Arc::clone(&generation);
-    std::thread::spawn(move || http::serve(listener, root, for_server));
+    let for_root = root.clone();
+    std::thread::spawn(move || http::serve(listener, for_root, for_server));
 
     eprintln!("站点在 http://{address}/ （Ctrl-C 停）");
-    eprintln!("出到 {}", shown(&site_dir));
+    eprintln!("出到 {}", shown(&cache));
 
     // 盯着的：正文、模板、配置，以及配置里指的那几个文件
     let mut watch = Watch::new(watched(&project));
@@ -60,7 +64,8 @@ pub fn run(options: &Serve) -> Result<(), String> {
     };
 
     // 先出一遍，让人马上能打开看
-    rebuild(&project, &options, &site_dir, &generation);
+    let mut turn = 0usize;
+    rebuild(&project, &options, &cache, &root, &generation, turn);
 
     loop {
         // 等一个改动；等到了先让它稳下来，再收走
@@ -80,24 +85,60 @@ pub fn run(options: &Serve) -> Result<(), String> {
                 .collect::<Vec<_>>()
                 .join("、")
         );
-        rebuild(&project, &options, &site_dir, &generation);
+        turn += 1;
+        rebuild(&project, &options, &cache, &root, &generation, turn);
     }
 }
 
 /// 出一遍，并通知浏览器
-fn rebuild(project: &Project, options: &Build, site_dir: &Path, generation: &http::Generation) {
-    match build::build_into(project, options, site_dir) {
+///
+/// **出在 `cache/第 N 遍` 里，全部写完才把服务的指针挪过去** —— 所以清理与写入都
+/// 发生在没人读的地方。挪过去之后旧的那一遍还留着（可能有连接正读着它），
+/// 再下一遍才顺手清掉。
+fn rebuild(
+    project: &Project,
+    options: &Build,
+    cache: &Path,
+    root: &http::Root,
+    generation: &http::Generation,
+    turn: usize,
+) {
+    let into = cache.join(turn_dir(turn));
+    // 塞那段刷新脚本是**这一遍成功之后**的事：出不来的那一遍连产物都不是，
+    // 更不该往里面塞东西（那样下一遍 `clean` 会连它一起清掉，白费）
+    let result = match build::build_into(project, options, &into) {
+        Ok(built) => {
+            inject(&into);
+            Ok(built)
+        }
+        Err(message) => Err(message),
+    };
+    match result {
         Ok(built) => {
             build::report(&built);
-            inject(site_dir);
+            // **挪指针在一切写完之后**：这一条之前，请求读到的还是完整的一遍旧的
+            root.point_at(&into);
             http::bump(generation);
             info!(pages = built.pages, "重出好了");
+            // 再往前那一遍（两遍之前的）没人要了 —— 它可能还被人打开着，
+            // 但那是个已经关掉的响应，删了不影响
+            if turn >= 2 {
+                let _ = std::fs::remove_dir_all(cache.join(turn_dir(turn - 2)));
+            }
         }
         Err(message) => {
-            // 出不来就**留在旧页面上**：浏览器那头还连着，下一次好了会自己刷新
+            // 出不来就**留在旧页面上**：浏览器那头还连着，下一次好了会自己刷新。
+            // 这一遍半截的产物**不挪指针**（那才是「留在旧页面上」的实现方式），
+            // 下一遍会出在另一个目录里，它自己就没人管了
             eprintln!("这一遍出不来：{message}");
         }
     }
+}
+
+/// 第 `turn` 遍出在哪个子目录。名字里带中文是为了好认（那是给人看的），
+/// 而它是**我们自己拼的**路径，不经过系统那一层编码，没有上面说的那个风险
+fn turn_dir(turn: usize) -> String {
+    format!("第 {turn} 遍")
 }
 
 /// 往每个页面里塞那段连长连接的脚本
@@ -174,13 +215,33 @@ fn pages_of(site_dir: &Path) -> Vec<PathBuf> {
 /// 非 ASCII 字符是最容易在那一步变成乱码、于是 `exists` 与 `remove_dir_all` 指不到
 /// 同一个目录的东西。这个目录名没有任何给人看的价值，`mdpp-preview-` 已经说清了它是谁的
 fn temp_dir() -> Result<PathBuf, String> {
-    let dir = std::env::temp_dir().join(format!("mdpp-preview-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(preview_name());
     if dir.exists() {
         std::fs::remove_dir_all(&dir)
             .map_err(|error| format!("清不了 {}：{error}", dir.display()))?;
     }
     crate::project::ensure_dir(&dir)?;
     Ok(dir)
+}
+
+/// 这一次预览的临时目录叫什么
+///
+/// **名字里只有 ASCII** —— `std::env::temp_dir()` 给的那条路径在某些环境（老 Windows、
+/// 非 UTF-8 的 locale、带转义的挂载点）会被系统按自己的编码重新解释，夹在中间的
+/// 非 ASCII 字符是最容易在那一步变成乱码、于是 `exists` 与 `remove_dir_all` 指不到
+/// 同一个目录的东西。这个目录名没有任何给人看的价值，`mdpp-preview-` 已经说清了它是谁的
+fn preview_name() -> String {
+    format!("mdpp-preview-{}", std::process::id())
+}
+
+/// 预览的缓存目录：临时目录下面再垫一层，每一遍出在它自己的子目录里
+///
+/// **垫这一层是为了换根** —— `http` 那边拿的是一个可以改指向的 [`http::Root`]，
+/// 而它指的是这一层里的某个子目录。一遍出完，指针挪到那个子目录上。
+fn cache_dir() -> Result<PathBuf, String> {
+    let cache = temp_dir()?.join("缓存");
+    crate::project::ensure_dir(&cache)?;
+    Ok(cache)
 }
 
 /// 要盯着的那几条路径
@@ -319,17 +380,81 @@ mod tests {
     fn a_rebuild_bumps_the_counter_so_browsers_reload() {
         let (_dir, project) = scaffold();
         let generation = http::generation();
-        let site_dir = project.site_dir();
+        let cache = project.site_dir();
+        let root = http::Root::new(cache.join(turn_dir(0)));
 
-        rebuild(&project, &options(), &site_dir, &generation);
+        rebuild(&project, &options(), &cache, &root, &generation, 0);
         let first = generation.load(Ordering::Relaxed);
         assert!(first > 0, "出完一趟该加一次");
 
-        rebuild(&project, &options(), &site_dir, &generation);
+        rebuild(&project, &options(), &cache, &root, &generation, 1);
         assert!(
             generation.load(Ordering::Relaxed) > first,
             "第二趟又加了一次"
         );
+    }
+
+    /// **换根而不是清空**：每一遍出在自己的子目录里，指针在写完之后才挪。
+    ///
+    /// 这条钉的是一个真 bug：以前每一遍都 `remove_dir_all` 正在被服务的那个目录，
+    /// 而 HTTP 线程随时可能正在 `File::open` 它 —— 那个窗口里请求要么拿到
+    /// `ENOENT`（CSS 突然没了），要么拿到半截的 HTML
+    #[test]
+    fn the_directory_being_served_is_never_wiped_out_from_under_readers() {
+        let (_dir, project) = scaffold();
+        let generation = http::generation();
+        let cache = project.site_dir();
+        let root = http::Root::new(cache.join(turn_dir(0)));
+
+        rebuild(&project, &options(), &cache, &root, &generation, 0);
+        let serving = root.serving();
+        assert!(
+            serving.join("index.html").is_file(),
+            "头一遍该出得来：{}",
+            serving.display()
+        );
+
+        // 第二遍：**正在被服务的那个目录一个字节都不许动**
+        let before: Vec<_> = walk(&serving)
+            .into_iter()
+            .map(|one| (one.0, one.1))
+            .collect();
+        rebuild(&project, &options(), &cache, &root, &generation, 1);
+        let after: Vec<_> = walk(&serving)
+            .into_iter()
+            .map(|one| (one.0, one.1))
+            .collect();
+        assert_eq!(before, after, "旧的那一遍被动了 —— 它可能正被人读着");
+
+        // 指针挪到新的一遍上，而新的一遍是完整的
+        let moved = root.serving();
+        assert_ne!(moved, serving, "指针该挪到新的一遍上");
+        assert!(
+            moved.join("index.html").is_file(),
+            "新的一遍该是完整的：{}",
+            moved.display()
+        );
+    }
+
+    /// 走一遍的资源清单（相对路径 + 内容），用来比较「有没有被动过」
+    fn walk(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+        let mut out = Vec::new();
+        let mut queue = vec![dir.to_path_buf()];
+        while let Some(at) = queue.pop() {
+            let Ok(entries) = std::fs::read_dir(&at) else {
+                continue;
+            };
+            for entry in entries.filter_map(Result::ok) {
+                let path = entry.path();
+                if path.is_dir() {
+                    queue.push(path);
+                } else if let Ok(bytes) = std::fs::read(&path) {
+                    out.push((path.strip_prefix(dir).unwrap_or(&path).to_path_buf(), bytes));
+                }
+            }
+        }
+        out.sort();
+        out
     }
 
     /// 防抖真的在等：没人再写了，也要**等满整个窗口**才说稳。
@@ -409,8 +534,17 @@ mod tests {
         );
 
         let preview = project.root.join("预览");
-        rebuild(&project, &options(), &preview, &http::generation());
-        let served = std::fs::read_to_string(preview.join("index.html")).expect("读得动");
+        let root = http::Root::new(preview.join(turn_dir(0)));
+        rebuild(
+            &project,
+            &options(),
+            &preview,
+            &root,
+            &http::generation(),
+            0,
+        );
+        let served =
+            std::fs::read_to_string(preview.join(turn_dir(0)).join("index.html")).expect("读得动");
         assert!(
             served.contains("__mdpp/events"),
             "预览该连着长连接：{served}"
@@ -426,9 +560,17 @@ mod tests {
         std::fs::write(deep.join("安装.mdpp"), "# 安装\n").expect("写得下");
 
         let preview = project.root.join("预览");
-        rebuild(&project, &options(), &preview, &http::generation());
+        let root = http::Root::new(preview.join(turn_dir(0)));
+        rebuild(
+            &project,
+            &options(),
+            &preview,
+            &root,
+            &http::generation(),
+            0,
+        );
 
-        let pages = pages_of(&preview);
+        let pages = pages_of(&preview.join(turn_dir(0)));
         assert!(pages.len() >= 3, "{pages:?}");
         for page in pages {
             let html = std::fs::read_to_string(&page).expect("读得动");
@@ -540,12 +682,12 @@ mod tests {
     /// `exists` 与 `remove_dir_all` 指不到同一个目录
     #[test]
     fn the_preview_directory_name_is_pure_ascii() {
-        let name = temp_dir()
-            .expect("建得出")
-            .file_name()
-            .map(|one| one.to_string_lossy().into_owned())
-            .expect("临时目录该有个名字");
+        let name = preview_name();
         assert!(name.is_ascii(), "目录名不该有非 ASCII 字符：{name}");
-        assert!(name.starts_with("mdpp-"), "{name}");
+        assert!(name.starts_with("mdpp-preview-"), "{name}");
+        assert!(
+            name.ends_with(&std::process::id().to_string()),
+            "名字该带进程号（两次预览互不相干）：{name}"
+        );
     }
 }
