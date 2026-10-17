@@ -12,7 +12,7 @@
 //! `style` 属性，宽松了就等于允许塞任意声明。
 
 use super::super::dispatch::render_problem;
-use super::{normalize_hex, text_on};
+use super::{hex_why, normalize_hex, text_on};
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
 
@@ -82,7 +82,7 @@ fn render_one(block: &Block, node: &Node, fmt: &mut dyn Renderer, kind: &'static
     // 与 `::banner` 同一套校验：这个值直接进 style 属性
     if let Some(color) = block.param("color") {
         let Some(hex) = normalize_hex(color) else {
-            render_problem(block, fmt, "color= 只认 #rgb 或 #rrggbb 这两种写法");
+            render_problem(block, fmt, &hex_why("color", None));
             return;
         };
         style.push_str(&format!("background: {hex}; color: {};", text_on(&hex)));

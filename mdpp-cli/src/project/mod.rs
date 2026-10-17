@@ -178,6 +178,8 @@ mod tests {
     use super::*;
     use include_dir::File;
 
+    /// 项目要**一层层往上找**：站在 `pages/指南` 里敲命令也得认出这个项目 ——
+    /// 认不出的话，那句报错会让人以为项目坏了
     #[test]
     fn a_project_is_found_from_a_subdirectory() {
         let dir = tempfile::tempdir().expect("造得出临时目录");

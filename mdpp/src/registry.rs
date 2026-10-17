@@ -249,7 +249,11 @@ impl BlockRegistry {
         registry
     }
 
-    /// 灌进去一份内置的，再改（续）
+    /// [`Self::builtin`] 的**别名**，两份逐字等价，行为没有任何区别。
+    ///
+    /// 留两个名字是因为读起来各是一句话：`builtin()` 是「就是内置的那张表」，
+    /// `with_builtins()` 是「**先**灌一份内置的，**接着**改我自己的」—— 后者是给自己
+    /// 那张表加块时的常规起点。选哪个都行
     pub fn with_builtins() -> Self {
         Self::builtin()
     }
@@ -428,6 +432,7 @@ mod tests {
 
     fn noop(_: &Block, _: &Node, _: &mut dyn Renderer) {}
 
+    /// 头一行切成名字加参数的那一步 —— 派发、渲染、诊断读的都是这一份，切错了没人看得出来
     #[test]
     fn parsing_a_header_yields_name_and_params() {
         let (name, params) = Block::parse_header("::note key=value flag 另一个=值").unwrap();
@@ -442,6 +447,7 @@ mod tests {
         );
     }
 
+    /// 引号里的空白不算分隔、`\"` 出来是一个引号 —— 少了这条，带空格的值会被劈成几段参数
     #[test]
     fn quotes_protect_spaces_and_escapes() {
         let (name, params) =
@@ -555,6 +561,7 @@ mod tests {
         assert_eq!(params, vec![("标题".to_string(), "a=b=c".to_string())]);
     }
 
+    /// 开关认得出来：`has` 说有、`param` 给空串 —— 与「没给这个参数」的 `None` 分得开
     #[test]
     fn a_bare_flag_is_present_but_empty() {
         let block = Block {
@@ -568,6 +575,7 @@ mod tests {
         assert_eq!(block.param("other"), None);
     }
 
+    /// 同名再灌一次是覆盖，不是追加 —— 换了实现就该只剩新的那一份，表里不留两条同名的
     #[test]
     fn registering_the_same_name_twice_replaces_rather_than_duplicates() {
         let mut registry = BlockRegistry::new();
@@ -582,6 +590,7 @@ mod tests {
         );
     }
 
+    /// 摘掉之后旧名字就查不到了，换名装回去也只有新名字 —— 一条注册项只认一个名字
     #[test]
     fn a_block_can_be_taken_out_and_put_back_under_another_name() {
         let mut registry = BlockRegistry::new();
@@ -594,6 +603,7 @@ mod tests {
         assert!(!registry.contains("a"));
     }
 
+    /// 名单按注册次序给，不排序 —— 诊断与帮助里「先加的先出现」，加了什么一眼看得见
     #[test]
     fn registration_order_is_kept_for_listing() {
         let mut registry = BlockRegistry::new();

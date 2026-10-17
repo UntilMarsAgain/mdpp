@@ -23,7 +23,7 @@
 //!
 //! ## 模板里的占位符
 //!
-//! 双花括号包着名字，一共六个：
+//! 双花括号包着名字，一共十个：
 //!
 //! | 占位符 | 填什么 |
 //! |---|---|
@@ -35,13 +35,17 @@
 //! | `{{styles}}` | 样式：要么一段内联的 `<style>`，要么一串 `<link>` |
 //! | `{{scripts}}` | 脚本：要么一段内联的 `<script>`，要么一串 `<script src>` |
 //! | `{{bar}}` | 顶上那一条（**含导航栏**），**连标签一起**；站点名与导航都没有就没有 |
-//! | `{{header}}` `{{footer}}` | 页首 / 页尾：**连标签一起**，没配就整段没有 |
+//! | `{{foot}}` | 底下那一条，**连标签一起**；`copyright` 空着就是整段没有 |
 //! | `{{body}}` | 正文（已渲染的 HTML 片段） |
+//!
+//! 这张表与 [`template()`] / [`document`] 两处对不对得上，由
+//! `the_template_still_has_the_placeholders_the_filler_fills` 钉着 —— 模板改了名字、
+//! 填的时候却还找旧的那个，那条会先红。
 //!
 //! `{{styles}}` / `{{scripts}}` 里也含用户用 `--css` / `--js` 附的那几份 —— 它们接在
 //! **默认的后面**，所以「改一下」不必重写默认那份。
 //!
-//! **模板里不要写注释**：注释会原样进到每一个产物页面里，而注释里若写了这六个名字，
+//! **模板里不要写注释**：注释会原样进到每一个产物页面里，而注释里若写了这十个名字，
 //! 填的时候它们照样会被替换掉 —— 「文档写在模板里」这条路两头都堵。要写说明就写在
 //! 本文件的模块头（就是上面这张表），那里它是源码的一部分，不会流到产物里。
 //!
@@ -119,9 +123,9 @@ pub enum Assets {
     /// **外链**：页面指到 `<前缀>/<文件名>`，文件由 [`copy_assets`] 拷到那儿。
     /// 站点走这条 —— 几十个页面共用一份资源
     ///
-    /// 前缀是**相对这一页**算出来的（`../../assets` 那样）：产物是目录式地址，
-    /// 深层页上的 `assets/base.css` 会解析到 `<深层目录>/assets/base.css` 去 ——
-    /// 而那里没有东西，页面会光着身子出来（样式与脚本全丢，而且不报错）
+    /// 前缀是**相对这一页**算出来的（`../../assets` 那样）—— 为什么要数层数、
+    /// 数错了会怎样（页面光着身子出来，而且不报错），见
+    /// [`crate::project::site::assets_href`]
     Linked(String),
 }
 
@@ -409,7 +413,9 @@ fn file_name(file: &File) -> String {
         .unwrap_or_default()
 }
 
-/// 资源被抄成 URL 时用的名字：文件名与扩展名都进属性，转义一下
+/// 资源在 URL 里用的名字：就是那个文件名，按**属性值**的规矩转义。
+///
+/// 转义是必须的：文件名进的是 `href="…"` / `src="…"`，里面一个引号就能把属性截断
 fn asset_url_name(name: &str) -> String {
     escape(name)
 }
@@ -543,6 +549,8 @@ mod tests {
         }
     }
 
+    /// `--full` 出来的是**整页**：`<!DOCTYPE` 打头，样式、脚本、正文都跟着 ——
+    /// 缺哪一样页面也出得来，只是光着、点不动、或者空的
     #[test]
     fn a_full_document_carries_the_stylesheet_the_script_and_the_body() {
         let html = document(&page("<p>正文</p>", Assets::Inline));
@@ -590,6 +598,8 @@ mod tests {
         assert!(fold.contains("textContent = next"), "\n{fold}");
     }
 
+    /// 主题要落在 `<html>` 上 —— 配色那两节靠 `:root[data-mdpp-theme]` 挑，
+    /// 落到别处（或干脆不落），主题就成了一个没人听的值
     #[test]
     fn a_theme_lands_on_the_html_element() {
         let html = document(&Page {
@@ -616,6 +626,8 @@ mod tests {
         assert!(!html.contains("<d"), "{html}");
     }
 
+    /// 主题值是配置里写来的，进属性前要转义 —— 引号跑出去，
+    /// `<html>` 上就能多挂一段 `onload`
     #[test]
     fn a_hostile_theme_value_cannot_break_out_of_the_attribute() {
         let html = document(&Page {
@@ -957,6 +969,8 @@ mod tests {
         assert!(html.contains("&lt;script&gt;"), "{html}");
     }
 
+    /// 默认样式要**真的是那一份**：空了也编译得过、页面也出得来，
+    /// 只是光着身子，没有人会吭声
     #[test]
     fn the_stylesheet_is_embedded_and_not_empty() {
         let css = default_css();
@@ -1013,6 +1027,8 @@ mod tests {
         }
     }
 
+    /// 内联脚本要整份在，也**只带最基本的那几样** —— 少了它页面点不动，
+    /// 多带一样就是替用它的人先做了一个决定
     #[test]
     fn the_script_is_embedded_and_does_the_minimum() {
         let js = default_js();
@@ -1086,6 +1102,8 @@ mod tests {
             "lang",
             "theme_attr",
             "title",
+            "icons",
+            "meta",
             "styles",
             "scripts",
             "bar",

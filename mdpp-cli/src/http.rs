@@ -20,6 +20,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use crate::url;
+
 use tracing::debug;
 
 /// 那条长连接。页面脚本连的是它，服务器靠它通知「重出好了」
@@ -108,7 +110,7 @@ enum Target {
 /// 最后那条不是多余的：从 `/x` 出发，`安装/` 会解析到 `/安装/`，而不是 `/x/安装/`，
 /// 于是页面上每个相对地址都指错一层。带斜杠的地址才是那个意思。
 fn resolve(dir: &Path, path: &str) -> Option<Target> {
-    let decoded = decode(path);
+    let decoded = url::decode_lossy(path);
     // 地址里不该有 `..`，而有的话它已经被解码还原了 —— 拼之前一律丢掉
     let relative: PathBuf = decoded
         .split('/')
@@ -125,7 +127,7 @@ fn resolve(dir: &Path, path: &str) -> Option<Target> {
     // 带斜杠的那个地址先到 —— 它才是页面该有的样子
     let index = at.join("index.html");
     if index.is_file() {
-        return Some(Target::Directory(format!("{}/", encode(&decoded))));
+        return Some(Target::Directory(format!("{}/", url::encode_path(&decoded))));
     }
     None
 }
@@ -199,7 +201,8 @@ fn respond(
         head.push_str(&format!("Location: {location}\r\n"));
     }
     head.push_str("Cache-Control: no-store\r\nConnection: close\r\n");
-    // 302 之后正文没有意义，长度给 0
+    // Content-Length 照正文的实际长度写 —— 重定向那一路（301）递的是空正文，
+    // 所以它出去的是 0；文件与 404 有正文，长度就是正文的
     head.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
     stream.write_all(head.as_bytes())?;
     stream.write_all(body)?;
@@ -242,42 +245,8 @@ fn content_type(file: &Path) -> &'static str {
     }
 }
 
-/// 百分号解码。解不出 UTF-8 就用 `from_utf8_lossy` 的结果 —— 预览而已，
-/// 而一条坏地址不该让整个连接报错
-fn decode(value: &str) -> String {
-    let bytes = value.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            let hex = std::str::from_utf8(&bytes[index + 1..index + 3]).unwrap_or("");
-            if let Ok(byte) = u8::from_str_radix(hex, 16) {
-                out.push(byte);
-                index += 3;
-                continue;
-            }
-        }
-        out.push(bytes[index]);
-        index += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-/// 百分号编码：`Location` 头里要给的是一个地址，中文得写成 `%E6…` 才认得
-///
-/// 只编码该编码的（路径里那些分隔符要留着），其余原样
-fn encode(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for byte in value.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' => {
-                out.push(byte as char);
-            }
-            other => out.push_str(&format!("%{other:02X}")),
-        }
-    }
-    out
-}
+// 百分号编解码不在这里另写一份 —— 两种策略（给机器跟的地址 / 给人看的 `href`）
+// 连同两份解码都在 `crate::url`，那边说了每种给谁用
 
 /// 文件的一张小照：大小与改动时间。**只比这两样** —— 内容另算，
 /// 而对「改没改」这个问题它们够了
@@ -349,6 +318,8 @@ mod tests {
         }
     }
 
+    /// 普通文件按地址原样给，**没有的就回 404** —— 拿别的文件（比如哪个 index）顶上，
+    /// 预览里显示的就不是你点开的那一页
     #[test]
     fn files_are_served_as_they_are() {
         let dir = tree();
@@ -413,18 +384,8 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn encoding_leaves_the_address_alone_but_says_nothing_about_it() {
-        assert_eq!(
-            encode("/指南/安装/"),
-            "/%E6%8C%87%E5%8D%97/%E5%AE%89%E8%A3%85/"
-        );
-        assert_eq!(encode("/assets/base.css"), "/assets/base.css");
-        // 空格与问号在路径里得编码 —— 问号是地址与查询的分界
-        assert_eq!(encode("/a b?c"), "/a%20b%3Fc");
-        assert_eq!(decode(&encode("/指南/安装/")), "/指南/安装/");
-    }
-
+    /// 后缀那张表要认得出大小写（`a.SVG` 也得认），文本类要带 `charset=utf-8` ——
+    /// 编码不写进 Content-Type，浏览器只能靠猜
     #[test]
     fn content_types_are_guessed() {
         assert_eq!(
@@ -501,6 +462,8 @@ mod tests {
         assert!(!LIVE_RELOAD.contains("</script"));
     }
 
+    /// 计数从 0 起、每重出加一 —— 长连接全靠这个数的变化喊「刷新」，
+    /// 加不上或者起点不对，浏览器那边就一直不响
     #[test]
     fn generation_counts_up() {
         let g = generation();

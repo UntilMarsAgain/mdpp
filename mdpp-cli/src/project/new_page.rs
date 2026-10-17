@@ -91,7 +91,11 @@ fn source_of(key: &str) -> PathBuf {
     for segment in key.split('/') {
         path.push(segment);
     }
-    path.set_extension("mdpp");
+    // **追加**后缀，而不是 `set_extension` —— 页名最后一段自己带点时（`2.0`），
+    // `set_extension("mdpp")` 会把 `.0` 顶掉：文件成了 `2.mdpp`，键跟着从 `2.0` 变成
+    // `2`，还会盖掉已经有的那一页。站点那边（`site::strip_suffix`）是认 `.mdpp`
+    // 这个后缀才砍，`2.0` 里的 `.0` 它原样留着 —— 两侧得对得上
+    path.as_mut_os_string().push(".mdpp");
     path
 }
 
@@ -131,6 +135,8 @@ mod tests {
         )
     }
 
+    /// 新页要落对地方、也要扫得回来：`pages/指南/入门.mdpp` 建出来，站点一扫就得有它 ——
+    /// 差一点，作者建了页，`build` 里却找不到
     #[test]
     fn a_new_page_lands_in_pages_and_gets_picked_up() {
         let (_dir, project) = scaffold();
@@ -143,6 +149,22 @@ mod tests {
 
         let site = Site::collect(&project.pages_dir()).expect("扫得动");
         assert!(site.by_key("指南/入门").is_some(), "{:?}", site.pages());
+    }
+
+    /// 页名里的点是**页名的一部分**，不是分隔符 —— 文件名与键都得留着它。
+    ///
+    /// 用 `set_extension` 的话 `2.0` 会变成 `2`：文件盖住已有的另一页，键也变了
+    #[test]
+    fn a_dotted_page_name_keeps_its_dot() {
+        let (_dir, project) = scaffold();
+        new(&project, "2.0").expect("建得出");
+
+        let path = project.pages_dir().join("2.0.mdpp");
+        assert!(path.is_file(), "没建出 {}", path.display());
+
+        // 键也还是 `2.0` —— 与站点扫描那边（`strip_suffix` 只认 `.mdpp`）对得上
+        let site = Site::collect(&project.pages_dir()).expect("扫得动");
+        assert!(site.by_key("2.0").is_some(), "{:?}", site.pages());
     }
 
     /// 骨架那一页在，那条「回首页」就该有；它是一个站内链接，不是红链

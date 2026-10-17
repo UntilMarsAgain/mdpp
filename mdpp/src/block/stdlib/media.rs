@@ -34,12 +34,7 @@ pub(super) fn render_image(block: &Block, _node: &Node, fmt: &mut dyn Renderer) 
 
     let align = align_of(block);
 
-    let mut style = String::new();
-    for (param, rule) in [("width", "max-width"), ("height", "max-height")] {
-        if let Some(ok) = block.param(param).and_then(|value| size_rule(rule, value)) {
-            style.push_str(&ok);
-        }
-    }
+    let style = size_style(block);
 
     fmt.cr();
     fmt.open("figure", &[("class", format!("image image--{align}"))]);
@@ -56,12 +51,7 @@ pub(super) fn render_image(block: &Block, _node: &Node, fmt: &mut dyn Renderer) 
     fmt.self_close("img", &attrs);
     fmt.cr();
     // 注释：`caption=` 优先于块里写着的那一行
-    if let Some(caption) = caption_of(block) {
-        fmt.open("figcaption", &[]);
-        fmt.text(&caption);
-        fmt.close("figcaption");
-        fmt.cr();
-    }
+    caption_line(block, fmt);
     fmt.close("figure");
     fmt.cr();
 }
@@ -87,12 +77,7 @@ fn render_media(block: &Block, _node: &Node, fmt: &mut dyn Renderer, kind: &str)
 
     let align = align_of(block);
 
-    let mut style = String::new();
-    for (param, rule) in [("width", "max-width"), ("height", "max-height")] {
-        if let Some(ok) = block.param(param).and_then(|value| size_rule(rule, value)) {
-            style.push_str(&ok);
-        }
-    }
+    let style = size_style(block);
 
     fmt.cr();
     fmt.open(
@@ -111,14 +96,35 @@ fn render_media(block: &Block, _node: &Node, fmt: &mut dyn Renderer, kind: &str)
     }
     fmt.self_close(kind, &attrs);
     fmt.cr();
+    caption_line(block, fmt);
+    fmt.close("figure");
+    fmt.cr();
+}
+
+/// `width=` / `height=` → 那条**上限**声明（`max-width` / `max-height`）。
+///
+/// 给的是上限不是定死尺寸：图与播放器各自的原始比例不归这里管。
+/// 认不出的值**整条丢掉**（`size_rule` 只认「数字 + 白名单单位」）—— 这个值会写进
+/// `style` 属性，宽松了就等于允许往里面塞任意声明
+fn size_style(block: &Block) -> String {
+    let mut style = String::new();
+    for (param, rule) in [("width", "max-width"), ("height", "max-height")] {
+        if let Some(ok) = block.param(param).and_then(|value| size_rule(rule, value)) {
+            style.push_str(&ok);
+        }
+    }
+    style
+}
+
+/// 注释那一行：`caption=` 优先，没有就取块里写着的那一行。两处都不要时**一个字不写**
+/// （连 `<figcaption>` 都不摆 —— 空注释格是没必要的输出）
+fn caption_line(block: &Block, fmt: &mut dyn Renderer) {
     if let Some(caption) = caption_of(block) {
         fmt.open("figcaption", &[]);
         fmt.text(&caption);
         fmt.close("figcaption");
         fmt.cr();
     }
-    fmt.close("figure");
-    fmt.cr();
 }
 
 /// 取 `src=` 并验一遍协议。挡下就报用法问题并返回 `None`（调用方直接返回）。
@@ -184,6 +190,7 @@ mod tests {
         assert!(bare.contains("template--problem"), "{bare}");
     }
 
+    /// 位置、尺寸上限与图注三种参数一起写：尺寸落成上限声明，位置落成修饰类
     #[test]
     fn image_carries_alignment_and_limits() {
         let html = render("::image src=/logo.svg align=right width=320 caption=\"桥体\"\n");
@@ -196,6 +203,7 @@ mod tests {
         assert!(html.contains("<figcaption>桥体</figcaption>"), "{html}");
     }
 
+    /// 图注两种写法：块里写一行最自然，`caption=` 优先；都没有时一个 `<figcaption>` 都不摆
     #[test]
     fn image_takes_its_caption_from_the_body() {
         // 图片下面写一行 —— 最自然的写法
@@ -232,6 +240,7 @@ mod tests {
         assert!(!none.contains("<figcaption>"), "{none}");
     }
 
+    /// 危险协议不渲染成图片；塞在尺寸里的别的声明一律不认，因此拼不出 style 属性
     #[test]
     fn image_refuses_dangerous_sources_and_sneaky_sizes() {
         // 危险协议：不渲染图片，只给提示
@@ -253,6 +262,7 @@ mod tests {
         assert!(missing.contains("src"), "{missing}");
     }
 
+    /// 空的 `src` 与没写是同一件事：报用法问题，不摆一个空地址的图片
     #[test]
     fn an_empty_src_counts_as_missing() {
         let html = render("::image src=\"\"\n");

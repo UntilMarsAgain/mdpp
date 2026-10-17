@@ -355,6 +355,8 @@ mod tests {
         assert!(!parse(&["render"]).debug);
     }
 
+    /// 一个文件都不给**不是**用法错误：inputs 空着，渲染那边才走标准输入；
+    /// `--full` 默认也是关的
     #[test]
     fn render_without_arguments_reads_standard_input() {
         let render = render(&["render"]);
@@ -362,6 +364,8 @@ mod tests {
         assert!(!render.full);
     }
 
+    /// 位置参数按敲进去的次序收 —— 多文件时输出的段落次序，以及默认标题取的
+    /// 「第一个文件名」，都指着这个次序
     #[test]
     fn files_land_in_order() {
         let render = render(&["render", "甲.md", "乙.md"]);
@@ -370,6 +374,8 @@ mod tests {
         assert!(render.inputs[1].ends_with("乙.md"));
     }
 
+    /// 短写与长写是同一件事的两种写法，两样都得认 —— 帮助里两样都列着，
+    /// 只认一种，人照另一半敲就是一句「不认识」
     #[test]
     fn short_and_long_forms_both_work() {
         let one = render(&["render", "-f", "-L"]);
@@ -383,6 +389,8 @@ mod tests {
         assert!(render(&["render", "-u"]).unsafe_html);
     }
 
+    /// 带值的两种写法是同一件事：`--title 某篇` 与 `--title=某篇` ——
+    /// 只认一种，另一种写法就被当成缺值报错
     #[test]
     fn values_can_follow_or_use_equals() {
         assert_eq!(
@@ -395,6 +403,8 @@ mod tests {
         );
     }
 
+    /// 标题的兜底链：`--title` 优先，其次第一个输入的**文件名**（不是整条路径），
+    /// 再没有也得给个「未命名」—— 每一档都不能塌成空串
     #[test]
     fn the_title_defaults_to_the_first_file_name() {
         assert_eq!(render(&["render", "甲.md"]).title_or(), "甲.md");
@@ -485,8 +495,7 @@ mod tests {
         }
     }
 
-    /// `serve` 是个**占位**：命令在，但明说还没实现，而不是悄悄什么都不做
-    /// `serve` 有自己的选项：端口与听在哪个地址上
+    /// `serve` 有自己的选项：端口，以及听在哪个地址上
     #[test]
     fn serve_has_a_port_and_an_address() {
         let serve = match parse(&["serve"]).command {

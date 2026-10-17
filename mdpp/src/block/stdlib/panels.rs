@@ -9,7 +9,7 @@
 //! 把两节都渲染进去、显示哪一节由样式按 `data-mdpp-theme` 决定（切主题不必重新渲染）；
 //! 分栏是把各节**一起摆出来**，横着排，窄屏由样式堆成一竖列。
 
-use super::super::dispatch::{render_problem, sections};
+use super::super::dispatch::{no_leading_content, render_problem, sections};
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
 
@@ -34,12 +34,8 @@ pub(super) fn render_tabs(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         render_problem(block, fmt, "选项卡是空的：每一节要以 [标签] 开头");
         return;
     }
-    if sections.iter().any(|(label, _)| label.is_empty()) {
-        render_problem(
-            block,
-            fmt,
-            "有内容写在第一个 [标签] 之前：选项卡的每一节都要以 [标签] 开头",
-        );
+    if let Err(why) = no_leading_content(&sections, "选项卡") {
+        render_problem(block, fmt, &why);
         return;
     }
 
@@ -189,12 +185,8 @@ pub(super) fn render_columns(block: &Block, node: &Node, fmt: &mut dyn Renderer)
         render_problem(block, fmt, "分栏是空的：每一节要以 [标签] 开头");
         return;
     }
-    if sections.iter().any(|(label, _)| label.is_empty()) {
-        render_problem(
-            block,
-            fmt,
-            "有内容写在第一个 [标签] 之前：分栏的每一节都要以 [标签] 开头",
-        );
+    if let Err(why) = no_leading_content(&sections, "分栏") {
+        render_problem(block, fmt, &why);
         return;
     }
 
@@ -228,7 +220,10 @@ pub(super) fn render_columns(block: &Block, node: &Node, fmt: &mut dyn Renderer)
         fmt.open("div", &[("class", "columns__col".to_string())]);
         if !headless {
             fmt.cr();
-            // 用真标题元素：一栏就是一段独立内容，读屏与目录都认它
+            // 栏目名是**这一栏的标签**，不是正文里的一个标题 —— 与 `::tabs` 那边用
+            // `<button>` 同一个道理：这里是分栏，不是文档的章节，插一个 `hN` 进去
+            // 会把整页的标题层级打乱（跳级、或与正文标题抢位置）。「标题的样子」
+            // 由样式在 `.columns__head` 上给
             fmt.open("div", &[("class", "columns__head".to_string())]);
             fmt.text(label);
             fmt.close("div");

@@ -16,6 +16,23 @@ use super::super::fill;
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
 
+/// 取这一块要写出去的那段源（`[template=…]` 指的那一页），**取不到就把问题摆出来**。
+///
+/// 返回 `None` = 这次渲染到此为止（调用方直接 `return`，一个字都别往页面上写）。
+///
+/// `js` / `css` / `html` 三个都要走这一遍 —— 各写各的 `match` 的话，漏掉
+/// `render_problem` 那一支的表现是**一模一样的静默**：模板取不到、正文也没了，
+/// 而页面上一个字都不吭，作者只会以为块没生效
+fn source_or_problem(block: &Block, fmt: &mut dyn Renderer) -> Option<String> {
+    match fill::source_of(block) {
+        Ok(source) => Some(source),
+        Err(why) => {
+            render_problem(block, fmt, &why);
+            None
+        }
+    }
+}
+
 /// `::js` —— 把内容当**原始 JavaScript** 注入这一页，随页面加载执行。
 ///
 /// 与 `::html` 一个规矩：内容原样，`{{参数}}` 会替换。不过滤 ——
@@ -24,12 +41,8 @@ use markdown_it::{Node, Renderer};
 /// 注入的脚本里若出现 `</script`，HTML 解析器会当场收尾，后面的字会漏到页面上，
 /// 所以那一处先转义（见 [`fill::escape_script_end`]）。
 pub(super) fn render_js(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
-    let source = match fill::source_of(block) {
-        Ok(source) => source,
-        Err(why) => {
-            render_problem(block, fmt, &why);
-            return;
-        }
+    let Some(source) = source_or_problem(block, fmt) else {
+        return;
     };
     let filled = fill::substitute(&source, block, &block.body);
 
@@ -144,12 +157,8 @@ pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 ///
 /// 内容里的 `{{参数}}` 会被替换；`</style` 会被去掉，免得提前闭合样式块。
 pub(super) fn render_css(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
-    let source = match fill::source_of(block) {
-        Ok(source) => source,
-        Err(why) => {
-            render_problem(block, fmt, &why);
-            return;
-        }
+    let Some(source) = source_or_problem(block, fmt) else {
+        return;
     };
     let css = fill::sanitize_css(&fill::substitute(&source, block, &block.body));
     // 收进正文：不然一条 `* { }` 就能把整个页面改掉
@@ -166,12 +175,8 @@ pub(super) fn render_css(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 /// 默认**过滤**掉会执行脚本的东西（`<script>`、`on*=` 事件属性、`javascript:` 协议）；
 /// 只有显式写了 `js`（或 `js=true`）才原样放行。默认安全，要开就得自己写出来。
 pub(super) fn render_html(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
-    let source = match fill::source_of(block) {
-        Ok(source) => source,
-        Err(why) => {
-            render_problem(block, fmt, &why);
-            return;
-        }
+    let Some(source) = source_or_problem(block, fmt) else {
+        return;
     };
     let filled = fill::substitute(&source, block, &block.body);
     let html = if fill::allows_js(block) {
@@ -211,6 +216,8 @@ mod tests {
         assert!(shouted.contains("<\\/SCRIPT>"), "{shouted}");
     }
 
+    /// 注入的 CSS 与正文在同一份文档里：主题的那些变量 `var()` 直接就取得到，
+    /// 作用域则收在正文那一层
     #[test]
     fn css_template_injects_style_and_our_variables() {
         let html = render("::css\n  .我有自己的样式 { color: var(--mdpp-accent); }\n");
@@ -220,6 +227,7 @@ mod tests {
         assert!(html.contains(".mdpp-content .我有自己的样式"), "{html}");
     }
 
+    /// 正文里的 `</style` 只是普通文字 —— 让它提前闭合，后面的字就会漏到页面上
     #[test]
     fn css_cannot_close_the_style_block_early() {
         let html = render("::css\n  a { } </style><p>顶出来了</p>\n");
@@ -230,6 +238,7 @@ mod tests {
         );
     }
 
+    /// 默认过滤掉会执行脚本的东西，其余标记原样落进页面
     #[test]
     fn html_template_filters_scripts_by_default() {
         let html = render("::html\n  <b>粗</b><script>alert(1)</script>\n");
@@ -237,18 +246,21 @@ mod tests {
         assert!(!html.contains("<script"), "默认必须过滤掉脚本：{html}");
     }
 
+    /// 显式写了 `js` 才放行脚本 —— 默认安全，要开就得自己写出来
     #[test]
     fn html_template_allows_scripts_only_when_asked() {
         let html = render("::html js\n  <script>alert(1)</script>\n");
         assert!(html.contains("<script>alert(1)</script>"), "{html}");
     }
 
+    /// `{{参数}}` 在写出去之前被填掉 —— 要执行的那几个块都得过这一遍
     #[test]
     fn placeholders_are_filled_from_params() {
         let html = render("::css 颜色=red\n  .a { color: {{颜色}}; }\n");
         assert!(html.contains("color: red"), "{html}");
     }
 
+    /// 行号、起始行与强调行只作为 `data-*` 提示交出去，怎么摆出来是界面那一层的事
     #[test]
     fn code_template_carries_the_frontend_hints() {
         let html = render(
@@ -262,6 +274,7 @@ mod tests {
         assert!(html.contains("fn main() {}"), "{html}");
     }
 
+    /// 代码里的记号一个都不动 —— 被 markdown 解析过就不是代码块了
     #[test]
     fn code_template_does_not_parse_markdown() {
         // 代码里的记号不该被当成 markdown（这是「像代码块」的关键）
@@ -286,6 +299,7 @@ mod tests {
         assert!(!html.contains("<b>"), "{html}");
     }
 
+    /// 里面还没有图就如实说，而不是摆一个画不出东西的空框
     #[test]
     fn mermaid_without_content_says_so() {
         let html = render("::mermaid\n");

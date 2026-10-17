@@ -92,7 +92,7 @@
 //! 宽松了就等于允许塞任意声明，而 `::banner` 只给 `color=` 就是同一个道理。要改样子
 //! 用 [`::css`](crate::block::stdlib)。
 
-use super::super::dispatch::{BlockNode, render_problem, sections};
+use super::super::dispatch::{BlockNode, no_leading_content, render_problem, sections};
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
 
@@ -117,8 +117,9 @@ enum Slot {
 /// 主体里的一段。**按写下来的次序**排 —— 通栏要落在它该落的那几行之间，而那个
 /// 位置只有次序说得清。
 ///
-/// `Group` 带的是分组名在 [`render_navbox`] 那个 `groups` 里的**下标**，而不是引用 ——
+/// `Group` 带的是那个分组名在 [`render_navbox`] 的 `groups` 里的**下标**，而不是引用 ——
 /// 标签自己那份字符串活不过认标签那一轮循环，而行标签要一直用到渲染完。
+/// `groups` 里存的是**渲染好的标签 HTML**：写错了在认标签那一轮就报出来
 enum Segment<'a> {
     /// 一条通栏
     Header(&'a Node),
@@ -287,7 +288,7 @@ fn bg_of(block: &Block, key: &str) -> Result<Option<String>, String> {
         None => Ok(None),
         Some(value) => super::normalize_hex(value)
             .map(Some)
-            .ok_or_else(|| format!("{key}= 只认 #rgb 或 #rrggbb 这两种写法，比如 {key}=#0055a4")),
+            .ok_or_else(|| super::hex_why(key, Some("#0055a4"))),
     }
 }
 
@@ -304,8 +305,39 @@ fn holds_nested_navbox(section: &Node) -> bool {
     })
 }
 
-/// `::navbox` —— 见模块头。
-pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
+/// [`prepare`] 的产物：渲染那一半要的每一样，**都已经认过一遍**。
+///
+/// 打成一个包而不让渲染函数自己去取七八样 —— 这个类型就是两半的分工：
+/// 能装满它的是 [`prepare`]，而它装不满时，渲染那一步连头都不该开
+struct Prepared<'a> {
+    /// `title=`（trim 过、空的算没给）
+    title: Option<&'a str>,
+    state: State,
+    /// 折起来没有 —— 由 [`State`] 定，不在渲染那半另算一遍
+    collapsed: bool,
+    palette: Palette,
+    /// `[above]` / `[below]`：位置是**定的**，不看作者把它们写在哪儿
+    above: Option<&'a Node>,
+    below: Option<&'a Node>,
+    /// 通栏与分组行，按写下来的次序（`above` / `below` 不在这儿）
+    segments: Vec<Segment<'a>>,
+    /// 每个分组行一份**已渲染好的标签 HTML**：`Segment::Group` 存的是它在这里的
+    /// 下标。标签写错在认这一遍时就报了，轮不到渲染
+    groups: Vec<String>,
+}
+
+/// 认一遍：参数、每一节的标签、次序 —— **要报的错全报在这儿**。
+///
+/// 每个分支都画完一个**完整的**问题框再返回 `None`。这条线是硬的：标签写错要是
+/// 渲染到半截才发现，开标签已经写出去了，页面上就是一个烂掉的框（`[link]` 后面
+/// 没写页面名就是最常见的一种）。
+///
+/// 返回 `None` = 框已经替调用方画好了，这次渲染到此为止
+fn prepare<'a>(
+    block: &'a Block,
+    node: &'a Node,
+    fmt: &mut dyn Renderer,
+) -> Option<Prepared<'a>> {
     // 没有 `title=` 就是**嵌进去的样子**：没有标题栏、没有边框、没有开关。
     let title = block
         .param("title")
@@ -316,7 +348,7 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
         Ok(state) => state,
         Err(why) => {
             render_problem(block, fmt, &why);
-            return;
+            return None;
         }
     };
     // 嵌进去的没有开关，写 `state=` 是白写 —— 说出来，好过默默忽略
@@ -327,65 +359,72 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
             "没有 title= 就是嵌进去的样子，没有开关，所以 state= 在这儿没用：\
              写 title= 才是一个完整的导航框",
         );
-        return;
+        return None;
     }
 
     let palette = match palette_of(block) {
         Ok(palette) => palette,
         Err(why) => {
             render_problem(block, fmt, &why);
-            return;
+            return None;
         }
     };
 
     // 先**整块**认一遍再渲染：标签写错了就整块报出来，免得渲染半截
+    let list = sections(node);
+    // 标签前有正文 = 方括号漏写了：那时连「分组名」都无从谈起，得先挡在一切之前
+    if let Err(why) = no_leading_content(&list, "导航框") {
+        render_problem(block, fmt, &why);
+        return None;
+    }
     let mut above: Option<&Node> = None;
     let mut below: Option<&Node> = None;
     let mut segments: Vec<Segment> = Vec::new();
     // 分组名的活字放这儿：`sections(node)` 给的那个 `&str` 活不过循环，而行标签要
-    // 一直用到渲染完
+    // 一直用到渲染完。存的是**已经渲染好的 HTML** —— 标签写错了这一轮就报，
+    // 而不是轮到渲染时才发现（那会渲染出半截导航框）
     let mut groups: Vec<String> = Vec::new();
-    for (label, section) in sections(node) {
-        if label.is_empty() {
-            render_problem(
-                block,
-                fmt,
-                "有内容写在第一个 [标签] 之前：导航框的每一节都要以 [标签] 开头",
-            );
-            return;
-        }
+    for (label, section) in list {
         let slot = match slot_of(label) {
             Ok(slot) => slot,
             Err(why) => {
                 render_problem(block, fmt, &why);
-                return;
+                return None;
             }
         };
         match slot {
             Slot::Above => {
                 if above.replace(section).is_some() {
                     render_problem(block, fmt, "`[above]` 写了两处：一个导航框里它只能有一处");
-                    return;
+                    return None;
                 }
             }
             Slot::Below => {
                 if below.replace(section).is_some() {
                     render_problem(block, fmt, "`[below]` 写了两处：一个导航框里它只能有一处");
-                    return;
+                    return None;
                 }
             }
             Slot::Header => {
                 // 通栏就是它的标题，空着等于没有标题 —— 不如报错，也不该画一条空条
                 if section.children.is_empty() {
                     render_problem(block, fmt, "`[header]` 是空的：通栏就是它的标题");
-                    return;
+                    return None;
                 }
                 // **可以写很多条**，不去重：它落在哪儿由写下来的次序决定
                 segments.push(Segment::Header(section));
             }
             // 分组名**可以重复**：它是显示用的字，不是标识
             Slot::Group(name) => {
-                groups.push(name);
+                // 标签写错（`[link]` 后面没写页面名）在这里就整块报出来 —— 见下面那句
+                let label = match group_label_html(&name) {
+                    Ok(label) => label,
+                    Err(why) => {
+                        render_problem(block, fmt, &why);
+                        return None;
+                    }
+                };
+                groups.push(label);
                 segments.push(Segment::Group(groups.len() - 1, section));
             }
         }
@@ -401,10 +440,39 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
             fmt,
             "导航框里一行也没有：写一个 [分组名]，下面写那一行的内容",
         );
-        return;
+        return None;
     }
 
-    let collapsed = state == State::Collapsed;
+    Some(Prepared {
+        title,
+        state,
+        collapsed: state == State::Collapsed,
+        palette,
+        above,
+        below,
+        segments,
+        groups,
+    })
+}
+
+/// `::navbox` —— 见模块头。
+///
+/// [`prepare`] 认完之后这里只做一件事：**写**。中间那条线是硬的 —— 写到一半才
+/// 发现参数不对，页面上已经留下半个框了
+pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
+    let Some(ready) = prepare(block, node, fmt) else {
+        return;
+    };
+    let Prepared {
+        title,
+        state,
+        collapsed,
+        palette,
+        above,
+        below,
+        segments,
+        groups,
+    } = ready;
 
     let mut class = "navbox".to_string();
     if title.is_none() {
@@ -476,13 +544,9 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
             Segment::Header(section) => full_row(fmt, "navbox__head", section),
             // 分组名就是标签本身
             Segment::Group(name, section) => {
-                let label = match group_label_html(&groups[*name]) {
-                    Ok(label) => label,
-                    Err(why) => {
-                        render_problem(block, fmt, &why);
-                        return;
-                    }
-                };
+                // 标签在上面认标签那一轮就渲染好了 —— 那时写错就整块报出来，
+                // 走不到这儿（否则开标签已经写出去一半了）
+                let label = groups[*name].as_str();
                 // 装着子导航框的格子留个记号：CSS 选不了父元素，而嵌套布局要的是
                 // 「父格文字大间距、子导航框贴左小间距」（维基模式），两套间距必须
                 // 分开给 —— 记号由看得见结构的这一侧给
@@ -502,7 +566,7 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
                         ("scope", "row".to_string()),
                     ],
                 );
-                fmt.text_raw(&label);
+                fmt.text_raw(label);
                 fmt.close("th");
                 fmt.open("td", &[("class", cell_class)]);
                 fmt.contents(&section.children);
@@ -909,12 +973,15 @@ mod tests {
     }
 
     /// `[link]` 没写页面名：说清要什么，而不是画一个空格子
+    ///
+    /// **整块报，不渲染半截** —— 标签是在认标签那一轮认的，那时一行开标签都还没写
     #[test]
     fn a_link_label_needs_a_page() {
         for label in ["link", "link "] {
             let html = render(&format!("::navbox title=x\n  [{label}]\n  甲\n"));
             assert!(html.contains("template--problem"), "{label:?} -> {html}");
             assert!(html.contains("没写页面名"), "{html}");
+            assert!(!html.contains(r#"class="navbox""#), "不渲染半截：{html}");
         }
     }
 

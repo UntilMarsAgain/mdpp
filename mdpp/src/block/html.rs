@@ -25,7 +25,9 @@
 //! **URL 只认 `http` / `https` / `mailto`** 与相对地址（判定前先按浏览器的规矩把协议
 //! 那一段里的空白与控制字符去掉）。
 //!
-//! **不给 `id`**：调用方的锚点与查找用 `data-*` 与 class，`id` 撞了会串。
+//! **不给 `id`，也不给 `data-*`**：`id` 撞了就串 —— 同一页里两处都写 `id="x"`，
+//! 锚点落谁身上说不清；`data-*` 是给脚本挂记号用的，正文作者不必有。锚点与查找
+//! 一律走 `class`（白名单给的是 `class` / `title` / `lang` / `dir`，见 `RULES`）。
 //!
 //! ## `<markdown>`：让 HTML 里反过来用本库的方言
 //!
@@ -279,9 +281,13 @@ fn write_text(text: &str, render: &dyn Fn(&str) -> String, slots: &[String], out
         {
             Some(body) => render_slot(body, render, out),
             None => {
-                // 记号对不上任何一段：当普通文字留着，别把作者写的东西弄丢
+                // 记号对不上任何一段：当普通文字留着，别把作者写的东西弄丢。
+                //
+                // 切到 `SLOT_CLOSE` 的**末尾**，不是它后面一个字节：那个记号有 3 个
+                // 字节，写 `+ 1` 会把终点切进它中间，而 `&str` 切在字符中间是当场 panic
+                // —— 正文里自己写一对 `U+E000` / `U+E001` 就够触发了
                 out.push_str(&escape_text(
-                    &rest[open..open + SLOT_OPEN.len_utf8() + close + 1],
+                    &rest[open..open + SLOT_OPEN.len_utf8() + close + SLOT_CLOSE.len_utf8()],
                 ));
             }
         }
@@ -588,18 +594,11 @@ fn escape_text(text: &str) -> String {
 }
 
 /// 属性值的转义：文本那三样之外还要管 `"`（我们用双引号包值）。
+///
+/// 建在 [`escape_text`] 之上：`&<>` 那三条**只有一份**，这里只补「引号」这一条 ——
+/// 先把 `&` 转成 `&amp;` 之后再处理 `"` 也不会误伤（`&amp;` 里没有引号）
 fn escape_attribute(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            _ => out.push(ch),
-        }
-    }
-    out
+    escape_text(value).replace('"', "&quot;")
 }
 
 #[cfg(test)]
@@ -628,6 +627,7 @@ mod tests {
         assert!(html.contains("里面的正文"), "{html}");
     }
 
+    /// `<script>` 要连里面的字一起没 —— 只摘标签，`alert(1)` 就留在正文里了
     #[test]
     fn scripts_are_gone_with_their_bodies() {
         let html = clean("<p>前</p><script>alert(1)</script><p>后</p>");
@@ -636,6 +636,7 @@ mod tests {
         assert!(html.contains("前") && html.contains("后"), "{html}");
     }
 
+    /// 这几家一律整段没 —— 只摘外壳的话，`<style>` 里的规则、`<svg>` 里藏的脚本、表单全都留着
     #[test]
     fn styles_and_foreign_content_are_gone_with_their_bodies() {
         for source in [
@@ -652,6 +653,7 @@ mod tests {
         }
     }
 
+    /// `style=` 整条不放过 —— 一条 `url()` 就能把外部地址悄悄带进来
     #[test]
     fn inline_style_attributes_never_survive() {
         let html = clean("<p style=\"background:url(//tracker)\">字</p>");
@@ -660,6 +662,7 @@ mod tests {
         assert!(html.contains("字"), "{html}");
     }
 
+    /// 大小写、断行、前导空格、`vbscript:`、`data:` 都改不了结论 —— 只认一种字面写法，这道堵等于没堵
     #[test]
     fn javascript_urls_are_refused_however_they_are_disguised() {
         for source in [
@@ -678,6 +681,7 @@ mod tests {
         }
     }
 
+    /// 堵得狠了会把正常链接一起挡掉 —— 外链、相对路径、页内锚点都要过得去
     #[test]
     fn ordinary_urls_and_relative_targets_stay() {
         let html = clean(r#"<a href="https://example.com/x?y=1">外链</a>"#);
@@ -693,6 +697,7 @@ mod tests {
         assert!(fragment.contains("#安装"), "{fragment}");
     }
 
+    /// 属性按白名单给：`on…` 与没想过的一律不带 —— 不在表里也放出去，过滤就名存实亡
     #[test]
     fn event_attributes_and_unknown_ones_are_dropped() {
         let html = clean(r#"<p onclick="alert(1)" onmouseover="x()" data-x="1" id="锚">字</p>"#);
@@ -712,6 +717,7 @@ mod tests {
         assert!(html.contains("<p>"), "{html}");
     }
 
+    /// 原样放回去，正文就能借这一截把标签撑开 —— 出去前得重新转义
     #[test]
     fn attribute_values_are_re_escaped_on_the_way_out() {
         let html = clean("<p title='a\"b<c&d'>字</p>");
@@ -721,6 +727,7 @@ mod tests {
         assert!(html.contains("&amp;d"), "{html}");
     }
 
+    /// 注释与 doctype 不是正文，整段不留 —— 注释里的字一样会送到读者眼前
     #[test]
     fn comments_and_doctypes_do_not_survive() {
         let html = clean("<!doctype html><!-- secret --><p>正文</p>");
@@ -820,6 +827,21 @@ mod tests {
         assert!(html.contains("后面"), "{html}");
     }
 
+    /// 作者自己写的一对占位记号：认不出是哪一段，就当普通文字留着 —— **而且不能崩**。
+    ///
+    /// 记号是 3 个字节的私有区字符，切片切进它中间就是当场 panic；`::html` 是 Raw 档，
+    /// 正文里什么字都进得来，所以这条路必须有人钉着
+    #[test]
+    fn a_slot_marker_that_matches_nothing_stays_text_without_panicking() {
+        // 一段 `<markdown>` 都没有：槽是空的，任何记号都落进「认不出」那一支
+        let html = clean("\u{E000}abc\u{E001}");
+        assert!(html.contains("abc"), "{html}");
+
+        // 有槽，但下标越界、下标不是数字 —— 同一支
+        let html = clean("<markdown>甲</markdown>\u{E000}9\u{E001}\u{E000}九\u{E001}");
+        assert!(html.contains('甲'), "{html}");
+    }
+
     /// 属性是**逐标签**给的：`img` 拿不到 href，`a` 拿不到 src
     #[test]
     fn attributes_are_granted_per_tag() {
@@ -856,6 +878,7 @@ mod tests {
         }
     }
 
+    /// 空元素不许补闭合标签 —— `<br></br>` 是凭空多出来的、原文没有的东西
     #[test]
     fn void_elements_do_not_get_a_closing_tag() {
         let html = clean("<p>a<br>b<hr>c</p><img src=\"x.png\">");

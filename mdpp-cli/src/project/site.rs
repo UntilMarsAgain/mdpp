@@ -19,6 +19,8 @@ use std::sync::{Arc, Mutex};
 
 use mdpp::link::{LinkResolver, LinkTarget, ResolvedLink};
 
+use crate::url::encode_href;
+
 use tracing::{debug, info};
 
 /// 首页的键。输出上它是 `build/index.html`，而别的页靠 `[[index]]` 指回来
@@ -338,29 +340,6 @@ fn root_href(from: &str) -> String {
     "../".repeat(depth)
 }
 
-/// `href` 里不能原样出现的字符：`#` 会把地址截断，空格会被浏览器改写。
-///
-/// **中文原样留着** —— 浏览器与服务端都认 UTF-8 的路径，而百分号编码过的中文
-/// 在站点里没法看、也没法手改。这与库那边 `targets::encode_target_spaces` 的取法一致：
-/// 只编码真正碍事的那几个。
-fn encode_href(path: &str) -> String {
-    let mut out = String::with_capacity(path.len());
-    for ch in path.chars() {
-        let plain = !ch.is_ascii()
-            || ch.is_ascii_alphanumeric()
-            || matches!(ch, '-' | '.' | '_' | '/' | '~');
-        if plain {
-            out.push(ch);
-        } else {
-            let mut buffer = [0u8; 4];
-            for byte in ch.encode_utf8(&mut buffer).as_bytes() {
-                out.push_str(&format!("%{byte:02X}"));
-            }
-        }
-    }
-    out
-}
-
 /// 站内的链接解析器：**每一页一份**（相对地址要看当前页在哪），
 /// 但红链的账记在**全站一份**的表里。
 pub struct Links {
@@ -539,6 +518,8 @@ mod tests {
         assert_eq!(normalize("   "), None);
     }
 
+    /// 只认 `template:` 这一个前缀，大小写与空格都不挑。判宽了，`帮助:入门` 这样的
+    /// **真红链**会被当成模板页跳过、报告里少一条；判严了，`Template: 卡片` 又会被虚报成缺页
     #[test]
     fn template_targets_are_not_site_pages() {
         assert!(is_template_target("template:卡片"));

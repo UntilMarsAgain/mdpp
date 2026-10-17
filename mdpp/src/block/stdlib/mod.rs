@@ -113,11 +113,6 @@ pub fn names() -> Vec<&'static str> {
     NAMES.to_vec()
 }
 
-/// 某个名字是不是内置的
-pub fn is_builtin(name: &str) -> bool {
-    NAMES.contains(&name)
-}
-
 /// 尺寸参数 → 一条 CSS 声明。只认「数字 + 可选白名单单位」，别的写法一律不认。
 ///
 /// 严格是有理由的：这个值会被写进 `style` 属性，宽松了就等于允许往里面塞任意声明
@@ -154,6 +149,20 @@ pub(crate) fn normalize_hex(text: &str) -> Option<String> {
         return None;
     }
     Some(format!("#{}", expanded.to_lowercase()))
+}
+
+/// [`normalize_hex`] 认不出来时摆给作者看的那一句，写在**一处**。
+///
+/// 校验本身已经是 [`normalize_hex`] 一份了，可这句话还有四个地方要说（`::banner`、
+/// 标题、提示框那一族、导航框的三个底色）—— 措辞各写一份必然漂移，而作者是照着
+/// 这句话去改的：少说一种写法，他就会去试那一种。第二个参数是**举个例子**
+/// （`"group-bg"` → 末尾补 `，比如 group-bg=#0055a4`），`None` 就只说两种写法
+pub(crate) fn hex_why(key: &str, example: Option<&str>) -> String {
+    let mut why = format!("{key}= 只认 #rgb 或 #rrggbb 这两种写法");
+    if let Some(example) = example {
+        why.push_str(&format!("，比如 {key}={example}"));
+    }
+    why
 }
 
 /// 底色 → 该配什么颜色的字。
@@ -270,6 +279,7 @@ mod tests {
         }
     }
 
+    /// 这个值会被写进 `style` 属性 —— 只认「数字 + 白名单单位」，别的写法一律不认
     #[test]
     fn size_rules_only_accept_numbers_and_whitelisted_units() {
         assert_eq!(
@@ -284,6 +294,7 @@ mod tests {
         assert_eq!(size_rule("max-width", "很久"), None);
     }
 
+    /// `#abc` 补成六位再交出去；认不出的（`red`、位数不对的）拒绝而不猜
     #[test]
     fn hex_colors_are_normalised_or_refused() {
         assert_eq!(normalize_hex("#0af").as_deref(), Some("#00aaff"));
@@ -292,6 +303,7 @@ mod tests {
         assert_eq!(normalize_hex("#12345"), None);
     }
 
+    /// 字色跟着底色的亮度走；认不出底色时退回正文色，而不是瞎配一个
     #[test]
     fn text_colour_follows_the_background_brightness() {
         assert_eq!(text_on("#0055a4"), "#f5f5f5", "深底配浅字");

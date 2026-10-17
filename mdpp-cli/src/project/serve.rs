@@ -32,7 +32,7 @@ use tracing::{debug, info};
 const POLL: Duration = Duration::from_millis(500);
 
 /// 编辑器存一次文件常常是「先清空再写」，两次写之间只隔几毫秒。
-/// 看到改动后再等这么一会儿，等它稳下来再出 —— 否则页面会闪一次半成品
+/// 看到改动后再扫几眼，**连着这么久没再变**才出 —— 否则页面会闪一次半成品
 const SETTLE: Duration = Duration::from_millis(120);
 
 pub fn run(options: &Serve) -> Result<(), String> {
@@ -65,7 +65,10 @@ pub fn run(options: &Serve) -> Result<(), String> {
     loop {
         // 等一个改动；等到了先让它稳下来，再收走
         watch.wait(POLL);
-        watch.wait(SETTLE);
+        if !watch.settle(SETTLE) {
+            // 一直有人在写：不赖在这儿等，先出一趟，下一轮眼睛还盯着
+            debug!("等满 {} 毫秒还没稳下来，先出一趟", SETTLE.as_millis());
+        }
         let Some(changed) = watch.diff() else {
             continue;
         };
@@ -160,7 +163,11 @@ fn pages_of(site_dir: &Path) -> Vec<PathBuf> {
 /// 这一次预览临时用的目录
 ///
 /// **不放项目的 `build/`**：预览到一半的东西不该被当成产物，而 `--clean` 一清
-/// 就把上一次好好的那一遍弄没了。进程被杀后它会留在 `/tmp`，下次起的时候清掉。
+/// 就把上一次好好的那一遍弄没了。
+///
+/// 目录名带 pid，于是几次预览（包括两个终端同时开）互不相干。也因为如此，**进程被
+/// 杀掉时它会留在 `/tmp`**：下一回起的是另一个 pid，撞不上；下面那段 `exists` 清的
+/// 只是 pid 号恰好被系统复用回来的旧目录。想清干净自己 `rm -rf` 也行
 fn temp_dir() -> Result<PathBuf, String> {
     let dir = std::env::temp_dir().join(format!("mdpp-预览-{}", std::process::id()));
     if dir.exists() {
@@ -216,6 +223,43 @@ impl Watch {
                 return;
             }
         }
+    }
+
+    /// 等它**稳下来**：从现在起连着 `limit` 毫秒没有新变化，才返回。
+    ///
+    /// 与 [`Watch::wait`] 比的不是同一张照：`wait` 问的是「与上次收下的那份还一样吗」，
+    /// 而改动已经发生了，回不去 —— 拿它当判据会变成「看见改动立刻返回」，防抖就没了。
+    /// 这里比的是**上一眼**：连着几眼都一样，才算写完了。
+    ///
+    /// 也不能一直等下去：真有人（或某个进程）一直在写，得有个头 —— 等满
+    /// `limit × 4` 还不稳就先出，下一轮眼睛还盯着。返回值说这一次是不是真等稳了。
+    ///
+    /// **只看不动 `seen`**：照还得留给 [`Watch::diff`] 去收，它要拿旧照比出「改了哪些」
+    fn settle(&self, limit: Duration) -> bool {
+        let step = Duration::from_millis(50);
+        let cap = limit.saturating_mul(4);
+        let mut latest = http::collect(&self.paths);
+        let mut quiet = Duration::ZERO;
+        let mut waited = Duration::ZERO;
+
+        while waited < cap {
+            let nap = step.min(limit - quiet);
+            std::thread::sleep(nap);
+            waited += nap;
+
+            let now = http::collect(&self.paths);
+            if now == latest {
+                quiet += nap;
+                if quiet >= limit {
+                    return true;
+                }
+            } else {
+                latest = now;
+                quiet = Duration::ZERO;
+            }
+        }
+        // 等到超时还没稳：不赖在这儿了，先出，下一轮再看
+        false
     }
 
     /// 扫一遍，把这一轮照收下，返回改了 / 增了 / 删了的那几个
@@ -281,6 +325,61 @@ mod tests {
             generation.load(Ordering::Relaxed) > first,
             "第二趟又加了一次"
         );
+    }
+
+    /// 防抖真的在等：没人再写了，也要**等满整个窗口**才说稳。
+    ///
+    /// 以前这里走的是 `wait` —— 它看见改动立刻返回，于是 `SETTLE` 那一趟只睡了一跳
+    /// 就回来了，承诺的「等它稳下来」根本没发生。这条钉的就是那一下
+    #[test]
+    fn settle_waits_out_its_whole_window_before_reporting_stable() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let path = dir.path().join("页.md");
+        std::fs::write(&path, "# 一").expect("写得下");
+        let watch = Watch::new(vec![path]);
+
+        let started = std::time::Instant::now();
+        let stable = watch.settle(SETTLE);
+        assert!(stable, "没人再写，该是稳的");
+        assert!(
+            started.elapsed() >= SETTLE,
+            "只等了 {:?}，整个窗口都没走完",
+            started.elapsed()
+        );
+    }
+
+    /// 一直有人在写也得有个头：等满上限就先出，不能挂在这儿
+    #[test]
+    fn settle_gives_up_instead_of_waiting_forever() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let path = dir.path().join("页.md");
+        std::fs::write(&path, "# 一").expect("写得下");
+        let watch = Watch::new(vec![path.clone()]);
+
+        // 每 20 毫秒写一次，而且**每次长度都不一样** —— 靠大小就认得出它变了，
+        // 不必去赌文件系统的时间戳精度
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let writer = {
+            let stop = std::sync::Arc::clone(&stop);
+            let path = path.clone();
+            std::thread::spawn(move || {
+                let mut size = 1usize;
+                while !stop.load(Ordering::Relaxed) {
+                    size += 1;
+                    let _ = std::fs::write(&path, "改".repeat(size));
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            })
+        };
+
+        let started = std::time::Instant::now();
+        let stable = watch.settle(SETTLE);
+        stop.store(true, Ordering::Relaxed);
+        writer.join().expect("写手停得下");
+
+        assert!(!stable, "一直在写，不该报稳");
+        // 上限是 `limit × 4`：挂住的话这条会等到天荒地老
+        assert!(started.elapsed() < Duration::from_secs(2), "等太久了");
     }
 
     /// 出的页面里要真有那段「变了就刷新」的脚本，而**普通的 build 不带**

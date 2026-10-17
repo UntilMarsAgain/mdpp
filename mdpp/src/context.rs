@@ -136,6 +136,7 @@ pub fn enter(context: RenderContext) -> Guard {
 mod tests {
     use super::*;
 
+    /// 守卫装上就有、掉下来就回到没有 —— 渲染之外不许残留上一趟的上下文
     #[test]
     fn a_guard_puts_the_context_in_place_and_takes_it_away_again() {
         assert!(current().is_none(), "渲染之外没有上下文");
@@ -174,6 +175,7 @@ mod tests {
         assert!(current().is_none());
     }
 
+    /// 层数进得去也退得回来 —— 少了还原那一步，后面每一次展开都白扣一层
     #[test]
     fn deeper_counts_and_comes_back() {
         assert_eq!(depth(), 0);
@@ -185,6 +187,7 @@ mod tests {
         assert_eq!(depth(), 0);
     }
 
+    /// 复制出来的是同一份链接解析器，不是另起一份 —— 里面只有 `Arc`，克隆很便宜
     #[test]
     fn the_context_is_cheap_to_clone() {
         let resolver: Arc<dyn LinkResolver> = Arc::new(crate::link::tests::AnyTarget);

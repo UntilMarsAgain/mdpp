@@ -11,13 +11,14 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
+// 只**读** `mdpp.toml`，从不往回写（`mdpp init` 拷的是骨架目录，不是序列化一份配置）
+use serde::Deserialize;
 
 /// 配置文件名
 pub const FILE_NAME: &str = "mdpp.toml";
 
 /// 一份项目配置。路径都是**相对项目根**的（项目根 = 有这份文件的那一层）。
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     /// 站点名，进 `<title>`（`页面名 —— 站点名`）
@@ -112,7 +113,7 @@ pub struct Config {
 /// - 纯字符串：`"首页"` —— 显示文字是「首页」，指全站**唯一**叫这个名字的页
 ///   （按 `[[名字]]` 那套规则找：键名、或全站唯一的文件名）；
 /// - 单项表：`{ "指南" = "指南/入门" }` —— 显示文字是「指南」，指 `pages/指南/入门`。
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum NavEntry {
     /// 字符串：显示文字 = 站内页的名字（全站唯一）
@@ -286,6 +287,8 @@ mod tests {
         assert!(error.to_string().contains("page_dir"), "{error}");
     }
 
+    /// 主题只认那两个值，写错的在**读配置时**就说；不写主题本身也得是好的 ——
+    /// 放过去的话页面照出得来，只是配色没变，而没人会想到去翻 `mdpp.toml`
     #[test]
     fn theme_only_takes_light_or_dark() {
         let config = Config {

@@ -65,6 +65,10 @@ impl BlockRule for BlockScanner {
         let body = rebuild_body(&body_lines);
         // `text=…` 给了就以它为准（`::banner` 那种一条横条，正文与参数二选一）。
         // 它也要能写 markdown，所以和块内容走同一条路。
+        //
+        // **只有会解析的那两档吃它**：原始档的正文原样摆在 `block.body` 里（一个字
+        // 不动，`text=` 同样不动它），用户块也照旧从 `body` 去模板页取正文 ——
+        // 写在 `::css text=…` 或 `::卡片 text=…` 上是**不起作用**的
         let source = match params.iter().find(|(key, _)| key == "text") {
             Some((_, text)) => text.clone(),
             None => body.clone(),
@@ -217,6 +221,7 @@ mod tests {
         Mdpp::new().render(src)
     }
 
+    /// 缩进量划边界：缩进去的归块身，顶格的那行回到正文里
     #[test]
     fn indentation_separates_inside_from_outside() {
         let html = render("::外层\n  块内\n块外\n");
@@ -224,6 +229,7 @@ mod tests {
         assert!(html.contains("<p>块外</p>"), "{html}");
     }
 
+    /// 深一层的整段都归外层 —— 连里层那行 `::inner` 也留在块身里，不另起一块
     #[test]
     fn deeper_levels_stay_inside() {
         let html = render("::外层\n  第一层\n    ::inner\n      第二层\n");
@@ -231,6 +237,7 @@ mod tests {
         assert!(html.contains("第二层"), "{html}");
     }
 
+    /// 空行后面还缩着，那一段就仍是块身 —— 不能在空行处腰斩，把后半截赶出去
     #[test]
     fn blank_line_inside_stays_inside() {
         let html = render("::外层\n  第一段\n\n  第二段\n");
@@ -239,6 +246,7 @@ mod tests {
         assert!(!html.contains("<p>第二段</p>"), "第二段仍应在块内：{html}");
     }
 
+    /// 空行之后跟的是顶格的行，块到此为止 —— 那一行属于正文
     #[test]
     fn blank_line_before_unindented_text_ends_the_block() {
         let html = render("::外层\n  块内\n\n块外\n");
@@ -246,6 +254,7 @@ mod tests {
         assert!(html.contains("<p>块外</p>"), "{html}");
     }
 
+    /// 比首行缩得更深的行照样收进来，公共缩进削平后深浅还在 —— 只认一种缩进量就会把里层丢掉
     #[test]
     fn dedent_keeps_relative_structure() {
         let html = render("::外层\n    两空格缩进之下\n      再深一层\n");
@@ -271,6 +280,7 @@ mod tests {
         assert!(html.contains("<p>块外</p>"), "{html}");
     }
 
+    /// 块身不是死文字 —— 里面的 markdown 与内部链接都还要再走一遍完整解析
     #[test]
     fn body_is_parsed_by_the_whole_parser() {
         // 块内容里的 markdown 与内部链接都要生效
@@ -279,6 +289,7 @@ mod tests {
         assert!(html.contains("wikilink"), "{html}");
     }
 
+    /// 认不出的块不许静悄悄消失 —— 名字、参数摆出来，内容也留在框里给作者看
     #[test]
     fn unknown_block_renders_a_box() {
         let html = render("::还没有的块 标题=\"含 空格\" flag\n  内容一行\n");

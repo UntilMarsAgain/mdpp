@@ -61,6 +61,8 @@ fn render(sample: &Path) -> String {
     String::from_utf8(output.stdout).expect("输出是 UTF-8")
 }
 
+/// 走真的二进制，把 `examples/` 下**每一份**都过一遍 —— 新加的示例也在内；
+/// 而份数掉到两份以下说明目录被掏空了，那时「一个错都没有」是句空话
 #[test]
 fn every_sample_renders_without_a_single_problem() {
     let samples = samples();
