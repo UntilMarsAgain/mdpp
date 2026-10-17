@@ -558,25 +558,16 @@ pub fn escape(value: &str) -> String {
 ///
 /// **一趟**是刻意的：先填标题再填正文的话，正文里写着 `{{title}}` 会被当成占位符改掉。
 /// 认不出的名字与没写全的 `{{` 都原样留着 —— 让作者看见自己写错了，比悄悄吞掉好。
+///
+/// 扫描核心在库那边（[`mdpp::substitute_placeholders`]）—— 用户块的 `{{参数}}` 填空
+/// 走的是同一条路，两份各写一份的话，认不出的名字怎么处理迟早会对不上，而那是静悄悄的。
 fn fill(template: &str, values: &[(&str, &str)]) -> String {
-    let mut out = String::with_capacity(template.len() + 256);
-    let mut rest = template;
-    while let Some(start) = rest.find("{{") {
-        let after = &rest[start + 2..];
-        let Some(end) = after.find("}}") else {
-            out.push_str(rest);
-            return out;
-        };
-        let key = after[..end].trim();
-        out.push_str(&rest[..start]);
-        match values.iter().find(|(name, _)| *name == key) {
-            Some((_, value)) => out.push_str(value),
-            None => out.push_str(&rest[start..start + 2 + end + 2]),
-        }
-        rest = &after[end + 2..];
-    }
-    out.push_str(rest);
-    out
+    mdpp::substitute_placeholders(template, |key| {
+        values
+            .iter()
+            .find(|(name, _)| *name == key)
+            .map(|(_, value)| value.to_string())
+    })
 }
 
 #[cfg(test)]

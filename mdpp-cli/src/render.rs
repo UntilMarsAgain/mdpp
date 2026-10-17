@@ -56,8 +56,11 @@ pub fn run(options: &Render) -> Result<(), String> {
         let html = parser.render_with(text, &context);
         total.add(name, text, &html);
 
-        if multiple {
-            // 多个输入时每个文件一段，用注释隔开 —— 不加的话几段 HTML 拼在一起看不出哪段是哪段
+        if multiple && !options.full {
+            // 多个输入时每个文件一段，用注释隔开 —— 不加的话几段 HTML 拼在一起看不出哪段是哪段。
+            // `--full` 时每份是一个完整文档（`<!DOCTYPE html>` 打头），注释写在它**前面**
+            // 会把浏览器推进 quirks 模式，而把多个完整文档拼在一起本来就不是合法的单页，
+            // 所以 `--full` 下不写这段注释。
             let _ = writeln!(out, "<!-- {name} -->");
         }
         // 片段是常态（像 cmark 那样），`--full` 才套外壳 —— 外面套什么、内联什么，是界面
@@ -177,11 +180,11 @@ impl Stats {
         self.files += 1;
         self.bytes_in += source.len();
         self.bytes_out += html.len();
-        // 只报**出问题的地方**：那几个类名由 `block::dispatch` 一处写死，不会过期。
+        // 只报**出问题的地方**：类名由 `block::dispatch` 一处写死，数法在库那边
+        // （`mdpp::count_problem_boxes`）—— 这里是 CLI，不抄第二份。
         // 「块有几个」数不出来 —— 块各写各的 class，要数就得把名字抄一份
         // 在这儿，而那份清单过期之后报出来的数字还是「像模像样」的，比不报更坏。
-        let unknown = html.matches("template--unknown").count();
-        let misused = html.matches("template--problem").count();
+        let (unknown, misused) = mdpp::count_problem_boxes(html);
         if unknown > 0 || misused > 0 {
             self.problems.push((name.to_string(), unknown, misused));
         }

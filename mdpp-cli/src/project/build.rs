@@ -614,9 +614,9 @@ fn first_heading(source: &str) -> Option<String> {
 
 impl Broken {
     fn add(&mut self, page: &crate::project::site::Page, html: &str) {
-        // 那两个类名由 `block::dispatch` 一处写死，不会过期
-        let unknown = html.matches("template--unknown").count();
-        let misused = html.matches("template--problem").count();
+        // 类名由 `block::dispatch` 一处写死，数法在库那边（`mdpp::count_problem_boxes`）——
+        // 这里是 CLI，不抄第二份
+        let (unknown, misused) = mdpp::count_problem_boxes(html);
         if unknown == 0 && misused == 0 {
             return;
         }

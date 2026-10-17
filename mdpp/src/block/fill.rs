@@ -15,6 +15,25 @@ use crate::registry::Block;
 /// 认不出的名字**原样留着**，没有闭合的 `{{` 也原样留着 —— 让作者看见自己写错了，
 /// 比悄悄换成空串好。
 pub fn substitute(text: &str, block: &Block, body: &str) -> String {
+    // 核心扫描交给 [`substitute_placeholders`] —— 页外壳填占位符（`mdpp-cli/src/page.rs`）
+    // 走的也是同一条路，两份各写一份的话，认不出的名字怎么处理迟早会对不上。
+    // 这里的两条特例是：`body` 换成块内容、`参数` 换成参数值。
+    substitute_placeholders(text, |key| {
+        if key == "body" {
+            Some(body.to_string())
+        } else {
+            block.param(key).map(str::to_string)
+        }
+    })
+}
+
+/// 双花括号占位符的通用替换：`{{key}}` 换成 `lookup(key)` 给出的值，
+/// **认不出的名字原样留着**（`{{key}}` 一字不动），没有闭合的 `{{` 也原样留着 ——
+/// 让作者看见自己写错了，比悄悄换成空串好。
+///
+/// 这一份是用户块（[`substitute`]）与命令行页外壳（`mdpp-cli/src/page.rs`）共用的
+/// 扫描核心：两处各写一遍，认不出的名字怎么处理迟早会对不上，而那是静悄悄的。
+pub fn substitute_placeholders(text: &str, lookup: impl Fn(&str) -> Option<String>) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(start) = rest.find("{{") {
@@ -25,14 +44,12 @@ pub fn substitute(text: &str, block: &Block, body: &str) -> String {
             return out;
         };
         let key = after[..end].trim();
-        if key == "body" {
-            out.push_str(body);
-        } else if let Some(value) = block.param(key) {
-            out.push_str(value);
-        } else {
-            out.push_str("{{");
-            out.push_str(&after[..end]);
-            out.push_str("}}");
+        match lookup(key) {
+            Some(value) => out.push_str(&value),
+            None => {
+                // 原样留回 `{{…}}`（含键名本身，保留作者写的空白）
+                out.push_str(&rest[start..start + 2 + end + 2]);
+            }
         }
         rest = &after[end + 2..];
     }

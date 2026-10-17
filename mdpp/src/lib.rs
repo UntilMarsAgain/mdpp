@@ -86,6 +86,7 @@ pub mod telemetry;
 /// 使用方不必自己往 `Cargo.toml` 里加一条 `markdown-it` 就能对上版本。
 pub use markdown_it;
 
+pub use block::fill::substitute_placeholders;
 pub use block::template::{TemplatePage, TemplateSource};
 pub use context::RenderContext;
 pub use engine::{Mdpp, MdppBuilder};
@@ -95,4 +96,17 @@ pub use registry::{Block, BlockRegistry, BlockSpec, ContentMode};
 /// 这一版带了的现成块名（诊断与命令行帮助都用它）。
 pub fn builtin_blocks() -> Vec<&'static str> {
     block::stdlib::names()
+}
+
+/// 从一段渲染好的 HTML 里数「出问题的框」：`(未知块, 误用块)`。
+///
+/// `block::dispatch` 用 `template--unknown` 渲染「没这个名字」的块、用
+/// `template--problem` 渲染「名字对、用法不对」的块。命令行（`--stats`、`build` 报告）
+/// 都数这两个类名 —— 类名由渲染那侧一处写死，这里直接数，不抄第二份（抄一份在
+/// 两处的话，改个类名就要改两处，而漏改一处是静悄悄的）。
+pub fn count_problem_boxes(html: &str) -> (usize, usize) {
+    (
+        html.matches("template--unknown").count(),
+        html.matches("template--problem").count(),
+    )
 }
