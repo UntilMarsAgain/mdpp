@@ -40,6 +40,20 @@ fn main() -> ExitCode {
         }
     };
 
+    // `-C, --dir`：先把进程站到那儿 —— 从这一刻起**一切相对路径**（往上找 mdpp.toml
+    // 的起点、`render` 的输入与附件、`init` 不给目录时的「当前目录」）都从它算，
+    // 于是下面每个子命令一行都不用改。
+    //
+    // **只在这里切一次**，且切在解析之后、分发之前：各命令自己不碰进程当前目录 ——
+    // 测试是并发的，函数里动它会互相串味（这条规矩见 `new_page::create` 的文档）
+    if let Some(dir) = &cli.workdir {
+        if let Err(error) = std::env::set_current_dir(dir) {
+            // 1（跑起来了但失败），不是 2：参数是合法的，是那个目录进不去
+            eprintln!("{NAME}: -C 进不去 {}：{error}", dir.display());
+            return ExitCode::FAILURE;
+        }
+    }
+
     // 订阅器在解析之后才装：否则连「这组参数是不是错的」都还没定，就已经打了一堆日志
     install(cli.debug);
 

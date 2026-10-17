@@ -79,6 +79,10 @@ cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 `--help` 有全部选项。加 `--full` 得到的页面可以直接双击打开，选项卡可点、打印时
 折叠的内容会展开。
 
+`-C, --dir <目录>` 先切到那个目录再干活（`make -C` / `git -C` 那个 `-C`）：往上找
+`mdpp.toml` 的起点、`render` 的输入文件与 `--css` / `--js`、`init` 不给目录时的默认
+目标，都从它算 —— `mdpp -C 我的站点 build` 与 `cd 我的站点 && mdpp build` 一样。
+
 **产物走标准输出，其余消息走标准错误** —— 于是 `mdpp render 正文.md > 输出.html`
 出来的文件里只有 HTML。
 

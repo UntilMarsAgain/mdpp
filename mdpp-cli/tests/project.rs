@@ -436,3 +436,76 @@ Disallow: /private/
         "custom-override"
     );
 }
+
+/// `-C, --dir`：**站在项目外头也能干活** —— 找项目、建页、出产物都以它为起点，
+/// 而不是以进程此刻所在的目录为起点
+#[test]
+fn the_workdir_flag_lets_you_work_from_outside_the_project() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    // 进程故意待在项目外面：不给 `-C` 的话，这里连 `mdpp.toml` 都找不着
+    let elsewhere = dir.path().join("别处");
+    std::fs::create_dir(&elsewhere).expect("造得出别处");
+    let at = root.display().to_string();
+
+    let out = mdpp(&elsewhere, &["-C", &at, "new", "甲"]);
+    assert!(out.status.success(), "new 失败：{}", stderr_of(&out));
+    assert!(root.join("pages/甲.mdpp").is_file(), "那一页该落在项目里");
+    assert!(!elsewhere.join("pages").exists(), "不该落到进程当前目录下");
+
+    let out = mdpp(&elsewhere, &["-C", &at, "build"]);
+    assert!(out.status.success(), "build 失败：{}", stderr_of(&out));
+    assert!(root.join("build/index.html").is_file(), "产物该落在项目里");
+    assert!(!elsewhere.join("build").exists(), "产物不该长在别处");
+}
+
+/// `-C` 也管 `render` 的**输入文件**：相对路径从它算 —— 于是
+/// `mdpp -C 某处 render 某页.md` 在哪儿敲都一样
+#[test]
+fn the_workdir_flag_resolves_render_inputs_for_you() {
+    let dir = empty_dir();
+    std::fs::write(dir.path().join("甲.md"), "# 标题一行\n").expect("写得下");
+    let elsewhere = dir.path().join("别处");
+    std::fs::create_dir(&elsewhere).expect("造得出别处");
+    let at = dir.path().display().to_string();
+
+    let out = mdpp(&elsewhere, &["-C", &at, "render", "甲.md"]);
+    assert!(out.status.success(), "render 失败：{}", stderr_of(&out));
+    let html = stdout_of(&out);
+    assert!(html.contains("<h1"), "{html}");
+    assert!(html.contains("标题一行"), "{html}");
+}
+
+/// 目录进不去就**当场**说清是哪个目录 —— 不是让后面每一条路都去报「找不到 mdpp.toml」
+#[test]
+fn the_workdir_flag_says_so_when_the_directory_is_not_there() {
+    let dir = empty_dir();
+    let out = mdpp(dir.path(), &["-C", "压根没有的目录", "build"]);
+    assert!(!out.status.success(), "进不去就该失败");
+    let message = stderr_of(&out);
+    assert!(message.contains("压根没有的目录"), "{message}");
+    assert!(
+        !message.contains("mdpp.toml"),
+        "还没走到找项目那一步：{message}"
+    );
+}
+
+/// `-C` 与 `init` 后面那个 `[目录]` 是**两件事**：一个说站在哪儿、一个说建到哪儿，
+/// 后者相对前者算 —— `mdpp -C 某处 init 子站` 就是 `某处/子站`
+#[test]
+fn init_builds_into_the_workdir_rather_than_the_process_dir() {
+    let dir = empty_dir();
+    let base = dir.path().join("某处");
+    std::fs::create_dir(&base).expect("造得出某处");
+    let elsewhere = dir.path().join("别处");
+    std::fs::create_dir(&elsewhere).expect("造得出别处");
+
+    let at = base.display().to_string();
+    let out = mdpp(&elsewhere, &["-C", &at, "init", "子站"]);
+    assert!(out.status.success(), "init 失败：{}", stderr_of(&out));
+    assert!(
+        base.join("子站/mdpp.toml").is_file(),
+        "该建在 -C 那个目录里"
+    );
+    assert!(!elsewhere.join("子站").exists(), "不该长在进程当前目录下");
+}
