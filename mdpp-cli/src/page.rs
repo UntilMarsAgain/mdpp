@@ -57,6 +57,7 @@
 
 use std::path::Path;
 
+use crate::color::Color;
 use include_dir::{Dir, File, include_dir};
 
 /// 页面模板的文件名。它**不**跟着 [`copy_assets`] 拷进产物 —— 它是模板，不是资源
@@ -160,6 +161,9 @@ pub struct Chrome {
     pub repo_url: String,
     /// 底栏那句话。空的就是没有底栏
     pub copyright: String,
+    /// 顶栏那块底的主题色。`None` 就是**不覆盖** —— 默认值在 `base.css` 的调色板里，
+    /// 不必每页都带着一份一模一样的
+    pub theme_color: Option<Color>,
     /// 导航栏：顶栏下面那一行链接
     pub nav: Vec<NavLink>,
 }
@@ -240,6 +244,9 @@ pub fn document(page: &Page) -> String {
             .collect::<Vec<_>>()
             .join("\n"),
     };
+    // 主题色那几层覆盖摆在默认样式**之后**、用户附的样式**之前**：它要盖掉
+    // `base.css` 调色板里的默认值，而用户 `extra_css` 仍是最后说话的那个
+    let styles = join_blocks(styles, vec![bar_color_style(page.chrome.theme_color)]);
     let styles = join_blocks(styles, inline_blocks(page.extra_css, "style"));
 
     let scripts = match &page.assets {
@@ -299,6 +306,17 @@ fn meta(chrome: &Chrome, canonical: &Canonical) -> String {
             escape(description)
         ));
     }
+    if let Some(color) = chrome.theme_color {
+        // 浏览器拿它染地址栏（手机上尤其明显）。深浅两份，与顶栏那块底同一个算法
+        lines.push(format!(
+            "<meta name=\"theme-color\" content=\"{}\">",
+            color.css()
+        ));
+        lines.push(format!(
+            "<meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"{}\">",
+            color.darkened().css()
+        ));
+    }
     if let Some(url) = canonical.url() {
         lines.push(format!(
             "<link rel=\"canonical\" href=\"{}\">",
@@ -306,6 +324,34 @@ fn meta(chrome: &Chrome, canonical: &Canonical) -> String {
         ));
     }
     lines.join("\n")
+}
+
+/// 主题色那几层覆盖：把顶栏那块底与压在它上面的字写进 `:root`。
+///
+/// **四层与 `base.css` 的调色板一模一样**（默认、跟随系统的深色、钉死浅色、钉死深色）——
+/// 少一层就有一页掉回默认蓝：`:root[data-mdpp-theme='light']` 的权重比 `:root` 高，
+/// 钉死浅色的页面会把默认值捡回来。
+///
+/// 字色是**构建期**按相对亮度算好的（亮底近黑、暗底白），深色那一档是同一颜色往黑里
+/// 混一档 —— 两样都等不到浏览器去算，CSS 里没有可靠的亮度函数。
+fn bar_color_style(color: Option<Color>) -> String {
+    let Some(color) = color else {
+        // 没配就没有这一块：那两样变量由 `base.css` 的调色板给默认值
+        return String::new();
+    };
+    let dark = color.darkened();
+    let (fg, dark_fg) = (color.on_color().css(), dark.on_color().css());
+    let (light, dark) = (color.css(), dark.css());
+    format!(
+        "<style>\n\
+         :root {{ --mdpp-bar-bg: {light}; --mdpp-bar-fg: {fg}; }}\n\
+         @media (prefers-color-scheme: dark) {{\n  \
+         :root {{ --mdpp-bar-bg: {dark}; --mdpp-bar-fg: {dark_fg}; }}\n\
+         }}\n\
+         :root[data-mdpp-theme='light'] {{ --mdpp-bar-bg: {light}; --mdpp-bar-fg: {fg}; }}\n\
+         :root[data-mdpp-theme='dark'] {{ --mdpp-bar-bg: {dark}; --mdpp-bar-fg: {dark_fg}; }}\n\
+         </style>"
+    )
 }
 
 /// 顶上那一条。**站点名空且没有导航就没有顶栏** —— 判据是内容而不是「用哪种资源」，
@@ -318,7 +364,10 @@ fn top_bar(chrome: &Chrome) -> String {
     }
     let mut inner = String::new();
     if !name.is_empty() {
-        inner.push_str(&format!("<span class=\"mdpp-bar__title\">{}</span>", escape(name)));
+        inner.push_str(&format!(
+            "<span class=\"mdpp-bar__title\">{}</span>",
+            escape(name)
+        ));
         let description = chrome.description.trim();
         if !description.is_empty() {
             inner.push_str(&format!(
@@ -360,13 +409,15 @@ fn nav_bar(chrome: &Chrome) -> String {
         links.push_str(&format!(
             "<a class=\"mdpp-nav__link\" href=\"{}\"{}>{}</a>",
             escape(&item.href),
-            if item.active { " aria-current=\"page\"" } else { "" },
+            if item.active {
+                " aria-current=\"page\""
+            } else {
+                ""
+            },
             escape(&item.label),
         ));
     }
-    format!(
-        "<nav class=\"mdpp-nav\">\n<div class=\"mdpp-nav__inner\">\n{links}\n</div>\n</nav>"
-    )
+    format!("<nav class=\"mdpp-nav\">\n<div class=\"mdpp-nav__inner\">\n{links}\n</div>\n</nav>")
 }
 
 /// 底下那一条。**没写 copyright 就没有底栏** —— 与 mkdocs 一个规矩：
@@ -739,7 +790,9 @@ mod tests {
         let standalone = document(&page("x", Assets::Inline));
         assert!(!standalone.contains("site.css"), "{standalone}");
         assert!(!standalone.contains("1080px"), "单文件页面不该带限宽");
-        assert!(!standalone.contains("mdpp-bar"), "{standalone}");
+        // 判据是**类选择器**（那个点得带着）：调色板里有两条 `--mdpp-bar-*` 变量
+        // 跟着 `base.css` 进了每一页，可单文件页面里没有顶栏这回事
+        assert!(!standalone.contains(".mdpp-bar"), "单文件页面不该带顶栏");
     }
 
     /// 顶栏上是站点名、那句话说明与（给了的）仓库链接；站点名空就没有顶栏
@@ -1060,6 +1113,120 @@ mod tests {
         }
     }
 
+    /// 裸表格（markdown 出来的那个，没有 class）得**真的有人给线** ——
+    /// `border-collapse` 只回答「线怎么合」，不给线的话表格就是一片裸字，深浅色都一样
+    #[test]
+    fn a_plain_markdown_table_gets_real_borders_from_the_stylesheet() {
+        let css = default_css();
+        // 只认没有 class 的那张表：`::fields` 与 `::navbox` 各有各的样子，不套圈框
+        assert!(css.contains("table:not([class])"), "{css}");
+        // 表头另有一条：底色走变量，于是深浅色是同一份规则而不是各写一份
+        assert!(
+            css.contains(".mdpp-content table:not([class]) thead th {"),
+            "表头该有自己的那一条"
+        );
+        // 那条线要紧跟着选择器 —— 「整份 CSS 里哪儿都能找到」等于什么都没钉住。
+        // 窗口按**字符**取：中文注释里一个字就是三个字节，按字节切会切在字中间
+        let at = css
+            .find(".mdpp-content table:not([class]) th,")
+            .expect("格子那一条");
+        let around: String = css[at..].chars().take(250).collect();
+        assert!(
+            around.contains("border: 1px solid var(--mdpp-border);"),
+            "格子得有边框线：\n{around}"
+        );
+        // 宽表在窄屏上得**自己滚**，别把整张卡片撑破。两条得一起落：
+        // `overflow` 单写在表格式盒上不生效，`display: block` 才是那把钥匙
+        assert!(
+            css.contains("display: block;\n  overflow-x: auto;"),
+            "宽表得有自己那条横向滚动的路"
+        );
+    }
+
+    /// `body` 的默认 8px 外边距得抹掉：顶栏要**贴着窗口边**，缩一圈就露出底色 ——
+    /// 而 `render --full` 那条路故意留着它（那儿没有顶栏，8px 正好当页边距）
+    #[test]
+    fn the_page_has_no_body_margin_in_a_built_site() {
+        let css = asset(SITE_CSS);
+        assert!(css.contains("body {\n  margin: 0;\n}"), "{css}");
+        // 同一块底上不该再切一刀：站点名那一行与导航之间没有那条线
+        assert!(!css.contains(".mdpp-nav {"), "导航那条不该再单独上色或画线");
+        // 纸上要有留白：正文不能顶到纸边
+        let print_at = css.find("@media print").expect("打印那一段");
+        let print_css: String = css[print_at..].chars().take(900).collect();
+        assert!(print_css.contains("padding: 1.5rem;"), "{print_css}");
+    }
+
+    /// 顶上那一条（站点名那一行 + 下面的导航）是**一整块有色的底**：底色取
+    /// `--mdpp-bar-bg`、字取 `--mdpp-bar-fg`。两个变量的默认值在 `base.css` 的调色板
+    /// 里，`theme_color` 再盖掉它们 —— 所以 `site.css` 里一个颜色都没写死
+    #[test]
+    fn the_top_bar_is_one_colored_strip_read_off_css_variables() {
+        let css = asset(SITE_CSS);
+        assert!(css.contains("background: var(--mdpp-bar-bg)"), "{css}");
+        assert!(css.contains("color: var(--mdpp-bar-fg)"), "{css}");
+        // 导航那条自己不再上色：它与站点名那一行是同一块底。
+        // `--mdpp-accent` 是**前景色**（深色下它是浅蓝），拿它铺底就是一条刺眼的亮带
+        assert!(!css.contains("background: var(--mdpp-accent)"), "{css}");
+    }
+
+    /// 配了 `theme_color` 就落**四层**覆盖 —— 少一层就有一页掉回默认蓝：
+    /// `:root[data-mdpp-theme='light']` 的权重比 `:root` 高，钉死浅色的页面
+    /// 会把默认值捡回来
+    #[test]
+    fn a_configured_theme_color_lands_in_all_four_palette_layers() {
+        let color = Color::parse("#123456").expect("合法的十六进制");
+        let mut page = site_page("正文");
+        page.chrome.theme_color = Some(color);
+        let html = document(&page);
+
+        let light = format!("--mdpp-bar-bg: {}; --mdpp-bar-fg: #ffffff;", color.css());
+        let dark = format!(
+            "--mdpp-bar-bg: {}; --mdpp-bar-fg: #ffffff;",
+            color.darkened().css()
+        );
+        for needle in [
+            format!(":root {{ {light} }}"),
+            format!(":root[data-mdpp-theme='light'] {{ {light} }}"),
+            format!(":root[data-mdpp-theme='dark'] {{ {dark} }}"),
+        ] {
+            assert!(html.contains(&needle), "少了「{needle}」：\n{html}");
+        }
+        // 跟随系统那一层靠 `prefers-color-scheme`，它得在深色媒体查询里
+        assert!(
+            html.contains(&format!(
+                "@media (prefers-color-scheme: dark) {{\n  :root {{ {dark} }}"
+            )),
+            "少了跟随系统那一层：\n{html}"
+        );
+        // 浏览器地址栏也染上 —— 同一个算法，深浅两份
+        assert!(
+            html.contains(&format!(
+                "<meta name=\"theme-color\" content=\"{}\">",
+                color.css()
+            )),
+            "{html}"
+        );
+    }
+
+    /// 没配 `theme_color` 就**没有那几层覆盖**：默认值在 `base.css` 的调色板里，
+    /// 不必每页都带着一份一模一样的
+    #[test]
+    fn no_theme_color_means_no_override_block() {
+        let html = document(&site_page("正文"));
+        assert!(!html.contains("--mdpp-bar-bg"), "{html}");
+        assert!(!html.contains("theme-color"), "{html}");
+    }
+
+    /// 字色按**亮度**挑：亮底上再压白字就看不清了（`#ffd166` 那种黄）
+    #[test]
+    fn a_light_theme_color_gets_dark_text_on_it() {
+        let mut page = site_page("正文");
+        page.chrome.theme_color = Color::parse("#ffd166");
+        let html = document(&page);
+        assert!(html.contains("--mdpp-bar-fg: #1a1c1f"), "{html}");
+    }
+
     /// `::css` 注入的 CSS 靠 `var(--mdpp-…)` 取配色，变量名要与 `base.css` 对得上
     #[test]
     fn the_palette_variables_are_all_there() {
@@ -1072,6 +1239,10 @@ mod tests {
             "--mdpp-border",
             "--mdpp-surface",
             "--mdpp-danger",
+            // 顶栏那块底与压在它上面的字 —— `site.css` 里一个颜色都没写死，
+            // 全靠这两条；深色那两层里也得各有各的一份
+            "--mdpp-bar-bg",
+            "--mdpp-bar-fg",
         ] {
             assert!(css.contains(name), "少了 {name}");
         }

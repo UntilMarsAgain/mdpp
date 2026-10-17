@@ -296,9 +296,6 @@ mod tests {
         let shown = stats.to_string();
         assert!(shown.contains("2 份输入"), "{shown}");
         assert!(shown.contains("坏掉的.md：未知块 1 个"), "{shown}");
-        assert!(
-            !shown.contains("好的.md："),
-            "没错的那份不必点名：{shown}"
-        );
+        assert!(!shown.contains("好的.md："), "没错的那份不必点名：{shown}");
     }
 }

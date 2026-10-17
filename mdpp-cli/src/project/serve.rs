@@ -166,10 +166,15 @@ fn pages_of(site_dir: &Path) -> Vec<PathBuf> {
 /// 就把上一次好好的那一遍弄没了。
 ///
 /// 目录名带 pid，于是几次预览（包括两个终端同时开）互不相干。也因为如此，**进程被
-/// 杀掉时它会留在 `/tmp`**：下一回起的是另一个 pid，撞不上；下面那段 `exists` 清的
-/// 只是 pid 号恰好被系统复用回来的旧目录。想清干净自己 `rm -rf` 也行
+/// 杀掉时它会留在临时目录里**：下一回起的是另一个 pid，撞不上；下面那段 `exists` 清的
+/// 只是 pid 号恰好被系统复用回来的旧目录。想清干净自己 `rm -rf` 也行。
+///
+/// **名字里只有 ASCII** —— `std::env::temp_dir()` 给的那条路径在某些环境（老 Windows、
+/// 非 UTF-8 的 locale、带转义的挂载点）会被系统按自己的编码重新解释，夹在中间的
+/// 非 ASCII 字符是最容易在那一步变成乱码、于是 `exists` 与 `remove_dir_all` 指不到
+/// 同一个目录的东西。这个目录名没有任何给人看的价值，`mdpp-preview-` 已经说清了它是谁的
 fn temp_dir() -> Result<PathBuf, String> {
-    let dir = std::env::temp_dir().join(format!("mdpp-预览-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("mdpp-preview-{}", std::process::id()));
     if dir.exists() {
         std::fs::remove_dir_all(&dir)
             .map_err(|error| format!("清不了 {}：{error}", dir.display()))?;
@@ -528,5 +533,19 @@ mod tests {
         );
         let again = temp_dir().expect("建得出");
         assert_eq!(preview, again);
+    }
+
+    /// 目录名里**只有 ASCII** —— `std::env::temp_dir()` 给的那条路径会被系统按自己的
+    /// 编码重新解释一遍，夹在中间的非 ASCII 字符最容易在那一步变成乱码，于是
+    /// `exists` 与 `remove_dir_all` 指不到同一个目录
+    #[test]
+    fn the_preview_directory_name_is_pure_ascii() {
+        let name = temp_dir()
+            .expect("建得出")
+            .file_name()
+            .map(|one| one.to_string_lossy().into_owned())
+            .expect("临时目录该有个名字");
+        assert!(name.is_ascii(), "目录名不该有非 ASCII 字符：{name}");
+        assert!(name.starts_with("mdpp-"), "{name}");
     }
 }

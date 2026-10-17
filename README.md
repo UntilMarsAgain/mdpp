@@ -114,11 +114,16 @@ cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 站点页面的外壳照着 [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/)
 那个样子来的 —— 顶上那条、正中一列、底下收一条 —— 但有几处**故意不一样**：那一列是一张
 圆角卡片摆在浅一号的底上（mkdocs 那边是白底平铺）、顶栏是 `sticky` 而不是 `fixed`、
-底栏只有一句话加一句「由 mdpp 生成」。这一层写死，没有开关；配色仍取自 `base.css`
-的那组变量。
+底栏只有一句话加一句「由 mdpp 生成」。
+
+顶上那一条（站点名那一行与它下面的导航）是**一整块有色的底**：底色由 `theme_color`
+给（不写就是默认的蓝），压在它上面的字由它当场算 —— 亮底配近黑字、暗底配白字，深色下
+再自动压暗一档（亮块在暗页面上是一条刺眼的亮带）。版式这一层写死，没有开关；其余配色
+仍取自 `base.css` 的那组变量。
 
 顶栏下面还有一行**导航栏**（`nav` 配的那几个链接，mkdocs-material 的 tabs 那个位置）：
-一排**链接按钮**，当前页那一个不另给颜色（只多 `aria-current`，那是给读屏软件的）。
+一排平铺的**可点链接**（不是按钮），当前页那一个不另给颜色（只多 `aria-current`，
+那是给读屏软件的）。
 `toc` 那一页（默认「目录」）是 build **额外生成**的「页面清单」——
 把全站每一页列成链接，导航栏末尾自动补一个按钮指过去。想关掉就 `toc = ""`。
 
@@ -127,6 +132,7 @@ cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 
 ```toml
 site_name = "桥梁笔记"                        # 顶栏左边
+theme_color = "#2f6fd0"                      # 顶栏那块底的颜色；不写就是默认的蓝
 site_description = "十四座桥，与它们的记述"    # 顶栏右边，也进 <meta name="description">
 site_url = "https://x.github.io/repo/"        # 站点在网上的地址；配了才有 canonical
 repo_url = "https://example.com/notes"        # 顶栏右端那个链接（只认 http/https）

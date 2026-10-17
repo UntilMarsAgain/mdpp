@@ -127,7 +127,10 @@ fn resolve(dir: &Path, path: &str) -> Option<Target> {
     // 带斜杠的那个地址先到 —— 它才是页面该有的样子
     let index = at.join("index.html");
     if index.is_file() {
-        return Some(Target::Directory(format!("{}/", url::encode_path(&decoded))));
+        return Some(Target::Directory(format!(
+            "{}/",
+            url::encode_path(&decoded)
+        )));
     }
     None
 }

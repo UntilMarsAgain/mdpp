@@ -333,11 +333,7 @@ struct Prepared<'a> {
 /// 没写页面名就是最常见的一种）。
 ///
 /// 返回 `None` = 框已经替调用方画好了，这次渲染到此为止
-fn prepare<'a>(
-    block: &'a Block,
-    node: &'a Node,
-    fmt: &mut dyn Renderer,
-) -> Option<Prepared<'a>> {
+fn prepare<'a>(block: &'a Block, node: &'a Node, fmt: &mut dyn Renderer) -> Option<Prepared<'a>> {
     // 没有 `title=` 就是**嵌进去的样子**：没有标题栏、没有边框、没有开关。
     let title = block
         .param("title")
