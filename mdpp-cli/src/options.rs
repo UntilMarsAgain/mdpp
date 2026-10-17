@@ -6,8 +6,9 @@
 //! - **项目**（[`Init`] / [`New`] / [`Build`]）：一个目录里有 `mdpp.toml`、`pages/`、
 //!   `templates/` 与 `build/`，能整站出静态页面。
 //!
-//! `--debug` / `--help` / `--version` 是**全局的**（`global = true`）—— 它们与「干什么」
-//! 无关，写在子命令上会让人以为 `mdpp -d build` 不行。
+//! `--debug` / `--help` / `--version` / `-C, --dir` 是**全局的**（`global = true`）——
+//! 它们与「干什么」无关（`-C` 说的是**在哪儿干**），写在子命令上会让人以为
+//! `mdpp -d build` 不行。
 
 use std::path::PathBuf;
 
@@ -44,6 +45,16 @@ pub struct Cli {
     /// 启用 DEBUG 级日志（标准错误）
     #[arg(short, long, global = true)]
     pub debug: bool,
+
+    // 字段名是 `workdir` 而不是 `dir` —— `init` 的**位置参数**占着 `dir` 这个 id，
+    // 两个 id 撞了 `Cli::command().debug_assert()` 当场炸（见 the_command_definition_is_valid）。
+    // 用 `//` 不用 `///`：doc 会进 `--help`，而这条是给改代码的人看的，不是给用的人
+    /// 先切到这个目录再干活（`make -C` / `git -C` 那个 `-C`）
+    ///
+    /// 从那一刻起一切相对路径都从它算：往上找 `mdpp.toml` 的起点、`render` 的输入
+    /// 文件与 `--css` / `--js`、`init` 不给目录时的那个「当前目录」。
+    #[arg(short = 'C', long = "dir", global = true, value_name = "目录")]
+    pub workdir: Option<PathBuf>,
 
     /// 显示帮助
     #[arg(short = 'h', long, action = clap::ArgAction::Help, global = true)]
@@ -353,6 +364,23 @@ mod tests {
         assert!(parse(&["build", "-d"]).debug);
         assert!(parse(&["--debug", "render"]).debug);
         assert!(!parse(&["render"]).debug);
+    }
+
+    /// `-C, --dir` 与 `--debug` 一条待遇：**两侧都能写**。不给就是 `None`（不切，
+    /// 老老实实待在敲命令的地方）
+    #[test]
+    fn the_workdir_flag_lands_on_either_side_of_the_subcommand() {
+        use std::path::Path;
+
+        for args in [vec!["-C", "某处", "build"], vec!["build", "--dir", "某处"]] {
+            let cli = parse(&args);
+            assert_eq!(cli.workdir.as_deref(), Some(Path::new("某处")), "{args:?}");
+        }
+        assert!(parse(&["build"]).workdir.is_none());
+
+        // 帮助里得看得见它：这是「不在项目目录里时怎么用」的唯一入口
+        let help = Cli::command().render_long_help().to_string();
+        assert!(help.contains("-C"), "帮助里少了 -C：\n{help}");
     }
 
     /// 一个文件都不给**不是**用法错误：inputs 空着，渲染那边才走标准输入；
