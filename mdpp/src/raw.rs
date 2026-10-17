@@ -172,6 +172,7 @@ mod tests {
         lines.iter().map(|line| raw.feed(line)).collect()
     }
 
+    /// 一道围栏的基本走位：开、内容、关，关了之后的行回到「外面」
     #[test]
     fn a_fence_opens_and_closes() {
         assert_eq!(
@@ -185,6 +186,7 @@ mod tests {
         );
     }
 
+    /// 反引号与波浪线各归各 —— 里面的另一种记号既不开新围栏，也不关已开的那道
     #[test]
     fn the_two_markers_do_not_pair_up() {
         // 波浪围栏里的一道反引号，内容而已
@@ -242,6 +244,7 @@ mod tests {
         );
     }
 
+    /// 不到三个记号的行不是分隔行 —— 一两个反引号是正文里的记号，别把后面整段吞进围栏
     #[test]
     fn fewer_than_three_is_never_a_delimiter() {
         assert_eq!(
@@ -255,6 +258,7 @@ mod tests {
         );
     }
 
+    /// 记号前面的空白不算数：缩进过的那道照样开、照样关
     #[test]
     fn leading_space_does_not_hide_the_delimiter() {
         let mut fences = Fences::default();
@@ -280,6 +284,7 @@ mod tests {
 
     // ---- 原始区（围栏 + HTML 块）----
 
+    /// HTML 块吃到空行为止 —— 空行之后的行回到普通内容，不能一路吞下去
     #[test]
     fn an_html_block_runs_to_the_next_blank_line() {
         assert_eq!(
@@ -288,6 +293,7 @@ mod tests {
         );
     }
 
+    /// 注释与声明也开 HTML 块 —— 不只有 `<标签` 那一种开头
     #[test]
     fn a_comment_or_declaration_also_starts_one() {
         assert_eq!(raw_trace(&["<!-- 注 -->", "[x]"]), [true, true]);

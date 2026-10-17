@@ -146,6 +146,7 @@ pub(crate) mod tests {
         let _ = write_through;
     }
 
+    /// 连着 `.attr` 是一条条往上摞，`url` 一路不动 —— 属性的次序就是写入的次序
     #[test]
     fn link_target_chains_attrs() {
         let target = LinkTarget::new("/x")

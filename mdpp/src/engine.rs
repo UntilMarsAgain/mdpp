@@ -380,6 +380,7 @@ mod tests {
         Mdpp::new().render(src)
     }
 
+    /// 兜底：标题、强调这些最基本的记号还认得 —— 开关加了这么多，先看这里
     #[test]
     fn commonmark_is_there() {
         let html = md_of("# 一级\n\n正文里有**强调**。\n");
@@ -387,6 +388,7 @@ mod tests {
         assert!(html.contains("<strong>强调</strong>"), "{html}");
     }
 
+    /// 正文里的 HTML 默认转义掉 —— 透传得是调用方自己打开 raw HTML 才有的待遇
     #[test]
     fn raw_html_is_escaped() {
         let html = md_of("<script>alert(1)</script>\n");
@@ -394,18 +396,22 @@ mod tests {
         assert!(html.contains("&lt;script"), "{html}");
     }
 
+    /// `javascript:` 那类协议不许落成 `href` —— 链接是点得开的，这一条漏了就是注入入口
     #[test]
     fn dangerous_link_protocols_are_rejected() {
         let html = md_of("[x](javascript:alert(1))\n");
         assert!(!html.contains(r#"href="javascript:"#), "{html}");
     }
 
+    /// 围栏上的语言名要带进 `class="language-…"` —— 高亮与样式都认这个类
     #[test]
     fn fenced_code_keeps_its_language_class() {
         let html = md_of("```rust\nfn main() {}\n```\n");
         assert!(html.contains(r#"<code class="language-rust">"#), "{html}");
     }
 
+    /// Setext 默认关：`标题` 下一行写 `---` 得退回「段落 + 分隔线」，
+    /// 一段写歪的正文不能悄悄变成另一种意思
     #[test]
     fn setext_headings_are_off_by_default() {
         let html = md_of("标题\n===\n");
@@ -417,6 +423,7 @@ mod tests {
         assert!(html.contains("<hr"), "--- 应当退化成分隔线: {html}");
     }
 
+    /// 摘 Setext 时别把 `# 标题` 那条路一起摘了 —— 两种标题是分开的两条规则
     #[test]
     fn atx_headings_still_work() {
         let html = md_of("# 一级\n\n## 二级\n");
@@ -424,12 +431,14 @@ mod tests {
         assert!(html.contains("<h2"), "{html}");
     }
 
+    /// 标题默认带 `id` —— `[跳转](#…)` 得有落点，锚点开关的开那一半
     #[test]
     fn headings_get_anchor_ids() {
         let html = md_of("## 文本与行内元素\n");
         assert!(html.contains(r#"id="文本与行内元素""#), "{html}");
     }
 
+    /// 关掉之后一个 `id=` 都不剩 —— 开关要关得干净，而不是只关掉一半
     #[test]
     fn anchor_anchors_can_be_turned_off() {
         let html = Mdpp::builder()
@@ -440,6 +449,7 @@ mod tests {
         assert!(!html.contains("id="), "{html}");
     }
 
+    /// 四个空格开头的行是正文不是代码 —— 缩进在本库里是 `::` 块的边界，两者会互相干扰
     #[test]
     fn indented_code_blocks_are_off_by_default() {
         let html = md_of("    四个空格开头\n");

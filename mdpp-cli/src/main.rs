@@ -12,6 +12,7 @@ mod page;
 mod project;
 mod render;
 mod telemetry;
+mod url;
 
 use options::{Cli, Command, NAME};
 use telemetry::install;
@@ -39,7 +40,7 @@ fn main() -> ExitCode {
         }
     };
 
-    // 订阅器在解析之后才装：否则连「这组参数是不是错的」都还没定，就已���打了一堆日志
+    // 订阅器在解析之后才装：否则连「这组参数是不是错的」都还没定，就已经打了一堆日志
     install(cli.debug);
 
     // 每个子命令自己决定「成功」是什么形状，返回一句**给人看的**失败原因

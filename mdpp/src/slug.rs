@@ -29,6 +29,7 @@ pub fn heading_id(text: &str) -> String {
 mod tests {
     use super::heading_id;
 
+    /// 汉字原样留在 `id` 里 —— 编码掉或丢掉，`decodeURIComponent` 之后就找不到那个标题了
     #[test]
     fn cjk_is_kept_and_the_rest_is_folded() {
         assert_eq!(heading_id("文本与行内元素"), "文本与行内元素");

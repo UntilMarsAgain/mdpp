@@ -21,6 +21,8 @@
 
 use std::path::{Component, Path, PathBuf};
 
+use crate::url;
+
 /// 值得一看的属性：页面里指向一个文件的地方
 const ATTRIBUTES: [&str; 3] = ["src", "href", "poster"];
 
@@ -94,7 +96,7 @@ pub fn scan(html: &str, context: &Context) -> Scan {
                     .replace('\\', "/");
                 out.wanted.push(Wanted { from, to });
                 out.html
-                    .push_str(&format!("{}/{}", context.assets_prefix, encode(&relative)));
+                    .push_str(&format!("{}/{}", context.assets_prefix, url::encode_href(&relative)));
             }
             Some(Err(Skip::NotOurs(reason))) => {
                 tracing::debug!(value, reason, "这个地址不归我管");
@@ -134,10 +136,11 @@ fn resolve(value: &str, context: &Context) -> Result<(PathBuf, PathBuf), Skip> {
     {
         return Err(Skip::NotOurs("不是本地相对地址"));
     }
-    // 进来的地址可能**已经被转义过**：`targets::encode_target_spaces` 会把链接目标
-    // 里的空格补成 %20，而 `::image src=` 里的 `&` 会被渲染器转义。判「文件在不在」
-    // 用的是解码之后的那一份 —— 拿转义串去找文件，永远找不到
-    let decoded = decode(value);
+    // 进来的地址可能**已经被转义过**：markdown-it 对 `href` / `src` 会把非 ASCII 转成
+    // `%E6…`，`targets::encode_target_spaces` 会把链接目标里的空格补成 %20，`::image src=`
+    // 里的 `&` 也会被转义。判「文件在不在」用的是**解码之后**的那一份 —— 拿转义串去找
+    // 文件永远找不到；而解不出 UTF-8 就退回作者写下的原串，报告要说的正是那一份
+    let decoded = url::decode_exact(value).unwrap_or_else(|| value.to_string());
     let source = normalize(&context.page_dir.join(&decoded));
     let Ok(relative) = source.strip_prefix(context.pages_dir) else {
         return Err(Skip::NotOurs("跑出正文目录了"));
@@ -158,27 +161,6 @@ fn resolve(value: &str, context: &Context) -> Result<(PathBuf, PathBuf), Skip> {
     }
     let target = context.assets_dir.join(relative);
     Ok((source, target))
-}
-
-/// 渲��器会把非 ASCII 的地址转义成 `%E6…`（markdown-it 对 `href`/`src` 如此）。
-/// 拿转义串去找文件永远找不到，所以**报告里说的是作者写下的那一份**
-fn decode(value: &str) -> String {
-    let bytes = value.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%' && index + 2 < bytes.len() {
-            let hex = std::str::from_utf8(&bytes[index + 1..index + 3]).unwrap_or("");
-            if let Ok(byte) = u8::from_str_radix(hex, 16) {
-                out.push(byte);
-                index += 3;
-                continue;
-            }
-        }
-        out.push(bytes[index]);
-        index += 1;
-    }
-    String::from_utf8(out).unwrap_or_else(|_| value.to_string())
 }
 
 /// `foo.png` 里带 `:` 吗 —— 带了就当协议（`https:`、`data:`），不当文件名
@@ -202,25 +184,6 @@ fn normalize(path: &Path) -> PathBuf {
         }
     }
     out.iter().collect()
-}
-
-/// `assets/` 里的地址：编码空格与 `#` 之类会截断地址的字符，中文原样留着
-pub fn encode(path: &str) -> String {
-    let mut out = String::with_capacity(path.len());
-    for ch in path.chars() {
-        let plain = !ch.is_ascii()
-            || ch.is_ascii_alphanumeric()
-            || matches!(ch, '-' | '.' | '_' | '/' | '~');
-        if plain {
-            out.push(ch);
-        } else {
-            let mut buffer = [0u8; 4];
-            for byte in ch.encode_utf8(&mut buffer).as_bytes() {
-                out.push_str(&format!("%{byte:02X}"));
-            }
-        }
-    }
-    out
 }
 
 /// `="` 之前那几个字母是什么属性名

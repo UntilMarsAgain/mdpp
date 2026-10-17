@@ -100,6 +100,7 @@ pub fn page_for(name: &str) -> Option<TemplatePage> {
 mod tests {
     use super::*;
 
+    /// `甲` 与 `template:甲` 是同一个键；大小写与首尾空白都宽松
     #[test]
     fn the_prefix_and_the_plain_name_are_the_same_key() {
         assert_eq!(page_key("甲").as_deref(), Some("甲"));
@@ -110,6 +111,7 @@ mod tests {
         assert_eq!(page_key("甲甲甲").as_deref(), Some("甲甲甲"));
     }
 
+    /// 前缀后面没东西 = 这一页没有名字，不是「一页叫 `template:` 的页」
     #[test]
     fn a_name_with_nothing_left_after_the_prefix_is_not_a_page() {
         assert_eq!(page_key(""), None);
@@ -143,12 +145,14 @@ mod tests {
         assert!(html.contains("卡片来了"), "{html}");
     }
 
+    /// 只剥 `template:` 那一个前缀：`帮助:入门` 的前缀是页名的一部分
     #[test]
     fn a_prefix_that_is_not_the_template_one_is_kept() {
         // `帮助:入门` 是一页的名字，不是「入门页在 template 里」
         assert_eq!(page_key("帮助:入门").as_deref(), Some("帮助:入门"));
     }
 
+    /// 展示用的名字一律补上前缀，免得写的人看不出这是一页模板页
     #[test]
     fn the_display_name_is_always_prefixed() {
         assert_eq!(display_name("卡片"), "template:卡片");

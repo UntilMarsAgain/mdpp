@@ -61,6 +61,12 @@ pub struct Built {
     pub links: Vec<String>,
     /// 块有问题（名字没注册 / 用错了）的那些页
     pub broken: Vec<String>,
+    /// 上面那几页里的块问题**各几个**：名字没注册的、参数用错了的。
+    ///
+    /// 报告要分着说 —— 「不认识这个名字」与「名字对、写法不对」是两件事，
+    /// 顺着哪一条去改也完全不同
+    pub broken_unknown: usize,
+    pub broken_misused: usize,
     /// 正文引了而 `pages/` 里没有的文件
     pub absent: Vec<String>,
     /// 撞了键的页
@@ -99,6 +105,83 @@ pub fn run(options: &Build) -> Result<(), String> {
     Ok(())
 }
 
+/// 逐页渲染时**跨页共用**的那几样：解析器、站点，以及三本账。
+///
+/// 打成一个包，「一页的正文是怎么来的」才抽得出去 —— 不打的话那个函数要带十几个参数，
+/// 而参数表一长，哪一份是只读的、哪一份是在记账的，就看不出来了
+struct Pass<'a> {
+    project: &'a Project,
+    /// 产物目录：资源拷进去、页面也写进去
+    site_dir: &'a Path,
+    /// 正文目录：资源都得在它底下，跑出去的一律不收（见 [`assets`]）
+    pages_dir: &'a Path,
+    parser: &'a Mdpp,
+    /// 模板页（配置里那个目录），没配就是 `None`
+    templates: Option<mdpp::block::template::TemplatePages>,
+    /// 红链与缺资源的账，记在**全站一份**上 —— `Links` 拿的是它的克隆，两边记的是同一本
+    missing: Arc<Mutex<Vec<Missing>>>,
+    /// 站点本身（`Links::for_page` 要它）。这一份是克隆的 `Arc`，与外面那份是同一个
+    site: Arc<Site>,
+    /// 正文引了却不在 `pages/` 里的文件（只为最后那句报告）
+    absent: Vec<String>,
+    /// 拷过的资源：几十页引同一张图也只拷一回
+    copied: Vec<PathBuf>,
+    /// 被引用而进了 `assets/` 的那些（相对 `pages/`），同样只为最后那句报告
+    taken: Vec<String>,
+    /// 出问题的页的账
+    broken: Broken,
+}
+
+impl Pass<'_> {
+    /// 读一页正文 → 渲染 → 扫地址 → 拷缺的资源 → 记账，交出**标题与正文**。
+    ///
+    /// 记账与渲染同手发生，是因为**事后从产物里反推不回来**：这时出的 HTML 还没套外壳、
+    /// 地址还没按各自深度改写，红链在哪儿、缺了哪个文件只有这一刻知道
+    fn source_body(&mut self, page: &Page, assets_prefix: &str) -> Result<(String, String), String> {
+        let source = std::fs::read_to_string(&page.source)
+            .map_err(|error| format!("读不了 {}：{error}", shown(&page.source)))?;
+
+        let mut context = RenderContext::new().with_links(Arc::new(Links::for_page(
+            self.site.clone(),
+            page,
+            self.missing.clone(),
+        )));
+        if let Some(templates) = &self.templates {
+            context = context.with_templates(templates.clone());
+        }
+
+        let scan = assets::scan(
+            &self.parser.render_with(&source, &context),
+            &assets::Context {
+                page_dir: page.source.parent().unwrap_or(self.pages_dir),
+                pages_dir: self.pages_dir,
+                assets_dir: &self.site_dir.join(page::ASSET_DIR),
+                assets_prefix,
+            },
+        );
+        for value in &scan.missing {
+            self.absent.push(format!("{} → {value}", page.key));
+        }
+        assets::copy(&scan.wanted, &mut self.copied)
+            .map_err(|error| format!("拷不了资源：{error}"))?;
+        for one in &scan.wanted {
+            let relative = one
+                .from
+                .strip_prefix(self.pages_dir)
+                .expect("资源都在正文目录里")
+                .to_string_lossy()
+                .replace('\\', "/");
+            if !self.taken.contains(&relative) {
+                self.taken.push(relative);
+            }
+        }
+
+        let html = scan.html;
+        self.broken.add(page, &html);
+        Ok((document_title(self.project, &source, page.stem()), html))
+    }
+}
+
 /// 出一遍站点到**给定的那个目录**。
 ///
 /// 目录是参数而不是项目自己的 `site_dir`：`serve` 出到临时目录，不去动用户手
@@ -128,8 +211,6 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
     let parser = Mdpp::new();
     let mut site = Arc::new(site);
     let missing: Arc<Mutex<Vec<Missing>>> = Arc::new(Mutex::new(Vec::new()));
-    let mut broken = Broken::default();
-    let mut absent = Vec::new();
 
     // 目录页：配置里 `toc` 那一页（默认「目录」），生成后插进站点 ——
     // 导航解析与站内链接都能指到它，报告里也数得进页数
@@ -161,62 +242,34 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
     // 404，而且没有任何报错。别的静态托管不认这个文件，多这一个字节无害。
     project::write_file(&site_dir.join(NOJEKYLL), "")?;
 
-    // 已经拷过的资源，记着，免得几十页引同一张图时拷几十回
-    let mut copied: Vec<std::path::PathBuf> = Vec::new();
-    // 被引用而进了 `assets/` 的那些（相对 pages/），只为最后那句报告
-    let mut taken: Vec<String> = Vec::new();
+    // 逐页那一半的账（缺资源、已拷、没人引、块出错）都在 `pass` 里记 —— 三本账从头
+    // 到尾一份，最后倒出来进报告，不在循环里现攒
+    let mut pass = Pass {
+        project,
+        site_dir,
+        pages_dir: &pages_dir,
+        parser: &parser,
+        templates,
+        missing: missing.clone(),
+        site: site.clone(),
+        absent: Vec::new(),
+        copied: Vec::new(),
+        taken: Vec::new(),
+        broken: Broken::default(),
+    };
 
     for page in site.pages() {
         let assets_prefix = assets_href(&page.key);
-        let title: String;
-        let body: String;
-        if page.source.as_os_str().is_empty() {
+        // 两种页：目录页的正文是现成生成的，其余的读文件、渲染、顺手把账记了
+        let (title, body) = if page.source.as_os_str().is_empty() {
             // 目录页：不是从 pages/ 里来的，正文是生成的页面清单
-            title = document_title(project, "", page.stem());
-            body = toc_body(&site, &project.config.site_name, &page.key);
+            (
+                document_title(project, "", page.stem()),
+                toc_body(&site, &project.config.site_name, &page.key),
+            )
         } else {
-            let source = std::fs::read_to_string(&page.source)
-                .map_err(|error| format!("读不了 {}：{error}", shown(&page.source)))?;
-
-            let mut context = RenderContext::new().with_links(Arc::new(Links::for_page(
-                site.clone(),
-                page,
-                missing.clone(),
-            )));
-            if let Some(templates) = &templates {
-                context = context.with_templates(templates.clone());
-            }
-
-            let scan = assets::scan(
-                &parser.render_with(&source, &context),
-                &assets::Context {
-                    page_dir: page.source.parent().unwrap_or(&pages_dir),
-                    pages_dir: &pages_dir,
-                    assets_dir: &site_dir.join(page::ASSET_DIR),
-                    assets_prefix: &assets_prefix,
-                },
-            );
-            for value in &scan.missing {
-                absent.push(format!("{} → {value}", page.key));
-            }
-            assets::copy(&scan.wanted, &mut copied).map_err(|error| format!("拷不了资源：{error}"))?;
-            for one in &scan.wanted {
-                let relative = one
-                    .from
-                    .strip_prefix(&pages_dir)
-                    .expect("资源都在正文目录里")
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                if !taken.contains(&relative) {
-                    taken.push(relative);
-                }
-            }
-
-            let html = scan.html;
-            broken.add(page, &html);
-            title = document_title(project, &source, page.stem());
-            body = html;
-        }
+            pass.source_body(page, &assets_prefix)?
+        };
 
         let nav = nav_for(&nav, &page.key);
         let document = page::document(&page::Page {
@@ -242,6 +295,11 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
         project::write_file(&site_dir.join(&page.output), &document)?;
         debug!(page = %page.key, out = %page.output.display(), "一页");
     }
+
+    // 账倒出来：循环之后只读不写，拆开比继续透过 `pass` 拿清楚
+    let Pass {
+        absent, copied, taken, broken, ..
+    } = pass;
 
     // 覆盖层：把 `override/` 里的东西原样拷到产物里，重复就覆盖
     copy_override(&project.config.override_dir, &project.root, site_dir)?;
@@ -275,6 +333,8 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
         resources: copied.len(),
         links,
         broken: broken.pages.clone(),
+        broken_unknown: broken.unknown,
+        broken_misused: broken.misused,
         absent,
         duplicates: site.duplicates().to_vec(),
         idle,
@@ -302,7 +362,7 @@ fn favicon(project: &Project, site_dir: &Path) -> Result<Option<String>, String>
             .map_err(|error| format!("读不了 favicon {}：{error}", shown(&from)))?,
     )?;
     // 只给**文件名**：`favicon` 写的是项目里的相对路径，而产物里它在 `assets/` 下
-    Ok(Some(assets::encode(&name)))
+    Ok(Some(crate::url::encode_href(&name)))
 }
 
 /// 顶栏与底栏那几句话 —— 配置里那几个单行字段，原样递过去。
@@ -549,7 +609,6 @@ impl Broken {
     }
 }
 
-/// 报告走**标准错误** —— 与其余子命令一样，stdout 是产物要去的地方
 /// 报告一律走**标准错误** —— 与其余子命令一样，stdout 是产物要去的地方。
 ///
 /// 只读 [`Built`]：它已经装好了要说的每一句，`serve` 重出时拿的是同一份。
@@ -567,7 +626,12 @@ pub fn report(built: &Built) {
     }
 
     if !built.broken.is_empty() {
-        eprintln!("块有问题（名字没注册，或参数用错了），在这些页：");
+        eprintln!(
+            "块有问题 {} 个（名字没注册 {} 个、参数用错 {} 个），在这些页：",
+            built.broken_unknown + built.broken_misused,
+            built.broken_unknown,
+            built.broken_misused
+        );
         for key in &built.broken {
             eprintln!("  {key}");
         }

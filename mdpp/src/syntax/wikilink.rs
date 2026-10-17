@@ -12,11 +12,9 @@
 //! | [`ResolvedLink::Node`] | 整个节点归那个函数写（连 `<a>` 都由它决定） |
 //! | `None`，**或压根没递解析器** | `<a class="wikilink wikilink--missing" data-missing="true">` —— **红链** |
 //!
-//! 「解析器说没有」与「压根没人递解析器」渲染成同样的红链：两者都是「调用方不知道
-//! `[[某页]]` 存不存在」，而渲染成一条看起来正常的链等于替它宣称「这一页存在」。
-//!
-//! 红链**故意不带 `href`**（理由见 [`crate::link`]）：带上了浏览器就会自己走，接单击
-//! 处理的一方再也轮不到 —— 而那正是「这一页还没有」最需要有人接手的时候。
+//! 「解析器说没有」与「压根没人递解析器」渲染成**同样的红链**，而且红链**故意不带
+//! `href`** —— 这两条都由 [`crate::link`] 定下，理由在那边的模块头（一句话：渲染成
+//! 看起来正常的链，等于替调用方宣称「这一页存在」；`href` 一带上，浏览器就自己走了）。
 //! 想换掉它的样子有两条路：递 [`ResolvedLink::Node`] 自己画，或者用自己那份样式接
 //! `wikilink--missing` 与 `data-missing="true"` 这两个钩子。
 
@@ -176,6 +174,7 @@ mod tests {
         Mdpp::new().render_with(src, &RenderContext::new().with_links(resolver))
     }
 
+    /// 目标在前、显示文字在后（同 MediaWiki），两者都要落到元素上
     #[test]
     fn target_first_display_second() {
         // [[目标文档|显示文字]]
@@ -218,7 +217,7 @@ mod tests {
         assert!(with.contains("wikilink--missing"), "{with}");
     }
 
-    /// 红链**不带 href**：带上���浏览器就会自己走，接单击处理的一方再也轮不到 ——
+    /// 红链**不带 href**：带上了浏览器就会自己走，接单击处理的一方再也轮不到 ——
     /// 而那正是「这一页还没有」最需要有人接手的时候。
     #[test]
     fn a_red_link_carries_no_href() {
@@ -227,6 +226,7 @@ mod tests {
         assert!(html.contains(r#"data-doc="目标""#), "{html}");
     }
 
+    /// 省下 `|显示文字` 时，显示的文字就是目标本身
     #[test]
     fn display_text_defaults_to_the_target() {
         let html = render("[[同名文档]]\n");
@@ -234,6 +234,7 @@ mod tests {
         assert!(html.contains(">同名文档</a>"), "{html}");
     }
 
+    /// 未闭合、空目标、空显示文字都认不出来，原文照写 —— 硬凑出来的半截链接更糟
     #[test]
     fn broken_links_fall_back_to_text() {
         // 未闭合、空目标、空显示文字，都不该被当成内部链接
@@ -243,6 +244,7 @@ mod tests {
         }
     }
 
+    /// 行内代码里的 `[[…]]` 是代码的一部分，不是一条链接
     #[test]
     fn stays_literal_inside_code_span() {
         let html = render("`[[a|b]]`\n");
@@ -345,6 +347,7 @@ mod tests {
         }
     }
 
+    /// 不只是闭包：一个实现了 trait 的值同样能递进来，走的是同一条路
     #[test]
     fn node_renderer_object_works_too() {
         // 不是闭包而是一个实现了 trait 的值，同样能塞进去

@@ -15,6 +15,11 @@ use tracing::{debug, info};
 /// 没给语言时的 `<html lang>`。`--lang` 这一版还没有，用配置里那一份（站点模式）
 pub const DEFAULT_LANG: &str = "zh-Hans";
 
+/// `mdpp render`：读输入 → 渲染 → 写 **stdout**。
+///
+/// 这条通道的分工就是本命令的全部界面：产物（以及 `--list-blocks` 那份名单）走
+/// stdout，日志与 `--stats` 走 stderr —— 于是 `mdpp render 甲.md > 甲.html` 得到的
+/// 是一份干净 HTML，而「这次发生了什么」还看得见
 pub fn run(options: &Render) -> Result<(), String> {
     if options.list_blocks {
         let mut out = std::io::stdout().lock();
@@ -158,20 +163,31 @@ struct Stats {
     misused: usize,
     bytes_in: usize,
     bytes_out: usize,
+    /// 出问题的那几份输入：`（名字, 未知块几个, 误用几个）`。
+    ///
+    /// 光有总数不够 —— 一次可以喂好几个文件，「未知块 3 个」等于让人自己去翻
+    problems: Vec<(String, usize, usize)>,
 }
 
 impl Stats {
+    /// 收一份输入的账：字节、内部链接、以及**出问题的框各有几个**。
+    ///
+    /// `name` 也记下来，是为了后面能在报告里**点名是哪一份**（见 `problems`）
     fn add(&mut self, name: &str, source: &str, html: &str) {
         self.files += 1;
         self.bytes_in += source.len();
         self.bytes_out += html.len();
         // 只报**出问题的地方**：那几个类名由 `block::dispatch` 一处写死，不会过期。
         // 「块有几个」数不出来 —— 块各写各的 class，要数就得把名字抄一份
-        // 在这儿，而那份清单过期之后报出来的数字还是「像模���样」的，比不报更坏。
-        self.unknown += html.matches("template--unknown").count();
-        self.misused += html.matches("template--problem").count();
+        // 在这儿，而那份清单过期之后报出来的数字还是「像模像样」的，比不报更坏。
+        let unknown = html.matches("template--unknown").count();
+        let misused = html.matches("template--problem").count();
+        if unknown > 0 || misused > 0 {
+            self.problems.push((name.to_string(), unknown, misused));
+        }
+        self.unknown += unknown;
+        self.misused += misused;
         self.links += html.matches("<a class=\"wikilink").count();
-        let _ = name;
     }
 }
 
@@ -182,7 +198,19 @@ impl std::fmt::Display for Stats {
             f,
             "{} 份输入，{} 字节 → {} 字节 HTML；内部链接 {} 条，未知块 {} 个，误用 {} 个",
             self.files, self.bytes_in, self.bytes_out, self.links, self.unknown, self.misused
-        )
+        )?;
+        // 总数之外把**是哪一份**点出来，否则这几个数字派不上用场
+        for (name, unknown, misused) in &self.problems {
+            let mut what: Vec<String> = Vec::new();
+            if *unknown > 0 {
+                what.push(format!("未知块 {unknown} 个"));
+            }
+            if *misused > 0 {
+                what.push(format!("误用 {misused} 个"));
+            }
+            writeln!(f, "  {name}：{}", what.join("、"))?;
+        }
+        Ok(())
     }
 }
 
@@ -232,6 +260,8 @@ mod tests {
         assert!(message.contains("没有这个文件.md"), "{message}");
     }
 
+    /// `--css` / `--js` **按给的次序**读 —— 次序就是级联的次序：
+    /// 后给的那份压得住先给的那份（同名变量、同名选择器），调换一下结果就变了
     #[test]
     fn extra_files_are_read_in_order() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
@@ -249,5 +279,26 @@ mod tests {
     fn an_unreadable_extra_file_says_which_one() {
         let message = read_all(&[std::path::PathBuf::from("/没有这个.css")]).unwrap_err();
         assert!(message.contains("没有这个.css"), "{message}");
+    }
+
+    /// `--stats` 在总数之外要**点名是哪一份**：一次可以喂好几个文件，
+    /// 「未知块 1 个」没说是哪个，等于让人自己一个个试
+    #[test]
+    fn stats_names_the_input_that_had_a_problem() {
+        let mut stats = Stats::default();
+        stats.add(
+            "坏掉的.md",
+            "::没有这个块\n",
+            r#"<div class="template template--unknown">"#,
+        );
+        stats.add("好的.md", "<p>没错</p>", "<p>没错</p>");
+
+        let shown = stats.to_string();
+        assert!(shown.contains("2 份输入"), "{shown}");
+        assert!(shown.contains("坏掉的.md：未知块 1 个"), "{shown}");
+        assert!(
+            !shown.contains("好的.md："),
+            "没错的那份不必点名：{shown}"
+        );
     }
 }

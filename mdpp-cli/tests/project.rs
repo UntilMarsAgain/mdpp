@@ -31,14 +31,20 @@ fn init(dir: &Path) -> std::path::PathBuf {
     root
 }
 
+/// 子进程的 **stdout** —— 按规矩只有产物走这条通道，所以下面几条都拿它当判据
 fn stdout_of(out: &Output) -> String {
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
+/// 子进程的 **stderr** —— 日志、报告、报错都在这儿（与「stdout 只出产物」是一条规矩）
 fn stderr_of(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).into_owned()
 }
 
+/// **一趟走完**：`init` → `new` → `build`，每一步的产物都该落在它该落的地方。
+///
+/// 三条分开写也能跑，但这条要验的恰恰是**接得起来**：某一步少交一样东西给下一步，
+/// 分开的用例各自都还绿着，整条路却是断的
 #[test]
 fn init_new_build_is_a_whole_ride() {
     let dir = empty_dir();
@@ -75,6 +81,10 @@ fn init_new_build_is_a_whole_ride() {
     assert!(stderr_of(&out).contains("build"), "{}", stderr_of(&out));
 }
 
+/// 站内链接**认得出**（出真 `href`），指不到的那条**保持红链**（不编一个地址出来）。
+///
+/// 这是库那套红链语义在**真实站点**上的落点：命令行手上有 `pages/`，「有没有这一页」
+/// 在这里是能答的 —— 答得出，就该答；答不出的那条留在原地等人补
 #[test]
 fn a_page_links_to_another_one_and_a_missing_one_stays_red() {
     let dir = empty_dir();
@@ -287,6 +297,8 @@ fn build_outside_a_project_says_so_and_points_at_init() {
     assert!(message.contains("mdpp init"), "{message}");
 }
 
+/// 页名不许往上跑：`../逃出` 要**当场拒绝**并说清是页名的问题 ——
+/// 而不是老老实实建出一个 `pages/` 之外的文件（那已经不是「建一页」了）
 #[test]
 fn new_refuses_to_climb_out_of_pages() {
     let dir = empty_dir();

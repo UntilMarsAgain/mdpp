@@ -312,6 +312,7 @@ mod tests {
         }
     }
 
+    /// 正路一条：`{{参数}}` 换成值、`{{body}}` 换成块内容 —— 这一步错了，模板整页都是没填的空
     #[test]
     fn substitutes_params_and_body() {
         let item = block("x", &[("颜色", "红")], "块内容");
@@ -329,6 +330,7 @@ mod tests {
         assert_eq!(substitute("{{没闭合", &item, ""), "{{没闭合");
     }
 
+    /// 没写 `src=` 时，正文就是块自己带的那段 —— 枢纽的这条默认岔路先得走对
     #[test]
     fn source_is_the_block_body_when_there_is_no_src() {
         let item = block("x", &[], "块里的内容");
@@ -345,6 +347,7 @@ mod tests {
         assert!(why.contains("`没有这一页`"), "{why}");
     }
 
+    /// 默认档就要挡住脚本，同时正文一个字不丢 —— 两头都得盯住
     #[test]
     fn scripts_are_filtered_by_default() {
         let html = sanitize_html("<p>正文</p><script>alert(1)</script>");
@@ -352,6 +355,7 @@ mod tests {
         assert!(html.contains("正文"), "{html}");
     }
 
+    /// `on…=` 与 `javascript:` 是最常见的两条执行路，都得堵上 —— 无辜的属性不能跟着陪葬
     #[test]
     fn event_handlers_and_javascript_urls_are_filtered() {
         let html =
@@ -370,6 +374,7 @@ mod tests {
         assert!(html.contains("onboarding=2"), "{html}");
     }
 
+    /// 收窄的几条岔路一起钉：并排的、括号里带逗号的、写给根的、已经收过的 —— 错一条，样式要么漏出正文要么被收两遍
     #[test]
     fn css_is_scoped_to_the_content() {
         assert_eq!(
@@ -389,6 +394,7 @@ mod tests {
         assert_eq!(scope_css(".mdpp-content a { }"), ".mdpp-content a { }");
     }
 
+    /// `@media` 里的选择器照样要收，`@keyframes` 里的一律别动 —— 反了一处，样式就漏出正文或动画被改坏
     #[test]
     fn conditional_rules_are_scoped_inside() {
         assert_eq!(
@@ -402,6 +408,7 @@ mod tests {
         );
     }
 
+    /// `@import` 必须先丢 —— 留着它，正文里一行 CSS 就能把页面支到外部去拉样式
     #[test]
     fn imports_are_dropped() {
         // 让页面去外部拉样式：既慢又不受控
@@ -411,6 +418,7 @@ mod tests {
         );
     }
 
+    /// 正文里混进来的 `</style>` 会提前收掉样式块，把后面的字顶到页面上 —— 得先摘掉
     #[test]
     fn style_cannot_be_closed_early() {
         let css = sanitize_css("a { } </style><b>x</b>");
@@ -418,6 +426,7 @@ mod tests {
         assert!(css.contains("<b>x</b>"), "只去掉闭合标签，其余照旧：{css}");
     }
 
+    /// 大小写怎么变都要认出来，且只插反斜杠、一个字母不改 —— 改字母就改了字符串或正则里的意思
     #[test]
     fn script_end_cannot_close_its_own_tag() {
         assert_eq!(escape_script_end(r#"a</script>b"#), r#"a<\/script>b"#);
@@ -426,6 +435,7 @@ mod tests {
         assert_eq!(escape_script_end("没有"), "没有");
     }
 
+    /// 这几种常见写法都得算数 —— 少认一种，作者明明写了想打开，结果静悄悄关着
     #[test]
     fn switches_read_the_usual_spellings() {
         for spelling in ["", "true", "yes", "on", "ON"] {

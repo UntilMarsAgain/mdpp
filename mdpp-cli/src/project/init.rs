@@ -24,6 +24,11 @@ use tracing::info;
 /// 空目录，而 `build` 自己也会建；这里建它只是为了让目录结构一眼看得见
 const SITE_DIR_NAME: &str = "build";
 
+/// `mdpp init`：把骨架拷进目标目录，再把站点名填进去。
+///
+/// **换名这一步在拷完之后做，而且只动拷出来的那份** —— 骨架原文嵌在二进制里，
+/// 动了它的话，第二次 `mdpp init` 拿到的就是上一次换过名的骨架：占位符已经不在，
+/// 新项目会顶着上一个项目的名字
 pub fn run(options: &Init) -> Result<(), String> {
     let root = options.dir.clone().unwrap_or_else(|| PathBuf::from("."));
     check_empty(&root)?;

@@ -103,10 +103,12 @@ fn node(tex: &str, display: bool) -> Node {
 mod tests {
     use crate::engine::Mdpp;
 
+    /// 整篇走一遍（块规则与行内规则都在这一次里跑）
     fn render(src: &str) -> String {
         Mdpp::new().render(src)
     }
 
+    /// 行内公式：原文**两处都在** —— `data-tex` 留给前端重排，元素内容留给「还没排版」
     #[test]
     fn inline_math_keeps_the_source_for_the_frontend() {
         let html = render("爱因斯坦说 $E = mc^2$ 是这样。\n");
@@ -116,6 +118,7 @@ mod tests {
         assert!(html.contains(">E = mc^2</span>"), "{html}");
     }
 
+    /// `$$…$$` 是**独立成行**那一档：`math--display`，走 KaTeX 的 display 模式
     #[test]
     fn double_dollars_ask_for_display_mode() {
         let html = render("$$\\int_0^1 x^2 dx$$\n");

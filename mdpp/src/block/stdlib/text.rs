@@ -11,7 +11,7 @@
 //! 圆角。
 
 use super::super::dispatch::render_problem;
-use super::{normalize_hex, size_rule, text_on};
+use super::{hex_why, normalize_hex, size_rule, text_on};
 use crate::registry::Block;
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::{Node, Renderer};
@@ -114,7 +114,7 @@ pub(super) fn render_banner(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     let mut style = String::new();
     if let Some(color) = block.param("color") {
         let Some(hex) = normalize_hex(color) else {
-            render_problem(block, fmt, "color= 只认 #rgb 或 #rrggbb 这两种写法");
+            render_problem(block, fmt, &hex_why("color", None));
             return;
         };
         style.push_str(&format!("background: {hex}; color: {};", text_on(&hex)));
@@ -154,23 +154,7 @@ pub(super) fn render_banner(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     }
 
     fmt.cr();
-    match inline_or_blocks(node) {
-        // 常见情形：一行文字（解析出来就是一个段落）。横条里不能再套一个块，
-        // 所以把段落的**行内内容**摊平放进来。
-        InlineOrBlocks::Inline(inline) => {
-            fmt.open("p", &attrs);
-            fmt.contents(inline);
-            fmt.close("p");
-        }
-        // 写成了好几段、或者塞了别的块：那不是一条横条了，照块的规矩渲染，
-        // 内容不能丢，但换成 `<div>`，免得把一个块塞进 `<p>` 里。
-        InlineOrBlocks::Blocks => {
-            fmt.open("div", &attrs);
-            fmt.cr();
-            fmt.contents(&node.children);
-            fmt.close("div");
-        }
-    }
+    inline_or_blocks_in(node, &attrs, fmt);
     fmt.cr();
 }
 
@@ -190,27 +174,14 @@ pub(super) fn render_title(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     let mut attrs: Vec<(&str, String)> = vec![("class", "title-block".to_string())];
     if let Some(color) = block.param("color") {
         let Some(hex) = normalize_hex(color) else {
-            render_problem(block, fmt, "color= 只认 #rgb 或 #rrggbb 这两种写法");
+            render_problem(block, fmt, &hex_why("color", None));
             return;
         };
         attrs.push(("style", format!("color: {hex};")));
     }
 
     fmt.cr();
-    match inline_or_blocks(node) {
-        InlineOrBlocks::Inline(inline) => {
-            fmt.open("p", &attrs);
-            fmt.contents(inline);
-            fmt.close("p");
-        }
-        // 写成了好几段：那就不是一个标题了，但内容不能丢，换成 `<div>` 照块渲染
-        InlineOrBlocks::Blocks => {
-            fmt.open("div", &attrs);
-            fmt.cr();
-            fmt.contents(&node.children);
-            fmt.close("div");
-        }
-    }
+    inline_or_blocks_in(node, &attrs, fmt);
     fmt.cr();
 }
 
@@ -243,6 +214,33 @@ fn inline_or_blocks<'a>(node: &'a Node) -> InlineOrBlocks<'a> {
     match node.children.as_slice() {
         [only] if only.is::<Paragraph>() => InlineOrBlocks::Inline(&only.children),
         _ => InlineOrBlocks::Blocks,
+    }
+}
+
+/// 把内容摆进 `attrs` 指定的那两个元素之一：**一行就套 `<p>`，写成块了就套 `<div>`**。
+///
+/// `::banner` 与 `::title` 用的是同一套，所以这段只有一份：
+///
+/// - 单段时只取它的**行内内容**摊平放进来 —— 横条与标题自己不是容器，里面再套一个
+///   `<p>` 就散了；
+/// - 写成好几段、或者塞了别的块：那已经不是一条横条/一个标题了，但内容不能丢，
+///   于是换 `<div>` 照块渲染 —— 块塞进 `<p>` 是无效 HTML，浏览器会自己拆，
+///   拆成什么样就不由我们说了。
+///
+/// 开合那两个元素外面的两次 `fmt.cr()` 由调用方给
+fn inline_or_blocks_in(node: &Node, attrs: &[(&str, String)], fmt: &mut dyn Renderer) {
+    match inline_or_blocks(node) {
+        InlineOrBlocks::Inline(inline) => {
+            fmt.open("p", attrs);
+            fmt.contents(inline);
+            fmt.close("p");
+        }
+        InlineOrBlocks::Blocks => {
+            fmt.open("div", attrs);
+            fmt.cr();
+            fmt.contents(&node.children);
+            fmt.close("div");
+        }
     }
 }
 
@@ -308,6 +306,7 @@ mod tests {
         assert!(bad.contains("template--problem"), "{bad}");
     }
 
+    /// `::quote origin=` 的署名落成带横线的那一条，正文照常在引用里
     #[test]
     fn quote_template_renders_with_origin() {
         let html = render("::quote origin=\"某 人\"\n  引用内容\n");
@@ -318,6 +317,7 @@ mod tests {
         assert!(html.contains("— 某 人"), "{html}");
     }
 
+    /// 不写 `origin=` 就不该出现任何署名元素 —— 空署名格是没有必要的输出
     #[test]
     fn quote_without_origin_has_no_signature() {
         let html = render("::quote\n  只引用\n");
@@ -325,6 +325,7 @@ mod tests {
         assert!(!html.contains("quote__origin"), "{html}");
     }
 
+    /// 引用可以再套引用：内容必须落在**内层**里，被外层接走就是嵌套坏了
     #[test]
     fn quote_nests() {
         let html = render("::quote\n  ::quote origin=\"内层\"\n    文字\n");
@@ -338,6 +339,7 @@ mod tests {
         assert_eq!(depth, 2, "内容应当嵌在内层 blockquote 里：{html}");
     }
 
+    /// 信息栏的内容照常按 markdown 解析 —— 改成输出原文就丢了强调与链接
     #[test]
     fn aside_renders_its_body_as_markdown() {
         let html = render("::aside title=\"十四门桥\"\n  正文里的**强调**\n");
@@ -349,6 +351,7 @@ mod tests {
         );
     }
 
+    /// 逐行拆成标签与值；没有 `|` 的行整行当标签、值留空 —— 一个字都不丢
     #[test]
     fn fields_split_label_and_value() {
         let html = render("::fields\n  地址 | 福建省某村\n  分类 | 古建筑\n");
@@ -369,6 +372,7 @@ mod tests {
         assert!(!html.contains("<em>"), "{html}");
     }
 
+    /// 横条的文案两种写法都认（块里一行，或 `text=`）；都没有时报用法问题，不画空带
     #[test]
     fn banner_takes_the_body_or_the_text_param() {
         let html = render("::banner\n  福建省文物保护单位\n");
@@ -383,6 +387,8 @@ mod tests {
         assert!(empty.contains("template--problem"), "{empty}");
     }
 
+    /// `color=` 给底色、字色按亮度另配（深底配深字是最常见的自挖坑）；
+    /// `#abc` 这种简写也认，乱写的直接拒 —— 这个值会进 style 属性，宽松不得
     #[test]
     fn banner_color_sets_background_and_readable_text() {
         // 深蓝底 → 浅色字
@@ -404,6 +410,7 @@ mod tests {
         assert!(!bad.contains("style="), "不该拼出 style 属性：{bad}");
     }
 
+    /// `::signature`：右对齐的落款框，块里几行就写几行（名字一行、日期一行）
     #[test]
     fn signature_keeps_markdown_and_a_right_aligned_box() {
         let html = render("::signature\n  甲  \n  2026 年秋\n");

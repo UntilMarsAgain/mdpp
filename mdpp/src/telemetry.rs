@@ -35,6 +35,7 @@ mod tests {
     use super::Size;
     use std::time::Duration;
 
+    /// 量出来的就是这三个数：输入字节、输出字节、微秒 —— 渲染日志那一行读的也是它们
     #[test]
     fn a_size_is_just_three_numbers() {
         let size = Size::measure("甲乙", Duration::from_micros(1500), "<p>甲乙</p>");

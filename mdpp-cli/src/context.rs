@@ -98,6 +98,8 @@ mod tests {
     use super::*;
     use mdpp::{Mdpp, RenderContext};
 
+    /// 给了前缀，`[[甲]]` 就得是**真链接**：`href` 是「前缀 + 目标」拼起来，
+    /// 而 `data-doc` 上留的仍是作者写的那个目标
     #[test]
     fn a_prefix_turns_a_wikilink_into_an_href() {
         let context = RenderContext::new().with_links(link_resolver(Some("/notes/")).unwrap());
@@ -115,6 +117,8 @@ mod tests {
         assert!(html.contains("wikilink"), "{html}");
     }
 
+    /// 读目录不是读完就算：`::卡片` 要真从那张表里取出那一页 ——
+    /// 表没接上，页面上就是「未知块」，而作者明明写了模板页
     #[test]
     fn a_directory_becomes_a_page_table() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
