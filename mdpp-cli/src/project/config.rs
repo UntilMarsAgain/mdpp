@@ -71,6 +71,16 @@ pub struct Config {
     #[serde(default)]
     pub theme: Option<String>,
 
+    /// 顶栏那块底的**主题色**，十六进制：`theme_color = "#2f6fd0"`（`#rgb` 也认）。
+    ///
+    /// 顶栏是**一整块有色的底**（站点名那一行与它下面的导航），压在它上面的字由这个
+    /// 颜色当场算（亮底配近黑字、暗底配白字），深色下再自动压暗一档 —— 亮块在暗页面
+    /// 上是一条刺眼的亮带。
+    ///
+    /// 不写就是 `base.css` 调色板里那套默认的蓝。
+    #[serde(default)]
+    pub theme_color: Option<String>,
+
     /// `<html lang>`
     #[serde(default = "default_lang")]
     pub lang: String,
@@ -140,6 +150,7 @@ impl Default for Config {
             repo_url: String::new(),
             favicon: None,
             theme: None,
+            theme_color: None,
             lang: default_lang(),
             extra_css: Vec::new(),
             extra_js: Vec::new(),
@@ -204,6 +215,17 @@ impl Config {
                 ));
             }
         }
+        // 主题色要在**构建期**算出字色与深色那一档，所以只认十六进制 —— 名字与函数
+        // 写法能塞进字符串的东西比颜色多，而这个值要落进 `<style>` 与 `<meta>`。
+        // 坏值会在整站的顶栏上现形，报错该在这儿而不是渲染到一半时
+        if let Some(color) = &self.theme_color {
+            if crate::color::Color::parse(color).is_none() {
+                return Err(format!(
+                    "theme_color 得是十六进制颜色，如 \"#2f6fd0\"（#rgb 与 #rrggbb 都行），\
+                     写成了「{color}」"
+                ));
+            }
+        }
         // 协议只认 http/https —— 配错了的话 canonical 就是一个坏地址，
         // 而这类错误在产物里完全看不出来（只是搜索引擎不认）
         if let Some(url) = &self.site_url {
@@ -222,7 +244,9 @@ impl Config {
             match entry {
                 NavEntry::SameName(label) => {
                     if label.trim().is_empty() {
-                        return Err("nav 里有一项是空的 —— 写 `{ \"首页\" = \"index\" }` 那样".to_string());
+                        return Err(
+                            "nav 里有一项是空的 —— 写 `{ \"首页\" = \"index\" }` 那样".to_string()
+                        );
                     }
                 }
                 NavEntry::Named(map) => {
@@ -233,9 +257,7 @@ impl Config {
                     }
                     let (label, key) = map.iter().next().expect("上面刚验过只有一项");
                     if label.trim().is_empty() || key.trim().is_empty() {
-                        return Err(format!(
-                            "nav 里的 {label:?} → {key:?} 有一头是空的"
-                        ));
+                        return Err(format!("nav 里的 {label:?} → {key:?} 有一头是空的"));
                     }
                 }
             }
@@ -319,6 +341,34 @@ mod tests {
         }
     }
 
+    /// 主题色只认十六进制 —— 它要落进 `<style>` 与 `<meta>`，还得在构建期算字色。
+    /// 写错的在**读配置时**就说，不放过去（放过去的话整站的顶栏会是默认蓝，
+    /// 而没人会想到去翻 `mdpp.toml`）
+    #[test]
+    fn theme_color_only_takes_hex() {
+        for good in ["#2f6fd0", "#F0C", " #2f6fd0 "] {
+            assert!(
+                Config {
+                    theme_color: Some(good.to_string()),
+                    ..Config::default()
+                }
+                .check()
+                .is_ok(),
+                "「{good}」该是好的"
+            );
+        }
+        for bad in ["red", "rgb(1,2,3)", "#12345", "#12345678", " onload=\"x"] {
+            let error = Config {
+                theme_color: Some(bad.to_string()),
+                ..Config::default()
+            }
+            .check()
+            .expect_err("「{bad}」本该报错");
+            assert!(error.contains("theme_color"), "{error}");
+        }
+        assert!(Config::default().check().is_ok(), "不写主题色该是好的");
+    }
+
     /// `site_url` 只认 http/https —— 写别的那个地址在产物里完全看不出来
     #[test]
     fn site_url_takes_http_or_https() {
@@ -374,44 +424,53 @@ nav = ["首页", { "指南" = "指南/入门" }]
         assert_eq!(config.nav[0], NavEntry::SameName("首页".to_string()));
         assert_eq!(
             config.nav[1],
-            NavEntry::Named(BTreeMap::from([("指南".to_string(), "指南/入门".to_string())]))
+            NavEntry::Named(BTreeMap::from([(
+                "指南".to_string(),
+                "指南/入门".to_string()
+            )]))
         );
 
         // 空 nav 也是好配置
         assert!(Config::default().check().is_ok());
 
         // 单项表里写了两项 —— 解析得过（毕竟是个表），check 时该说
-        let config: Config = toml::from_str(r#"nav = [{ "甲" = "a", "乙" = "b" }]"#)
-            .expect("表里多少项都能解析");
-        assert!(
-            config.check().is_err(),
-            "多项表不该被接受"
-        );
+        let config: Config =
+            toml::from_str(r#"nav = [{ "甲" = "a", "乙" = "b" }]"#).expect("表里多少项都能解析");
+        assert!(config.check().is_err(), "多项表不该被接受");
     }
 
     /// 导航里空显示文字 / 空键是配置错误；`toc` 默认「目录」，空串不生成
     #[test]
     fn nav_and_toc_defaults_and_validation() {
         assert_eq!(Config::default().toc, "目录");
-        assert!(Config {
-            nav: vec![NavEntry::Named(BTreeMap::from([("".to_string(), "a".to_string())]))],
-            ..Config::default()
-        }
-        .check()
-        .is_err());
-        assert!(Config {
-            nav: vec![NavEntry::SameName("   ".to_string())],
-            ..Config::default()
-        }
-        .check()
-        .is_err());
+        assert!(
+            Config {
+                nav: vec![NavEntry::Named(BTreeMap::from([(
+                    "".to_string(),
+                    "a".to_string()
+                )]))],
+                ..Config::default()
+            }
+            .check()
+            .is_err()
+        );
+        assert!(
+            Config {
+                nav: vec![NavEntry::SameName("   ".to_string())],
+                ..Config::default()
+            }
+            .check()
+            .is_err()
+        );
         // 正常的写法要能过
-        assert!(Config {
-            toc: String::new(),
-            nav: vec![NavEntry::SameName("首页".to_string())],
-            ..Config::default()
-        }
-        .check()
-        .is_ok());
+        assert!(
+            Config {
+                toc: String::new(),
+                nav: vec![NavEntry::SameName("首页".to_string())],
+                ..Config::default()
+            }
+            .check()
+            .is_ok()
+        );
     }
 }

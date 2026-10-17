@@ -34,6 +34,12 @@
   --mdpp-error-bg: #f3e7f7;
   --mdpp-error-fg: #6d2a86;
 
+  /* 顶栏那块底，与压在它上面的字。深色那一档（下面两处）是往黑里混了一档 ——
+   * 亮块在暗页面上是一条刺眼的亮带，而这俩在深色下都是**前景色**（浅蓝、浅灰），
+   * 拿它们铺底就露馅。`theme_color` 配了就是它说了算（`page::bar_color_style`） */
+  --mdpp-bar-bg: #2f6fd0;
+  --mdpp-bar-fg: #ffffff;
+
   --mdpp-radius: 8px;
   --mdpp-gap: 1em;
 }
@@ -59,6 +65,8 @@
     --mdpp-danger-fg: #ffa39c;
     --mdpp-error-bg: #2e1a36;
     --mdpp-error-fg: #d9a6e8;
+    --mdpp-bar-bg: #2456a2;
+    --mdpp-bar-fg: #ffffff;
   }
 }
 
@@ -83,6 +91,8 @@
   --mdpp-danger-fg: #8f211c;
   --mdpp-error-bg: #f3e7f7;
   --mdpp-error-fg: #6d2a86;
+  --mdpp-bar-bg: #2f6fd0;
+  --mdpp-bar-fg: #ffffff;
 }
 
 :root[data-mdpp-theme='dark'] {
@@ -105,6 +115,8 @@
   --mdpp-danger-fg: #ffa39c;
   --mdpp-error-bg: #2e1a36;
   --mdpp-error-fg: #d9a6e8;
+  --mdpp-bar-bg: #2456a2;
+  --mdpp-bar-fg: #ffffff;
 }
 
 /* ---- 正文 --------------------------------------------------------- */
@@ -183,9 +195,40 @@
   margin: 2em 0;
 }
 
+/* 表格。markdown 出来的是**裸的 `<table>`**（一个 class 都没有），所以线、底色、
+ * 内边距全得在这一处给。只写 `border-collapse` 是不够的 —— 它只回答「线怎么合」，
+ * 得先有人给线，否则表格就是一片裸字（这个 bug 犯过一次）。 */
 .mdpp-content table {
   border-collapse: collapse;
   margin: var(--mdpp-gap) 0;
+}
+
+/* 只认**没有 class 的那张表**：`::fields`（text.css）与 `::navbox`（navbox.css）
+ * 各有各的样子，它们只要行与行分开的那条线，不套一圈框。`table:not([class])`
+ * 把那两张连同它们的格子一起挡在门外 —— 比逐个去比选择器的权重稳：它们的规则
+ * 写在后面，权重却未必更高。 */
+.mdpp-content table:not([class]) th,
+.mdpp-content table:not([class]) td {
+  border: 1px solid var(--mdpp-border);
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+}
+
+/* 表头：底色深一号、字重加粗 —— 哪一行是表头，隔着一段距离也认得出。
+ * 颜色仍取那组变量，于是深浅色是同一份规则，而不是各写一份。
+ * 对齐符（`| :--: |`）落的是行内 style，压得过这条 */
+.mdpp-content table:not([class]) thead th {
+  background: var(--mdpp-surface);
+  font-weight: 600;
+}
+
+/* 宽表在窄屏上别把整张卡片撑破：给它自己一条横向滚动的路，页面照旧不动。
+ * `display: block` 是那把钥匙 —— `overflow` 落在**表格式盒**上不生效（它不是
+ * 块容器），降成块之后里面的 thead/tbody 会被匿名表格盒重新围起来、照常按表排，
+ * 而撑出去的那部分就归这个块管了 */
+.mdpp-content table:not([class]) {
+  display: block;
+  overflow-x: auto;
 }
 
 .mdpp-content :not(pre) > code {

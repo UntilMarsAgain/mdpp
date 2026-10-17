@@ -13,13 +13,17 @@
  *   mkdocs 那边是白底平铺，列与页没有边界。
  * - 顶栏是**贴着顶**的（`sticky`）而不是 `fixed` —— 不用给正文留一段魔法偏移。
  * - 底栏只有一句话加一句「由 mdpp 生成」，没有 mkdocs 那一串社交图标。
- * - 导航是**一排链接按钮**，当前页那一个不另给颜色（mkdocs-material 那边是
- *   accent 色的 active tab）。是哪一页由 `aria-current` 报给读屏软件，眼睛不必分。
+ * - 顶上那一条（站点名那一行与它下面的导航）是**一整块有色的底**：底色取
+ *   `--mdpp-bar-bg`、压在它上面的字取 `--mdpp-bar-fg`。两样的默认值在 `base.css`
+ *   的调色板里，`mdpp.toml` 的 `theme_color` 说了算就是它（连深色那一档一起算好）。
+ *   这一份里因此**一个颜色都没写死**：换色不必改它
+ * - 当前页那一个导航项不另给颜色（mkdocs-material 那边是 accent 色的 active tab）
+ *   —— 是哪一页由 `aria-current` 报给读屏软件，眼睛不必分。
  *
- * 这些都是写死的：**这一层不提供开关**。能配的只有顶栏与底栏上那几句话
+ * 版式是写死的：**这一层不提供开关**。能配的只有顶栏与底栏上那几句话
  * （`mdpp.toml` 里的 `site_name` / `site_description` / `repo_url` / `copyright`）、
- * 导航栏那一行链接（`nav`），配色仍取自 `base.css` 的 `:root`；想改版式就复制一份
- * `site.css` 去改。
+ * 导航栏那一行链接（`nav`），以及顶上那块底的颜色（`theme_color`）；其余配色仍取自
+ * `base.css` 的 `:root`；想改版式就复制一份 `site.css` 去改。
  */
 
 /* ---- 那一列 ---------------------------------------------------------- */
@@ -38,13 +42,26 @@
 
 /* ---- 顶栏 ------------------------------------------------------------- */
 
-/* 贴着顶：往上滚时它留在那儿，像一个真站点 */
+/* 浏览器给 `body` 的默认 8px 外边距得抹掉：顶栏是**贴着窗口边**的那一条，缩一圈就
+ * 在两边露出底色 —— 窗口越宽那圈越显眼。单文件页面那边故意不留这个 reset：
+ * 那儿没有顶栏，这 8px 正好当页边距 */
+body {
+  margin: 0;
+}
+
+/* 贴着顶：往上滚时它留在那儿，像一个真站点。
+ *
+ * 这一整条（站点名那一行 + 下面的导航）是**一整块有色的底**，不是「灰底上贴一条
+ * 蓝带」—— 两块底色挨在一起，谁都不比谁响，标题反而被压住了。
+ * 底色取 `--mdpp-bar-bg`，默认值在 `base.css` 的调色板里（深色下那一档往黑里混过），
+ * `mdpp.toml` 的 `theme_color` 说了算就是它 */
 .mdpp-bar {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: var(--mdpp-surface);
-  border-bottom: 1px solid var(--mdpp-border);
+  background: var(--mdpp-bar-bg);
+  /* 收边那条线也从同一个底色里掺黑 —— 换色时它跟着走，不必再配一次 */
+  border-bottom: 1px solid color-mix(in srgb, var(--mdpp-bar-bg) 72%, #000);
 }
 
 .mdpp-bar__inner {
@@ -55,14 +72,17 @@
   padding: 0.65rem 1.5rem;
 }
 
+/* 站点名是这一条上最响的东西：字号比正文大一截、字重 600。字色取**压在底上的**
+ * 那个（亮底近黑、暗底白）—— 构建期按亮度算好，这里不必再分深浅 */
 .mdpp-bar__title {
   font-weight: 600;
-  font-size: 1.05em;
-  color: var(--mdpp-accent);
+  font-size: 1.25em;
+  color: var(--mdpp-bar-fg);
 }
 
+/* 说明与仓库链接退一档：往字色里掺一点透明，底色透上来一点 */
 .mdpp-bar__desc {
-  color: var(--mdpp-text-dim);
+  color: color-mix(in srgb, var(--mdpp-bar-fg) 72%, transparent);
   font-size: 0.92em;
 }
 
@@ -73,7 +93,7 @@
   gap: 0.35em;
   margin-left: auto;
   font-size: 0.92em;
-  color: var(--mdpp-text-dim);
+  color: color-mix(in srgb, var(--mdpp-bar-fg) 72%, transparent);
   text-decoration: none;
 }
 
@@ -91,45 +111,47 @@
 }
 
 .mdpp-bar__repo:hover {
-  color: var(--mdpp-accent);
+  color: var(--mdpp-bar-fg);
 }
 
 /* ---- 导航栏 ----------------------------------------------------------- */
 
-/* 顶栏下面那一行链接，mkdocs-material 的 tabs 那个位置。
- * 与顶栏同一层，于是往上滚时它跟着顶栏一起留在那儿 */
-.mdpp-nav {
-  border-top: 1px solid var(--mdpp-border);
-  background: var(--mdpp-surface);
-}
+/* 顶栏下面那一行链接，mkdocs-material 的 tabs 那个位置。与顶栏同一层，于是往上滚时
+ * 它跟着顶栏一起留在那儿。
+ *
+ * 它**自己不上色、也不画分隔线**：与站点名那一行是同一块底（`.mdpp-bar` 那块
+ * `--mdpp-bar-bg`），上下连成一整条 —— 同一块底上再切一刀，中间那条线就成了噪声 */
 
-/* 每一项都等高，按**居中**对齐才齐 —— 带边框的盒子按基线摆会错开一截 */
+/* 链接排成一行、挤不下就折行。按**基线**对齐：这一排都是文字，没有盒子要对，
+ * 文字坐在同一条线上才齐 */
 .mdpp-nav__inner {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem;
+  align-items: baseline;
+  gap: 0.1rem 0.4rem;
   padding: 0 1.5rem;
 }
 
-/* 一排**同款的链接按钮**：当前页那一个只在 HTML 上多个 `aria-current`，
- * 这里不认它（`page::nav_bar` 也就不再多拼一个 class）——
- * 「你在哪一页」交给读屏软件，颜色交给所有人统一的这一套 */
+/* 每一项就是**一条平铺的链接**：不套框、不做按钮。当前页那一个在 HTML 上
+ * 多一个 `aria-current`（给读屏软件的那一句「你在这儿」），样式上不另给 ——
+ * `page::nav_bar` 也就不再多拼一个 class。
+ *
+ * 字号比站点名小一档（0.9em 对 1.25em）：这一排是**次于标题**的东西，
+ * 站点名该是这一条上最响的那一个 */
 .mdpp-nav__link {
   display: inline-block;
-  padding: 0.3rem 0.75rem;
-  font-size: 0.95em;
-  line-height: 1.4;
-  color: var(--mdpp-text-dim);
+  padding: 0.5rem 0.7rem 0.55rem;
+  font-size: 0.9em;
+  color: color-mix(in srgb, var(--mdpp-bar-fg) 84%, transparent);
   text-decoration: none;
-  border: 1px solid var(--mdpp-border);
-  border-radius: calc(var(--mdpp-radius) / 2);
 }
 
-/* hover 只把文字与边框换成 accent：按钮的反馈，不是「当前页」的记号 */
+/* 悬停给一小块**同色系的底**、字提回全白：往底上的字色里掺，于是浅底深底各自成立
+ * （写死一个灰或白，就总有一头不成立）。
+ * 这是「可以点」的提示，不是「当前页」的记号 —— 后者由 aria-current 独占 */
 .mdpp-nav__link:hover {
-  color: var(--mdpp-accent);
-  border-color: var(--mdpp-accent);
+  color: var(--mdpp-bar-fg);
+  background: color-mix(in srgb, var(--mdpp-bar-fg) 14%, transparent);
 }
 
 /* ---- 卡片 ------------------------------------------------------------- */
@@ -230,12 +252,21 @@ body {
     box-shadow: none;
   }
 
-  /* 纸上没有按钮这一说：导航那排的边框是屏幕上的排版，印出来只是一圈噪声 */
+  /* 纸上没有那块色带：顶栏上的字全回正文那套颜色 —— 白字落在白纸上就整个没了 */
+  .mdpp-bar__title {
+    color: var(--mdpp-text);
+  }
+
+  .mdpp-bar__desc,
+  .mdpp-bar__repo,
   .mdpp-nav__link {
-    border: 0;
+    color: var(--mdpp-text-dim);
   }
 
   body {
     background: #fff;
+    /* 屏幕上那 8px 外边距在纸上换成一圈正经留白 —— 顶栏要顶满窗口，正文可不能
+     * 顶到纸边 */
+    padding: 1.5rem;
   }
 }

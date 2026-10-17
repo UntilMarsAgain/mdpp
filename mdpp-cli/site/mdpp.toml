@@ -34,6 +34,12 @@ site_dir = "build"
 # 整页的主题：light / dark 是钉死，system 或不写 = 跟随系统（prefers-color-scheme）
 theme = "system"
 
+# 顶栏那块底的主题色，十六进制（#rgb 与 #rrggbb 都行）。
+# 顶栏（站点名那一行与它下面的导航）是一整块有色的底：压在它上面的字由这个颜色
+# 当场算（亮底配近黑字、暗底配白字），深色下再自动压暗一档 —— 亮块在暗页面上
+# 是一条刺眼的亮带。不写就是默认的蓝（base.css 调色板里那套）。
+# theme_color = "#2f6fd0"
+
 # <html lang>
 lang = "zh-Hans"
 

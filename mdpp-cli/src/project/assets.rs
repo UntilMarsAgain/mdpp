@@ -95,8 +95,11 @@ pub fn scan(html: &str, context: &Context) -> Scan {
                     .to_string_lossy()
                     .replace('\\', "/");
                 out.wanted.push(Wanted { from, to });
-                out.html
-                    .push_str(&format!("{}/{}", context.assets_prefix, url::encode_href(&relative)));
+                out.html.push_str(&format!(
+                    "{}/{}",
+                    context.assets_prefix,
+                    url::encode_href(&relative)
+                ));
             }
             Some(Err(Skip::NotOurs(reason))) => {
                 tracing::debug!(value, reason, "这个地址不归我管");

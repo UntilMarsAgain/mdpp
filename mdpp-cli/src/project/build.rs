@@ -28,7 +28,9 @@ use crate::page;
 use crate::page::NavLink;
 use crate::project::assets;
 use crate::project::config::NavEntry;
-use crate::project::site::{Links, Missing, Page, Site, assets_href, href, normalize, output_of, INDEX_KEY};
+use crate::project::site::{
+    INDEX_KEY, Links, Missing, Page, Site, assets_href, href, normalize, output_of,
+};
 use crate::project::{self, Project, ensure_dir, shown, under};
 
 use mdpp::{Mdpp, RenderContext};
@@ -137,7 +139,11 @@ impl Pass<'_> {
     ///
     /// 记账与渲染同手发生，是因为**事后从产物里反推不回来**：这时出的 HTML 还没套外壳、
     /// 地址还没按各自深度改写，红链在哪儿、缺了哪个文件只有这一刻知道
-    fn source_body(&mut self, page: &Page, assets_prefix: &str) -> Result<(String, String), String> {
+    fn source_body(
+        &mut self,
+        page: &Page,
+        assets_prefix: &str,
+    ) -> Result<(String, String), String> {
         let source = std::fs::read_to_string(&page.source)
             .map_err(|error| format!("读不了 {}：{error}", shown(&page.source)))?;
 
@@ -298,7 +304,11 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
 
     // 账倒出来：循环之后只读不写，拆开比继续透过 `pass` 拿清楚
     let Pass {
-        absent, copied, taken, broken, ..
+        absent,
+        copied,
+        taken,
+        broken,
+        ..
     } = pass;
 
     // 覆盖层：把 `override/` 里的东西原样拷到产物里，重复就覆盖
@@ -373,6 +383,14 @@ fn chrome(project: &Project, nav: &[NavLink]) -> page::Chrome {
         description: project.config.site_description.clone(),
         repo_url: project.config.repo_url.clone(),
         copyright: project.config.copyright.clone(),
+        // `check()` 已经筛过这个值，这里是把十六进制变成**能算的东西**（字色、
+        // 深色那一档都要当场算）。万一没有（不该发生），回落到 `base.css` 的默认蓝，
+        // 而不是让整站构建失败
+        theme_color: project
+            .config
+            .theme_color
+            .as_deref()
+            .and_then(crate::color::Color::parse),
         nav: nav.to_vec(),
     }
 }
@@ -405,12 +423,11 @@ fn resolve_nav(
             }
             NavEntry::Named(map) => {
                 let (label, key) = map.iter().next().expect("check 里验过只有一项");
-                let target = normalize(key).ok_or_else(|| {
-                    format!("nav 里 {label:?} → {key:?} 不是个站内页的键")
-                })?;
-                let page = site.by_key(&target).ok_or_else(|| {
-                    format!("nav 里 {label:?} → {key:?} 站内没有这样的页")
-                })?;
+                let target = normalize(key)
+                    .ok_or_else(|| format!("nav 里 {label:?} → {key:?} 不是个站内页的键"))?;
+                let page = site
+                    .by_key(&target)
+                    .ok_or_else(|| format!("nav 里 {label:?} → {key:?} 站内没有这样的页"))?;
                 (label.clone(), page.key.clone())
             }
         };
@@ -666,8 +683,8 @@ pub fn report(built: &Built) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
     use crate::project::site::{INDEX_KEY, output_of};
+    use std::collections::BTreeMap;
 
     /// 一个小站点：首页 + 两页，`指南/入门` 与 `手册`
     fn site_of(files: &[&str]) -> (tempfile::TempDir, Site) {
@@ -715,7 +732,10 @@ mod tests {
         let resolved = resolve_nav(
             &[
                 NavEntry::SameName("手册".to_string()),
-                NavEntry::Named(BTreeMap::from([("指南".to_string(), "指南/入门".to_string())])),
+                NavEntry::Named(BTreeMap::from([(
+                    "指南".to_string(),
+                    "指南/入门".to_string(),
+                )])),
             ],
             "目录",
             &site,

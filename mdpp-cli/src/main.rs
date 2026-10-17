@@ -5,6 +5,7 @@
 
 // 这些模块只属于这个二进制，库那边一概不知道它们存在 —— 所以它们住在 `mdpp-cli`
 // 这个包里，并且对 `mdpp::` 不可见（`pub(crate)`）。
+mod color;
 mod context;
 mod http;
 mod options;
