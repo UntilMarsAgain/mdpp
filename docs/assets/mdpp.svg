@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%">
+  <defs>
+    <!-- 定义颜色变量，方便统一调整 -->
+    <style>
+      .dark-blue { fill: #152A78; }
+      .teal { fill: #1CB6A8; }
+      .line-dark-blue { stroke: #152A78; fill: none; }
+      .line-teal { stroke: #1CB6A8; fill: none; }
+      .line-dash-dark { stroke: #1A273A; fill: none; stroke-dasharray: 6, 6; }
+      .line-dash-teal { stroke: #1CB6A8; fill: none; stroke-dasharray: 6, 6; }
+      .text-logo { font-family: 'Arial', sans-serif; font-weight: bold; font-size: 48px; fill: #152A78; letter-spacing: 2px; }
+    </style>
+  </defs>
+
+  <!-- 1. 底部的虚线轨道 -->
+  <g id="dashed-orbits" stroke-width="2.5">
+    <ellipse cx="250" cy="250" rx="165" ry="62" transform="rotate(38 250 250)" class="line-dash-dark" />
+    <ellipse cx="250" cy="250" rx="165" ry="62" transform="rotate(-38 250 250)" class="line-dash-teal" />
+  </g>
+
+  <!-- 2. 深蓝色实心圆 -->
+  <circle cx="250" cy="250" r="98" class="dark-blue" />
+
+  <!-- 3. 青色三角形 -->
+  <polygon points="250,152 365,365 135,365" class="teal" />
+
+  <!-- 4. 中心白色镂空 -->
+  <circle cx="250" cy="250" r="48" fill="#ffffff" />
+
+  <!-- 5. 坐标轴及箭头（置于最顶层，不再被任何图形遮挡） -->
+  <g id="axes" stroke-width="2">
+    <line x1="80" y1="250" x2="420" y2="250" class="line-dark-blue" />
+    <line x1="250" y1="80" x2="250" y2="420" class="line-dark-blue" />
+    
+    <!-- 右侧箭头 -->
+    <polygon points="435,250 415,240 415,260" class="dark-blue" />
+    <!-- 顶部箭头 -->
+    <polygon points="250,65 240,85 260,85" class="dark-blue" />
+  </g>
+</svg>
