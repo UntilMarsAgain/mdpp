@@ -20,11 +20,12 @@ site_description = "给 markdown 加一套块级方言"
 copyright = "MIT 许可"
 
 # 标签页上那个小图标。相对本文件，不写就没有（浏览器自己画一个）
-favicon = "assets/mdpp.svg"
+# 标签页底色是浅的，所以这份是**深色**的版本；顶栏那份（logo）是白配彩色底的
+favicon = "assets/favicon.svg"
 
-# 顶栏里、站点名旁边那个图标。与 favicon 是两件事，可以都指向同一张图。
+# 顶栏里、站点名旁边那个图标。与 favicon 是两件事，两枚共用同一套几何、只有配色不同
 # 不写就没有那个图，顶栏只是少了它
-logo = "assets/mdpp.svg"
+logo = "assets/logo.svg"
 
 # 正文在哪。mdpp build 递归扫这个目录，.md 与 .mdpp 都算页面
 pages_dir = "pages"
