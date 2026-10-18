@@ -366,11 +366,13 @@ fn favicon(project: &Project, site_dir: &Path) -> Result<Option<String>, String>
         .map(|name| name.to_string_lossy().into_owned())
         .ok_or_else(|| format!("favicon 不是个文件名字：{}", shown(configured)))?;
     let to = site_dir.join(page::ASSET_DIR).join(&name);
-    project::write_file(
-        &to,
-        &std::fs::read_to_string(&from)
-            .map_err(|error| format!("读不了 favicon {}：{error}", shown(&from)))?,
-    )?;
+    if let Some(parent) = to.parent() {
+        ensure_dir(parent)?;
+    }
+    // **按字节拷**，不用 `read_to_string` + `write_file` —— favicon 最常见的就是
+    // `.png` / `.ico` / `.gif` 那些**二进制**文件，`read_to_string` 读它们会因
+    // 「stream did not contain valid UTF-8」直接失败，于是最常见的用法反而报错。
+    std::fs::copy(&from, &to).map_err(|error| format!("读不了 favicon {}：{error}", shown(&from)))?;
     // 只给**文件名**：`favicon` 写的是项目里的相对路径，而产物里它在 `assets/` 下
     Ok(Some(crate::url::encode_href(&name)))
 }
