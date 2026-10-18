@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-hidden="true">
+  <!--
+    Markdown++ 的 favicon —— 摆在浏览器标签页上。
+
+    与 logo.svg **同一套几何、只有配色不同**：标签页的底是**浅色**的（浅灰/白），
+    所以这里用品牌深蓝 + 青，而不是 logo 那份的白色 —— 白 logo 贴在浅色标签上会看不见。
+    顶栏里那枚（logo.svg）是反过来的：白配彩色顶栏。
+
+    刻意从简：粗环 + markdown 三角（▾）+ 一枚落在环上的圆点。标签页里它只有十几个
+    像素，细笔画会糊成一团，所以只留几笔粗的。
+
+    图形在画布里居中的理由与 logo.svg 相同：外轮廓（环）取 cx=cy=32、半径 21、描边 5，
+    连描边正好落在 8.5…55.5，四边余量一样宽。
+  -->
+  <circle cx="32" cy="32" r="21" fill="none" stroke="#152A78" stroke-width="5" />
+  <path d="M23 28 L32 40 L41 28" fill="none" stroke="#152A78" stroke-width="5"
+        stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="46" cy="15" r="6.5" fill="#1CB6A8" />
+</svg>
