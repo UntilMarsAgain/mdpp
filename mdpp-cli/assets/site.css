@@ -72,6 +72,24 @@ body {
   padding: 0.65rem 1.5rem;
 }
 
+/* 图标与站点名合成一组：组内按**基线**对齐（文字坐在同一条线上），组间仍由外层那个
+ * flex 的 `align-items: baseline` 定位，于是这一组整体与右边那几样坐在一条线上 */
+.mdpp-bar__brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5em;
+}
+
+/* 顶栏里的图标：高度跟着字号走（`1em` = 继承来的字号），宽按比例自己算 ——
+ * 所以换 `site_name` 的字号时它跟着变，不必在这里配第二套尺寸 */
+.mdpp-bar__logo {
+  height: 1.5em;
+  width: auto;
+  /* 图的下缘坐在文字的基线上：baseline 对齐时 `<img>` 的基线就是它的下缘，
+   * 不挪一下的话图会比字往下沉一点 */
+  vertical-align: -0.2em;
+}
+
 /* 站点名是这一条上最响的东西：字号比正文大一截、字重 600。字色取**压在底上的**
  * 那个（亮底近黑、暗底白）—— 构建期按亮度算好，这里不必再分深浅 */
 .mdpp-bar__title {

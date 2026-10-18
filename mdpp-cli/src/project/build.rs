@@ -241,6 +241,9 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
     // 页面上的地址按各自的深度加前缀，所以这里存的是**相对站点根**的那一份
     let favicon = favicon(project, site_dir)?;
 
+    // 顶栏里站点名旁边那个图标：与 favicon 同一条路（同一种配置、同一处落地）
+    let logo = logo(project, site_dir)?;
+
     // 一个空文件，作用是让 GitHub Pages **别跑 Jekyll**。
     //
     // Jekyll 把 `_` 开头或叫 `.git` 的目录当内部数据结构处理，**静默丢掉**它们 ——
@@ -278,11 +281,16 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
         };
 
         let nav = nav_for(&nav, &page.key);
+        // 顶栏那个图标也是同一套地址：按这一页的深度加前缀（`../../assets/…`）
+        let logo = logo
+            .as_deref()
+            .map(|name| format!("{assets_prefix}/{name}"))
+            .unwrap_or_default();
         let document = page::document(&page::Page {
             title: &title,
             lang: &project.config.lang,
             theme: project.config.theme.as_deref(),
-            chrome: chrome(project, &nav),
+            chrome: chrome(project, &nav, &logo),
             canonical: page::Canonical {
                 root: project.config.site_url.clone(),
                 path: page.url_path(),
@@ -357,31 +365,59 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
 /// 写了却读不到就**报错** —— 那是一个笔误，而一个读不到的小图标只会静悄悄地
 /// 让浏览器画一个默认的。
 fn favicon(project: &Project, site_dir: &Path) -> Result<Option<String>, String> {
-    let Some(configured) = &project.config.favicon else {
+    copy_asset_into(
+        project,
+        site_dir,
+        project.config.favicon.as_deref(),
+        "favicon",
+    )
+}
+
+/// 顶栏里、站点名旁边那个图标：与 [`favicon`] 同一条路 —— 同一个配置形状、同样拷进
+/// `assets/`、同样给出「相对站点根」的那一份地址。
+fn logo(project: &Project, site_dir: &Path) -> Result<Option<String>, String> {
+    copy_asset_into(project, site_dir, project.config.logo.as_deref(), "logo")
+}
+
+/// 把配置里指的一个文件拷进产物的 `assets/`，给出它的**文件名**（相对站点根）。
+///
+/// `favicon` 与 `logo` 走的是同一条路：读进来、按字节拷进 `assets/`、只把文件名
+/// 交出去（页面按各自深度加前缀，见 [`assets_href`]）。两份各写一份的话，
+/// 「读不到就报错」与「按字节拷而不是按文本读」都要各写一次 —— 而后者正是当初
+/// favicon 只认 `.svg`、`.png` 直接失败的那个坑。
+///
+/// **按字节拷**：这两个字段指的都是图片，`.png` / `.ico` / `.gif` 是二进制，
+/// `read_to_string` 读它们会因「不是合法 UTF-8」失败，于是最常见的用法反而用不了。
+fn copy_asset_into(
+    project: &Project,
+    site_dir: &Path,
+    configured: Option<&std::path::Path>,
+    what: &str,
+) -> Result<Option<String>, String> {
+    let Some(configured) = configured else {
         return Ok(None);
     };
     let from = under(&project.root, configured);
     let name = configured
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
-        .ok_or_else(|| format!("favicon 不是个文件名字：{}", shown(configured)))?;
+        .ok_or_else(|| format!("{what} 不是个文件名字：{}", shown(configured)))?;
     let to = site_dir.join(page::ASSET_DIR).join(&name);
     if let Some(parent) = to.parent() {
         ensure_dir(parent)?;
     }
-    // **按字节拷**，不用 `read_to_string` + `write_file` —— favicon 最常见的就是
-    // `.png` / `.ico` / `.gif` 那些**二进制**文件，`read_to_string` 读它们会因
-    // 「stream did not contain valid UTF-8」直接失败，于是最常见的用法反而报错。
-    std::fs::copy(&from, &to).map_err(|error| format!("读不了 favicon {}：{error}", shown(&from)))?;
-    // 只给**文件名**：`favicon` 写的是项目里的相对路径，而产物里它在 `assets/` 下
+    std::fs::copy(&from, &to).map_err(|error| format!("读不了 {what} {}：{error}", shown(&from)))?;
+    // 只给**文件名**：配置里写的是项目里的相对路径，而产物里它在 `assets/` 下
     Ok(Some(crate::url::encode_href(&name)))
 }
 
 /// 顶栏与底栏那几句话 —— 配置里那几个单行字段，原样递过去。
-/// `nav` 是这一页要用的那一份（每页里「哪一项是当前页」不一样）
-fn chrome(project: &Project, nav: &[NavLink]) -> page::Chrome {
+/// `nav` 是这一页要用的那一份（每页里「哪一项是当前页」不一样）；
+/// `logo` 是站点名旁边那个图标的地址（**已带好这一页的深度前缀**）
+fn chrome(project: &Project, nav: &[NavLink], logo: &str) -> page::Chrome {
     page::Chrome {
         name: project.config.site_name.clone(),
+        logo: logo.to_string(),
         description: project.config.site_description.clone(),
         repo_url: project.config.repo_url.clone(),
         copyright: project.config.copyright.clone(),

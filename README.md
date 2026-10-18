@@ -138,6 +138,7 @@ site_url = "https://x.github.io/repo/"        # 站点在网上的地址；配�
 repo_url = "https://example.com/notes"        # 顶栏右端那个链接（只认 http/https）
 copyright = "© 某人"                          # 底栏那句；空的就是没有底栏
 favicon = "assets/icon.svg"                   # 标签页上那个小图标；相对项目根
+logo = "assets/icon.svg"                      # 顶栏里、站点名旁边那个图标；同上
 override_dir = "override"                     # 覆盖层：build 后把这里的东西原样拷到产物里
 toc = "目录"                                  # 目录页的名字（键）；空串就不生成目录页
 nav = ["首页", { "指南" = "指南/入门" }]        # 导航栏：顶栏下面那一行链接

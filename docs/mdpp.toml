@@ -22,6 +22,10 @@ copyright = "MIT 许可"
 # 标签页上那个小图标。相对本文件，不写就没有（浏览器自己画一个）
 favicon = "assets/mdpp.svg"
 
+# 顶栏里、站点名旁边那个图标。与 favicon 是两件事，可以都指向同一张图。
+# 不写就没有那个图，顶栏只是少了它
+logo = "assets/mdpp.svg"
+
 # 正文在哪。mdpp build 递归扫这个目录，.md 与 .mdpp 都算页面
 pages_dir = "pages"
 

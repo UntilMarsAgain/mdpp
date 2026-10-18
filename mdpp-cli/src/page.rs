@@ -155,6 +155,9 @@ impl Assets {
 pub struct Chrome {
     /// 顶栏左边的站点名。**空的就是没有顶栏**
     pub name: String,
+    /// 站点名**旁边**那个图标的地址（已经带好 `assets/` 前缀与文件名）。
+    /// `None` / 空串就是没有那个 `<img>` —— 顶栏只是少了它，其余一字不变
+    pub logo: String,
     /// 顶栏上那句说明。顺带进 `<meta name="description">`
     pub description: String,
     /// 顶栏右端那个仓库链接（只给 http/https）
@@ -364,10 +367,24 @@ fn top_bar(chrome: &Chrome) -> String {
     }
     let mut inner = String::new();
     if !name.is_empty() {
-        inner.push_str(&format!(
+        // 图标与站点名**合成一组**（`.mdpp-bar__brand`）：flex 按基线对齐时，一张图
+        // 与一行字坐在同一条基线上才对得齐 —— 摊成两个 flex 项的话，图得单独调
+        // `align-self`，而那个偏移量取决于字号与图的大小，改样式就得回来改这里
+        let logo = chrome.logo.trim();
+        let mut brand = String::new();
+        if !logo.is_empty() {
+            // `alt` 留空：站点名就在旁边，图是**装饰** —— 读屏软件读一遍「图标」是
+            // 把同一句话说两遍
+            brand.push_str(&format!(
+                "<img class=\"mdpp-bar__logo\" src=\"{}\" alt=\"\">",
+                escape(logo)
+            ));
+        }
+        brand.push_str(&format!(
             "<span class=\"mdpp-bar__title\">{}</span>",
             escape(name)
         ));
+        inner.push_str(&format!("<span class=\"mdpp-bar__brand\">{brand}</span>"));
         let description = chrome.description.trim();
         if !description.is_empty() {
             inner.push_str(&format!(
@@ -815,6 +832,51 @@ mod tests {
             ..site_page("x")
         });
         assert!(!nameless.contains("mdpp-bar"), "{nameless}");
+    }
+
+    /// 顶栏里站点名**旁边**那个图标：配了就有一个 `<img>`，与站点名合成一组
+    /// （`.mdpp-bar__brand`）；不配就没有那个 `<img>`，其余一字不变
+    #[test]
+    fn a_logo_sits_next_to_the_site_name() {
+        let with_logo = document(&Page {
+            chrome: Chrome {
+                logo: "assets/logo.svg".to_string(),
+                ..site_page("x").chrome
+            },
+            ..site_page("x")
+        });
+        // 图在前、名在后，且合成一组 —— 分成两个 flex 项的话图得单独调 align-self
+        assert!(
+            with_logo.contains(concat!(
+                r#"<span class="mdpp-bar__brand">"#,
+                r#"<img class="mdpp-bar__logo" src="assets/logo.svg" alt="">"#,
+                r#"<span class="mdpp-bar__title">某站点</span></span>"#,
+            )),
+            "{with_logo}"
+        );
+
+        // 不配就没有那个 `<img>`，而站点名照旧在
+        let without = document(&site_page("x"));
+        assert!(!without.contains("mdpp-bar__logo"), "{without}");
+        assert!(
+            without.contains("<span class=\"mdpp-bar__title\">某站点</span>"),
+            "不配 logo 不该动站点名：{without}"
+        );
+    }
+
+    /// 图标的地址要转义 —— 与 favicon 同一条规矩：配置是人写的，一个引号就能把
+    /// 属性截断（`onload=` 那种）
+    #[test]
+    fn the_logo_href_is_escaped() {
+        let html = document(&Page {
+            chrome: Chrome {
+                logo: "assets/x\" onload=\"alert(1)".to_string(),
+                ..site_page("x").chrome
+            },
+            ..site_page("x")
+        });
+        assert!(!html.contains("onload=\"alert"), "{html}");
+        assert!(html.contains("&quot;"), "{html}");
     }
 
     /// 导航栏：每一项都是**同一个链接按钮**，当前页那一个只多 `aria-current`
