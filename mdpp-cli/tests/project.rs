@@ -525,6 +525,89 @@ fn a_favicon_that_cannot_be_read_is_refused() {
     assert!(message.contains("favicon"), "{message}");
 }
 
+/// 顶栏里站点名**旁边**那个图标（`logo`）：拷进 `assets/`，每一页都带上它，
+/// 且地址按各自深度数对。**与 favicon 是两件事** —— 所以两条要分别能配、分别能关
+#[test]
+fn a_logo_lands_next_to_the_site_name() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+
+    std::fs::create_dir_all(root.join("assets")).expect("建得出");
+    std::fs::write(root.join("assets/logo.svg"), "<svg/>").expect("写得下");
+
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(&config, format!("{text}\nlogo = \"assets/logo.svg\"\n")).expect("改得下");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "{}", stderr_of(&out));
+    assert!(
+        root.join("build/assets/logo.svg").is_file(),
+        "logo 该被拷进 assets"
+    );
+
+    let home = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    // logo 与 favicon 是两件事：只配 logo 时，图标在顶栏而标签页没有那个 link
+    assert!(
+        home.contains(r#"<img class="mdpp-bar__logo" src="assets/logo.svg" alt="">"#),
+        "顶栏该有那个图标：{home}"
+    );
+    assert!(
+        !home.contains("rel=\"icon\""),
+        "没配 favicon 就不该有那个 link：{home}"
+    );
+
+    // 深层页的地址要数对层数
+    assert!(mdpp(&root, &["new", "指南/安装"]).status.success());
+    assert!(mdpp(&root, &["build"]).status.success());
+    let deep = std::fs::read_to_string(root.join("build/指南/安装/index.html")).expect("读得动");
+    assert!(
+        deep.contains(r#"<img class="mdpp-bar__logo" src="../../assets/logo.svg" alt="">"#),
+        "深层页的图标地址要数对层数：{deep}"
+    );
+}
+
+/// `logo` 与 `favicon` 都指向同一张图 —— 那是常见写法，两者都要在，且互不影响
+#[test]
+fn logo_and_favicon_can_point_at_the_same_file() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+
+    std::fs::create_dir_all(root.join("assets")).expect("建得出");
+    std::fs::write(root.join("assets/icon.svg"), "<svg/>").expect("写得下");
+
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(
+        &config,
+        format!("{text}\nfavicon = \"assets/icon.svg\"\nlogo = \"assets/icon.svg\"\n"),
+    )
+    .expect("改得下");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "{}", stderr_of(&out));
+    let home = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(
+        home.contains(r#"<link rel="icon" href="assets/icon.svg">"#),
+        "{home}"
+    );
+    assert!(
+        home.contains(r#"<img class="mdpp-bar__logo" src="assets/icon.svg" alt="">"#),
+        "{home}"
+    );
+}
+
+/// 不配 `logo` 就没有那个 `<img>` —— 顶栏只是少了它，站点名照旧
+#[test]
+fn without_a_logo_the_title_still_shows() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    assert!(mdpp(&root, &["build"]).status.success());
+    let home = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(!home.contains("mdpp-bar__logo"), "不该凭空有那个图标：{home}");
+    assert!(home.contains("mdpp-bar__title"), "站点名照旧：{home}");
+}
+
 /// `-C, --dir`：**站在项目外头也能干活** —— 找项目、建页、出产物都以它为起点，
 /// 而不是以进程此刻所在的目录为起点
 #[test]

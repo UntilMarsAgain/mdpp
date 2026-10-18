@@ -65,6 +65,17 @@ pub struct Config {
     #[serde(default)]
     pub favicon: Option<PathBuf>,
 
+    /// 顶栏里、站点名**旁边**那个图标。**相对项目根** —— 与 `favicon` 同一条路：
+    /// 读进来、拷进产物的 `assets/`、页面上按各自深度给相对地址。
+    ///
+    /// **与 `favicon` 是两件事，不写就各是各的**：favicon 是浏览器标签页上那一枚
+    /// 小方块（尺寸固定、离得远），logo 是站在站点名旁边、要看清的那个图。常见做法
+    /// 是两个都指向同一张图（`logo = favicon = "assets/icon.svg"`），但不必如此。
+    ///
+    /// 不写就没有那个 `<img>` —— 顶栏只是少了它，其余一字不变。
+    #[serde(default)]
+    pub logo: Option<PathBuf>,
+
     /// 整页的主题：`light` / `dark` 是钉死，`system` 是**跟随系统**。
     /// 不写与写 `system` 等价 —— 页面上不落 `data-mdpp-theme`，
     /// 深浅色由 `prefers-color-scheme` 当场定（`base.css` 里那条 `@media`）
@@ -149,6 +160,7 @@ impl Default for Config {
             copyright: String::new(),
             repo_url: String::new(),
             favicon: None,
+            logo: None,
             theme: None,
             theme_color: None,
             lang: default_lang(),
