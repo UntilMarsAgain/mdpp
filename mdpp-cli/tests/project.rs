@@ -437,6 +437,94 @@ Disallow: /private/
     );
 }
 
+/// 标签页上那个小图标：`favicon = "…"` 配了就出 `<link rel="icon">`，并把那个文件
+/// 拷进 `assets/`。**二进制格式（`.png` / `.ico` / `.gif`）是这里的要紧处** ——
+/// 那正是 favicon 最常见的形态，而按文本读它会因为「不是合法 UTF-8」直接把 build
+/// 弄失败，于是最常见的用法反而用不了
+#[test]
+fn a_binary_favicon_is_copied_and_linked() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+
+    // 一个 1×1 的真 PNG：内容是**二进制**，按 UTF-8 读必然失败
+    const PNG: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+        0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+        0x42, 0x60, 0x82,
+    ];
+    std::fs::create_dir_all(root.join("assets")).expect("建得出");
+    std::fs::write(root.join("assets/icon.png"), PNG).expect("写得下");
+
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(
+        &config,
+        format!("{text}\nfavicon = \"assets/icon.png\"\n"),
+    )
+    .expect("改得下");
+
+    // 以前这一条会挂在「stream did not contain valid UTF-8」上
+    let out = mdpp(&root, &["build"]);
+    assert!(
+        out.status.success(),
+        "二进制 favicon 该能 build：{}",
+        stderr_of(&out)
+    );
+
+    // 文件**逐字节**进了 `assets/`
+    let copied = std::fs::read(root.join("build/assets/icon.png")).expect("读得动");
+    assert_eq!(copied, PNG, "拷出来的字节该与源文件一致");
+
+    // 每一页都带上那个 `<link>`，且地址按各自深度数对
+    let home = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(
+        home.contains(r#"<link rel="icon" href="assets/icon.png">"#),
+        "{home}"
+    );
+
+    // 深层页：地址得退够层数（少退一层图标就 404，而页面照样出得来、不报错）
+    assert!(mdpp(&root, &["new", "指南/安装"]).status.success());
+    assert!(mdpp(&root, &["build"]).status.success());
+    let deep =
+        std::fs::read_to_string(root.join("build/指南/安装/index.html")).expect("读得动");
+    assert!(
+        deep.contains(r#"<link rel="icon" href="../../assets/icon.png">"#),
+        "深层页的图标地址要数对层数：{deep}"
+    );
+}
+
+/// 不配 `favicon` 就没有那个 `<link>` —— 浏览器自己画一个，而不是空图标
+#[test]
+fn without_a_favicon_there_is_no_icon_link() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    assert!(mdpp(&root, &["build"]).status.success());
+    let home = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(!home.contains("rel=\"icon\""), "{home}");
+}
+
+/// 配了却读不到就**报错** —— 那是一个笔误，而一个读不到的小图标只会静悄悄地让
+/// 浏览器画一个默认的
+#[test]
+fn a_favicon_that_cannot_be_read_is_refused() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(
+        &config,
+        format!("{text}\nfavicon = \"assets/没有这个.png\"\n"),
+    )
+    .expect("改得下");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(!out.status.success(), "读不到的 favicon 该报错");
+    let message = stderr_of(&out);
+    assert!(message.contains("favicon"), "{message}");
+}
+
 /// `-C, --dir`：**站在项目外头也能干活** —— 找项目、建页、出产物都以它为起点，
 /// 而不是以进程此刻所在的目录为起点
 #[test]
