@@ -36,13 +36,23 @@
 
 # 横条：普通 vs 迷你
 
-`::banner` 默认占一整行；写 `mini=on` 变成**行内块迷你标签**，如页面底部的「现状：施行中」，适合嵌进正文或 `::aside` 里当分节标题。
+`::banner` 默认占一整行；写 `mini=on` 变成更紧凑的横条，字号与 padding 都更小，适合放在正文里或 `::aside` 里当分节标题。
 
 ::banner
-  普通横条，占一整行，正文不会跟它同行。
+  普通横条，占一整行，字号正常。
 
-::banner mini text=现状：施行中
-  迷你横条，深色背景标签样式，不占整行，可和正文同行。
+::banner mini
+  迷你横条，占一整行，但字号更小、padding 更紧，适合当分节标题。
+
+# 在 ::aside 里嵌迷你横条
+
+::aside title=带分节的信息框 align=center
+  ::banner mini
+    第一节
+    这是第一节的内容。
+  ::banner mini
+    第二节
+    这是第二节的内容。
 
 # 信息栏位置：right / center / left
 
