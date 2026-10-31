@@ -145,6 +145,16 @@
   * [[梁桥]]
   * [[悬索桥]]
 
+# 类与缩进容器
+
+`::class` 加类名、`::indent` 加缩进，两者都是内容容器，内容照常按 markdown 解析。
+
+::class class=highlight
+  这段会被包进 `<div class="highlight">`，配合 `::css` 用。
+
+::indent indent=2
+  这段会被缩进 3.2em（indent × 1.6em）。
+
 # 代码、图、公式
 
 这四个块**一个字都不解析** —— 里面的记号是它自己的，按 markdown 走一遍就毁了。
