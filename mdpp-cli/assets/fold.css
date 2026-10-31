@@ -31,8 +31,11 @@
   content: " ▴";
 }
 
+/* 折叠内容区的间距用 margin 而不是 padding：
+ * padding 在子元素内部，::note 这类有背景色的块会把背景一直铺到折叠框边框；
+ * margin 在子元素外部，背景不会延伸过去，嵌套块与边框之间才有真正的空隙。 */
 .mdpp-content .fold > *:not(summary) {
-  padding: 0.6rem 1rem;
+  margin: 0.6rem 1rem;
 }
 
 .mdpp-content .fold > *:not(summary):not(:last-child) {
@@ -40,9 +43,9 @@
 }
 
 .mdpp-content .fold > :first-child:not(summary) {
-  margin-top: 0;
+  margin-top: 0.6rem;
 }
 
-.mdpp-content .fold > :last-child {
-  margin-bottom: 0;
+.mdpp-content .fold > :last-child:not(summary) {
+  margin-bottom: 0.6rem;
 }
