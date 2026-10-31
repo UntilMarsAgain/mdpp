@@ -92,8 +92,23 @@
 ::theme
   [light]
   浅色下显示这一段。
+  ::css
+    .theme-only { background: #eaf1fb; }
+  ::js
+    console.log("浅色主题脚本");
+  ::html js
+    <script>console.log("浅色 HTML 脚本");</script>
   [dark]
   深色下显示这一段。
+  ::css
+    .theme-only { background: #16283f; }
+  ::js
+    console.log("深色主题脚本");
+  ::html js
+    <script>console.log("深色 HTML 脚本");</script>
+
+下面两节的 `::css` / `::js` / `::html js` 不会直接写进 `<style>`/`<script>`，
+而是被放进带 `data-theme` 的占位容器，由页面脚本按当前主题选择性注入。
 
 几节**一起摆出来**，一节就是一栏 —— 拿来并排比对。`[标签]` 默认当栏头，
 `labels=off` 就是纯版面：

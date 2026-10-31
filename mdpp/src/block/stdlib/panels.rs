@@ -9,7 +9,7 @@
 //! 把两节都渲染进去、显示哪一节由样式按 `data-mdpp-theme` 决定（切主题不必重新渲染）；
 //! 分栏是把各节**一起摆出来**，横着排，窄屏由样式堆成一竖列。
 
-use super::super::dispatch::{no_leading_content, render_problem, sections};
+use super::super::dispatch::{no_leading_content, render_problem, sections, enter_theme_slot};
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
 
@@ -116,6 +116,16 @@ pub(super) fn render_tabs(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
 ///
 /// 写在第一个标签**之前**的内容两边都显示（`[both]` 同义）：前言、说明常常要这样写。
 /// 与 `::tabs` 同一个规矩：`[标签]` 要与本节的其他行**左对齐**。
+///
+/// ## ::css / ::js / ::html js 的选择性注入
+///
+/// `::theme` 节里嵌套的 `::css`、`::js`、`::html js` 不会直接写进 `<style>`/`<script>`，
+/// 而是被放进带 `data-theme` 的 `.theme-asset` 占位容器里，由页面脚本按当前主题
+/// 选择性地真正注入到文档中（创建 `<style>` / `<script>` 标签）。这样浅色节的
+/// 脚本不会在深色下执行，反之亦然。
+///
+/// 页面加载时自动注入；系统 `prefers-color-scheme` 切换时自动重新注入；下游库若
+/// 重写了 `<html data-mdpp-theme>`，可调用 `window.mdppThemeInject()` 手动触发重注入。
 pub(super) fn render_theme(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     let sections = sections(node);
     if sections.is_empty() {
@@ -150,6 +160,9 @@ pub(super) fn render_theme(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
             "dark" => "theme__part theme__part--dark",
             _ => "theme__part",
         };
+        // 进入 theme slot：::css / ::js / ::html js 会检测到这个标记，
+        // 输出带 data-theme 的占位容器，不直接写 <style>/<script>。
+        let _guard = enter_theme_slot(slot);
         fmt.cr();
         fmt.open("div", &[("class", class.to_string())]);
         fmt.cr();
@@ -327,5 +340,45 @@ mod tests {
     fn tab_labels_keep_their_case() {
         let html = render("::tabs\n  [API]\n  内容\n");
         assert!(html.contains(">API</button>"), "{html}");
+    }
+
+    /// `::theme` 里的 `::css` 不直接写 `<style>`，而是输出 theme-asset 占位容器
+    #[test]
+    fn theme_css_becomes_asset_container() {
+        let html = render("::theme\n  [light]\n  ::css\n    .a { color: red; }\n  [dark]\n  ::css\n    .a { color: blue; }\n");
+        assert!(html.contains("theme-asset theme-css"), "{html}");
+        assert!(html.contains("data-theme=\"light\""), "{html}");
+        assert!(html.contains("data-theme=\"dark\""), "{html}");
+        assert!(!html.contains("<style>"), "theme 内部不该直接输出 <style>：{html}");
+        assert!(html.contains(".a { color: red; }"), "{html}");
+        assert!(html.contains(".a { color: blue; }"), "{html}");
+    }
+
+    /// `::theme` 里的 `::js` 不直接写 `<script>`，而是输出 theme-asset 占位容器
+    #[test]
+    fn theme_js_becomes_asset_container() {
+        let html = render("::theme\n  [light]\n  ::js\n    console.log('light');\n  [dark]\n  ::js\n    console.log('dark');\n");
+        assert!(html.contains("theme-asset theme-js"), "{html}");
+        assert!(!html.contains("<script>"), "theme 内部不该直接输出 <script>：{html}");
+        assert!(html.contains("console.log('light');"), "{html}");
+        assert!(html.contains("console.log('dark');"), "{html}");
+    }
+
+    /// `::theme` 里的 `::html js` 提取脚本到 theme-js 容器，其余 HTML 正常输出
+    #[test]
+    fn theme_html_js_extracts_script() {
+        let html = render("::theme\n  [light]\n  ::html js\n    <script>alert('light')</script>\n  [dark]\n  ::html js\n    <script>alert('dark')</script>\n");
+        assert!(html.contains("theme-asset theme-js"), "{html}");
+        assert!(html.contains("alert('light')"), "{html}");
+        assert!(html.contains("alert('dark')"), "{html}");
+        assert!(!html.contains("<script>"), "theme 内部不该直接输出 <script>：{html}");
+    }
+
+    /// `::theme` 外面的 `::css` 仍然正常输出 `<style>`，不受 theme slot 影响
+    #[test]
+    fn css_outside_theme_still_outputs_style() {
+        let html = render("::css\n  .a { color: red; }\n");
+        assert!(html.contains("<style>"), "{html}");
+        assert!(!html.contains("theme-asset"), "theme 外不该输出 theme-asset：{html}");
     }
 }
