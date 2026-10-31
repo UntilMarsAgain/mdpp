@@ -11,27 +11,10 @@
 //!
 //! 这一组都不碰 `node.children`：块正文走 `block.body`（原文）。
 
-use super::super::dispatch::render_problem;
+use super::super::dispatch::{current_theme_slot, render_problem};
 use super::super::fill;
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
-
-/// 取这一块要写出去的那段源（`[template=…]` 指的那一页），**取不到就把问题摆出来**。
-///
-/// 返回 `None` = 这次渲染到此为止（调用方直接 `return`，一个字都别往页面上写）。
-///
-/// `js` / `css` / `html` 三个都要走这一遍 —— 各写各的 `match` 的话，漏掉
-/// `render_problem` 那一支的表现是**一模一样的静默**：模板取不到、正文也没了，
-/// 而页面上一个字都不吭，作者只会以为块没生效
-fn source_or_problem(block: &Block, fmt: &mut dyn Renderer) -> Option<String> {
-    match fill::source_of(block) {
-        Ok(source) => Some(source),
-        Err(why) => {
-            render_problem(block, fmt, &why);
-            None
-        }
-    }
-}
 
 /// `::js` —— 把内容当**原始 JavaScript** 注入这一页，随页面加载执行。
 ///
@@ -40,11 +23,31 @@ fn source_or_problem(block: &Block, fmt: &mut dyn Renderer) -> Option<String> {
 ///
 /// 注入的脚本里若出现 `</script`，HTML 解析器会当场收尾，后面的字会漏到页面上，
 /// 所以那一处先转义（见 [`fill::escape_script_end`]）。
+///
+/// 在 `::theme` 内部时，不直接写 `<script>`，而是输出带 `data-theme` 的
+/// `.theme-asset` 占位容器，由页面脚本按当前主题选择性注入。
 pub(super) fn render_js(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
-    let Some(source) = source_or_problem(block, fmt) else {
-        return;
+    let source = match fill::source_of(block) {
+        Ok(s) => s,
+        Err(why) => {
+            render_problem(block, fmt, &why);
+            return;
+        }
     };
     let filled = fill::substitute(&source, block, &block.body);
+
+    // 在 ::theme 内部：输出占位容器，等页面脚本按主题注入
+    if let Some(slot) = current_theme_slot() {
+        fmt.cr();
+        fmt.open("div", &[
+            ("class", "theme-asset theme-js".to_string()),
+            ("data-theme", slot.to_string()),
+        ]);
+        fmt.text_raw(&fill::escape_script_end(&filled));
+        fmt.close("div");
+        fmt.cr();
+        return;
+    }
 
     fmt.cr();
     fmt.open("script", &[("class", "mdpp-js".to_string())]);
@@ -156,13 +159,34 @@ pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 /// 这正是「自定义块能跟着主题走」的关键。
 ///
 /// 内容里的 `{{参数}}` 会被替换；`</style` 会被去掉，免得提前闭合样式块。
+///
+/// 在 `::theme` 内部时，不直接写 `<style>`，而是输出带 `data-theme` 的
+/// `.theme-asset` 占位容器，由页面脚本按当前主题选择性注入。
 pub(super) fn render_css(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
-    let Some(source) = source_or_problem(block, fmt) else {
-        return;
+    let source = match fill::source_of(block) {
+        Ok(s) => s,
+        Err(why) => {
+            render_problem(block, fmt, &why);
+            return;
+        }
     };
     let css = fill::sanitize_css(&fill::substitute(&source, block, &block.body));
     // 收进正文：不然一条 `* { }` 就能把整个页面改掉
     let css = fill::scope_css(&css);
+
+    // 在 ::theme 内部：输出占位容器，等页面脚本按主题注入
+    if let Some(slot) = current_theme_slot() {
+        fmt.cr();
+        fmt.open("div", &[
+            ("class", "theme-asset theme-css".to_string()),
+            ("data-theme", slot.to_string()),
+        ]);
+        fmt.text_raw(&css);
+        fmt.close("div");
+        fmt.cr();
+        return;
+    }
+
     fmt.cr();
     fmt.open("style", &[]);
     fmt.text_raw(&css);
@@ -174,11 +198,42 @@ pub(super) fn render_css(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 ///
 /// 默认**过滤**掉会执行脚本的东西（`<script>`、`on*=` 事件属性、`javascript:` 协议）；
 /// 只有显式写了 `js`（或 `js=true`）才原样放行。默认安全，要开就得自己写出来。
+///
+/// 在 `::theme` 内部且写了 `js` 时，脚本内容会被放进带 `data-theme` 的
+/// `.theme-asset` 占位容器，由页面脚本按当前主题选择性注入；其余 HTML
+/// 正常输出，靠 CSS hidden 控制显隐。
 pub(super) fn render_html(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
-    let Some(source) = source_or_problem(block, fmt) else {
-        return;
+    let source = match fill::source_of(block) {
+        Ok(s) => s,
+        Err(why) => {
+            render_problem(block, fmt, &why);
+            return;
+        }
     };
     let filled = fill::substitute(&source, block, &block.body);
+
+    // 在 ::theme 内部且显式写了 js：脚本内容走占位容器，其余 HTML 正常输出
+    if current_theme_slot().is_some() && fill::allows_js(block) {
+        let js_content = extract_script_contents(&filled);
+        if !js_content.is_empty() {
+            let slot = current_theme_slot().unwrap();
+            fmt.cr();
+            fmt.open("div", &[
+                ("class", "theme-asset theme-js".to_string()),
+                ("data-theme", slot.to_string()),
+            ]);
+            fmt.text_raw(&fill::escape_script_end(&js_content));
+            fmt.close("div");
+            fmt.cr();
+        }
+        let html_without_scripts = remove_script_tags(&filled);
+        if !html_without_scripts.is_empty() {
+            fmt.text_raw(&html_without_scripts);
+        }
+        fmt.cr();
+        return;
+    }
+
     let html = if fill::allows_js(block) {
         filled
     } else {
@@ -187,6 +242,49 @@ pub(super) fn render_html(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     fmt.cr();
     fmt.text_raw(&html);
     fmt.cr();
+}
+
+/// 从 HTML 字符串中提取所有 <script>...</script> 的内容，拼接返回。
+fn extract_script_contents(html: &str) -> String {
+    let mut out = String::new();
+    let mut rest = html;
+    while let Some(start) = rest.find("<script") {
+        let after_tag = match rest[start..].find('>') {
+            Some(i) => start + i + 1,
+            None => break,
+        };
+        if let Some(end) = rest[after_tag..].find("</script>") {
+            out.push_str(&rest[after_tag..after_tag + end]);
+            out.push('\n');
+            rest = &rest[after_tag + end + 9..];
+        } else {
+            break;
+        }
+    }
+    out
+}
+
+/// 从 HTML 字符串中移除所有 <script>...</script> 标签及其内容。
+fn remove_script_tags(html: &str) -> String {
+    let mut out = String::new();
+    let mut rest = html;
+    while let Some(start) = rest.find("<script") {
+        out.push_str(&rest[..start]);
+        let after_tag = match rest[start..].find('>') {
+            Some(i) => start + i + 1,
+            None => {
+                out.push_str(&rest[start..]);
+                return out;
+            }
+        };
+        if let Some(end) = rest[after_tag..].find("</script>") {
+            rest = &rest[after_tag + end + 9..];
+        } else {
+            rest = &rest[after_tag..];
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 #[cfg(test)]
