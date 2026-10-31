@@ -29,15 +29,15 @@ pub(super) fn render_fold(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         return;
     }
 
-    let mut class = "fold".to_string();
-    let mut style = String::new();
+    let mut detail_class = "fold".to_string();
+    let mut summary_class = "fold--custom".to_string();
+    let mut summary_style = String::new();
     if let Some(color) = block.param("color") {
         let Some(hex) = normalize_hex(color) else {
             render_problem(block, fmt, &hex_why("color", None));
             return;
         };
-        style.push_str(&format!("background: {hex}; color: {};", text_on(&hex)));
-        class.push_str(" fold--custom");
+        summary_style.push_str(&format!("background: {hex}; color: {};", text_on(&hex)));
     }
 
     let title = block.param("title").unwrap_or("更多");
@@ -52,18 +52,20 @@ pub(super) fn render_fold(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         })
         .unwrap_or(false);
 
-    let mut attrs: Vec<(&str, String)> = vec![("class", class)];
+    let mut detail_attrs: Vec<(&str, String)> = vec![("class", detail_class)];
     if open {
-        attrs.push(("open", String::new()));
+        detail_attrs.push(("open", String::new()));
     }
-    if !style.is_empty() {
-        attrs.push(("style", style));
+
+    let mut summary_attrs: Vec<(&str, String)> = vec![("class", summary_class)];
+    if !summary_style.is_empty() {
+        summary_attrs.push(("style", summary_style));
     }
 
     fmt.cr();
-    fmt.open("details", &attrs);
+    fmt.open("details", &detail_attrs);
     fmt.cr();
-    fmt.open("summary", &[]);
+    fmt.open("summary", &summary_attrs);
     fmt.text(title);
     fmt.close("summary");
     fmt.cr();
@@ -86,7 +88,7 @@ mod tests {
     fn fold_renders_title_and_body() {
         let html = render("::fold title=草稿\n  这是折起来的内容\n");
         assert!(html.contains(r#"<details class="fold">"#), "{html}");
-        assert!(html.contains("<summary>草稿</summary>"), "{html}");
+        assert!(html.contains(r#"<summary class="fold--custom">草稿</summary>"#), "{html}");
         assert!(html.contains("这是折起来的内容"), "{html}");
     }
 
@@ -94,7 +96,7 @@ mod tests {
     #[test]
     fn fold_default_title() {
         let html = render("::fold\n  没写标题\n");
-        assert!(html.contains("<summary>更多</summary>"), "{html}");
+        assert!(html.contains(r#"<summary class="fold--custom">更多</summary>"#), "{html}");
     }
 
     /// `open=` 默认展开：认 open / true / on / 1 —— 渲染出 `open=""` 这种 HTML 空值写法
@@ -133,16 +135,38 @@ mod tests {
         assert!(html.contains("template--problem"), "{html}");
     }
 
-    /// `color=` 只认十六进制，乱写的拒掉
+    /// `color=` 只认十六进制，乱写的拒掉；color 只影响标题栏（summary），不影响内部内容
     #[test]
     fn fold_color_validated() {
         let colored = render("::fold color=#0055a4 title=深蓝\n  正文\n");
-        assert!(colored.contains("background: #0055a4"), "{colored}");
-        assert!(colored.contains("color: #f5f5f5"), "{colored}");
+        // color 写在 summary 的 style 上
+        assert!(
+            colored.contains(r#"<summary class="fold--custom" style="background: #0055a4; color: #f5f5f5;">"#),
+            "{colored}"
+        );
         assert!(colored.contains("fold--custom"), "{colored}");
+        // 正文内容不在 style 属性里，不会被 color 污染
+        assert!(colored.contains("正文"), "{colored}");
 
         let bad = render("::fold color=red title=乱写\n  正文\n");
         assert!(bad.contains("template--problem"), "{bad}");
-        assert!(!bad.contains("style="), "{bad}");
+        // 错误时整块拒掉，不渲染半截
+        assert!(!bad.contains(r#"class="fold""#), "{bad}");
+    }
+
+    /// `color=` 只影响标题栏，不影响折叠内容区
+    #[test]
+    fn fold_color_only_affects_title() {
+        let html = render("::fold color=#0055a4 title=标题\n  这里是正文内容\n");
+        // summary 上有背景色
+        assert!(
+            html.contains(r#"<summary class="fold--custom" style="background: #0055a4; color: #f5f5f5;">"#),
+            "标题栏应有背景色和字色：{html}"
+        );
+        // 内容区在 </summary> 之后，不应有 inline style
+        let after_summary = &html[html.find("</summary>").expect("summary 应该关闭")..];
+        assert!(!after_summary.contains("style="), "内容区不应有 inline style：{after_summary}");
+        // 内容本身正常
+        assert!(after_summary.contains("这里是正文内容"), "内容应正常显示：{after_summary}");
     }
 }
