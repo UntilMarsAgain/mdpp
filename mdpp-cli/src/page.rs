@@ -76,9 +76,10 @@ static ASSETS: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets");
 ///
 /// **次序有意义**：base 在前（它定义那组 `--mdpp-*` 变量，后面的都在用），print 在最后
 /// （打印规则是覆盖，得压过前面的）。
-const CSS_FILES: [&str; 9] = [
+const CSS_FILES: [&str; 10] = [
     "base.css",
     "callouts.css",
+    "flatlist.css",
     "fold.css",
     "text.css",
     "media.css",
@@ -1156,6 +1157,7 @@ mod tests {
         for (file, needle) in [
             ("base.css", "--mdpp-accent"),
             ("callouts.css", "callout--warning"),
+            ("flatlist.css", ".flatlist.hlist"),
             ("fold.css", ".fold {"),
             ("text.css", "title-block"),
             ("media.css", "figcaption"),
