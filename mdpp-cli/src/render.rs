@@ -6,6 +6,7 @@
 use crate::context::{link_resolver, template_pages};
 use crate::options::Render;
 use crate::page;
+use crate::page::ExternalScript;
 
 use std::io::{Read, Write};
 
@@ -47,6 +48,12 @@ pub fn run(options: &Render) -> Result<(), String> {
     let extra_css = read_all(&options.css)?;
     let extra_js = read_all(&options.js)?;
 
+    // mermaid / math 前端脚本的加载方式
+    let external_script = match options.external_script.as_str() {
+        "none" => ExternalScript::None,
+        _ => ExternalScript::Cdn,
+    };
+
     let mut out = std::io::stdout().lock();
     let mut total = Stats::default();
     let multiple = options.inputs.len() > 1;
@@ -80,6 +87,7 @@ pub fn run(options: &Render) -> Result<(), String> {
                 extra_js: &extra_js,
                 // 一个文件就是整个页面：样式与脚本全内联，拷走还能看
                 assets: page::Assets::Inline,
+                external_script,
             })
         } else {
             html

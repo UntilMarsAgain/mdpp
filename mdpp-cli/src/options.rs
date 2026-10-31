@@ -135,6 +135,17 @@ pub struct Render {
     #[arg(long, value_name = "文件", requires = "full")]
     pub js: Vec<PathBuf>,
 
+    /// mermaid / math 前端脚本的加载方式：cdn（默认，从 CDN 引入）、none（不加载）。
+    /// 页面里若用了 ::mermaid / ::math 块，才会把对应的脚本标签写进 HTML。
+    #[arg(
+        long,
+        value_name = "方式",
+        value_parser = ["cdn", "none"],
+        default_value = "cdn",
+        hide_possible_values = true
+    )]
+    pub external_script: String,
+
     /// 允许正文中的原始 HTML（默认转义）
     #[arg(short = 'u', long)]
     pub unsafe_html: bool,
@@ -267,6 +278,17 @@ pub struct Build {
     /// 有红链就算失败（退出码非零）
     #[arg(long)]
     pub strict: bool,
+
+    /// mermaid / math 前端脚本的加载方式：cdn（默认，从 CDN 引入）、none（不加载）。
+    /// 页面里若用了 ::mermaid / ::math 块，才会把对应的脚本标签写进 HTML。
+    #[arg(
+        long,
+        value_name = "方式",
+        value_parser = ["cdn", "none"],
+        default_value = "cdn",
+        hide_possible_values = true
+    )]
+    pub external_script: String,
 }
 
 /// 顶层 `--help` 的版式。
@@ -572,6 +594,7 @@ mod tests {
             "--theme",
             "--css",
             "--js",
+            "--external-script",
             "--unsafe-html",
             "--typographer",
             "--setext",
