@@ -61,6 +61,7 @@ pub fn run(options: &Serve) -> Result<(), String> {
     let options = Build {
         clean: true,
         strict: false,
+        external_script: String::from("cdn"),
     };
 
     // 先出一遍，让人马上能打开看
@@ -372,6 +373,7 @@ mod tests {
         Build {
             clean: true,
             strict: false,
+            external_script: String::from("cdn"),
         }
     }
 
@@ -522,6 +524,7 @@ mod tests {
             &Build {
                 clean: true,
                 strict: false,
+                external_script: String::from("cdn"),
             },
             &project.site_dir(),
         )

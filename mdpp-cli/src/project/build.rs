@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex};
 use crate::context::template_pages;
 use crate::options::Build;
 use crate::page;
-use crate::page::NavLink;
+use crate::page::{ExternalScript, NavLink};
 use crate::project::assets;
 use crate::project::config::NavEntry;
 use crate::project::site::{
@@ -218,6 +218,12 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
     let mut site = Arc::new(site);
     let missing: Arc<Mutex<Vec<Missing>>> = Arc::new(Mutex::new(Vec::new()));
 
+    // mermaid / math 前端脚本的加载方式
+    let external_script = match options.external_script.as_str() {
+        "none" => ExternalScript::None,
+        _ => ExternalScript::Cdn,
+    };
+
     // 目录页：配置里 `toc` 那一页（默认「目录」），生成后插进站点 ——
     // 导航解析与站内链接都能指到它，报告里也数得进页数
     let toc_key = project.config.toc.trim().to_string();
@@ -305,6 +311,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
             extra_css: &extra_css,
             extra_js: &extra_js,
             assets: page::Assets::Linked(assets_prefix.clone()),
+            external_script,
         });
         project::write_file(&site_dir.join(&page.output), &document)?;
         debug!(page = %page.key, out = %page.output.display(), "一页");

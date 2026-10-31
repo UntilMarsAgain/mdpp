@@ -95,6 +95,12 @@ const CSS_FILES: [&str; 10] = [
 /// 整站用的外壳，对单文件页面没有意义。
 const SITE_CSS: &str = "site.css";
 
+/// mermaid.js 的 CDN 地址（jsDelivr）。
+const MERMAID_CDN: &str = "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js";
+
+/// KaTeX 的 CDN 地址（jsDelivr）。
+const KATEX_CDN: &str = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js";
+
 /// 默认样式表：下面那几个按次序拼起来的
 pub fn default_css() -> String {
     CSS_FILES
@@ -130,6 +136,19 @@ pub enum Assets {
     /// 数错了会怎样（页面光着身子出来，而且不报错），见
     /// [`crate::project::site::assets_href`]
     Linked(String),
+}
+
+/// mermaid / math 前端脚本的加载方式。
+///
+/// `::mermaid` 输出 `<pre class="mermaid">`，`::math` 输出 `<div class="math">`，
+/// 它们需要页面里引入 mermaid.js / katex.js 才能在浏览器里画出来。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExternalScript {
+    /// 从 CDN 引入 `<script src="…">`（默认）
+    #[default]
+    Cdn,
+    /// 不加载任何 mermaid / math 脚本，由使用方自己负责
+    None,
 }
 
 impl Assets {
@@ -234,6 +253,8 @@ pub struct Page<'a> {
     pub extra_js: &'a [String],
     /// 资源怎么进页面
     pub assets: Assets,
+    /// mermaid / math 前端脚本的加载方式
+    pub external_script: ExternalScript,
 }
 
 /// 按模板填出一个整页。
@@ -258,6 +279,24 @@ pub fn document(page: &Page) -> String {
         Assets::Inline => format!("<script>\n{}\n</script>", close_tag(default_js(), "script")),
         Assets::Linked(prefix) => script_tag(prefix, SCRIPT_FILE),
     };
+    // mermaid / math 前端脚本：页面里若用了 ::mermaid / ::math 块，
+    // 需要把对应的 JS 引进来才能在浏览器里渲染。
+    let mut diagram_scripts = String::new();
+    if page.external_script == ExternalScript::Cdn {
+        if page.body.contains("class=\"mermaid\"") {
+            diagram_scripts.push_str(&format!(
+                "<script src=\"{}\"></script>\n",
+                MERMAID_CDN
+            ));
+        }
+        if page.body.contains("class=\"math") {
+            diagram_scripts.push_str(&format!(
+                "<script src=\"{}\"></script>\n",
+                KATEX_CDN
+            ));
+        }
+    }
+    let scripts = join_blocks(scripts, vec![diagram_scripts]);
     let scripts = join_blocks(scripts, inline_blocks(page.extra_js, "script"));
 
     // 只认 `light` / `dark` 两个值。`system` 与**不写**是一回事：属性不落，
@@ -605,6 +644,7 @@ mod tests {
             extra_css: &[],
             extra_js: &[],
             assets,
+            external_script: ExternalScript::Cdn,
         }
     }
 
@@ -1393,5 +1433,63 @@ mod tests {
                 "模板里少了 {{{{{name}}}}}"
             );
         }
+    }
+
+    /// 页面里若用了 `::mermaid`（`class="mermaid"`），默认 `cdn` 模式会把
+    /// mermaid.js 的 `<script src="…">` 写进页面；`none` 模式则不写。
+    #[test]
+    fn external_script_cdn_injects_mermaid_when_needed() {
+        let page = Page {
+            body: "<pre class=\"mermaid\">graph TD; A-->B;</pre>",
+            external_script: ExternalScript::Cdn,
+            ..site_page("x")
+        };
+        let html = document(&page);
+        assert!(
+            html.contains("cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"),
+            "{html}"
+        );
+        assert!(!html.contains("katex"), "{html}");
+    }
+
+    /// 页面里若用了 `::math`（`class="math"`），默认 `cdn` 模式会把
+    /// KaTeX 的 `<script src="…">` 写进页面。
+    #[test]
+    fn external_script_cdn_injects_katex_when_needed() {
+        let page = Page {
+            body: "<div class=\"math math--display\">E=mc^2</div>",
+            external_script: ExternalScript::Cdn,
+            ..site_page("x")
+        };
+        let html = document(&page);
+        assert!(
+            html.contains("cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"),
+            "{html}"
+        );
+        assert!(!html.contains("mermaid"), "{html}");
+    }
+
+    /// `external_script = none` 时，哪怕页面里有 mermaid / math，也不写脚本标签。
+    #[test]
+    fn external_script_none_injects_nothing() {
+        let page = Page {
+            body: "<pre class=\"mermaid\">graph TD; A-->B;</pre><div class=\"math\">x</div>",
+            external_script: ExternalScript::None,
+            ..site_page("x")
+        };
+        let html = document(&page);
+        assert!(!html.contains("cdn.jsdelivr.net"), "{html}");
+    }
+
+    /// 页面里既没有 mermaid 也没有 math，`cdn` 模式也不写脚本标签。
+    #[test]
+    fn external_script_cdn_no_diagram_no_script() {
+        let page = Page {
+            body: "<p>只是普通文本</p>",
+            external_script: ExternalScript::Cdn,
+            ..site_page("x")
+        };
+        let html = document(&page);
+        assert!(!html.contains("cdn.jsdelivr.net"), "{html}");
     }
 }
