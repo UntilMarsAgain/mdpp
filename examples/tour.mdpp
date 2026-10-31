@@ -33,8 +33,24 @@
   深色底，字色由亮度自动定
 ::banner text="圆角默认开着" rounded=off
   这一条要直角
-::banner mini text=小节标题
-  迷你横条，不占整行，适合放在正文里或 ::aside 里当分节标题。
+
+# 横条：普通 vs 迷你
+
+`::banner` 默认占一整行；写 `mini=on` 变成**行内块**，不占整行，适合放在正文里或 `::aside` 里当分节标题。
+
+::banner
+  普通横条，占一整行，正文不会跟它同行。
+
+::banner mini text=迷你横条
+  迷你横条，行内块，不占整行，可和正文同行。
+
+# 在 ::aside 里嵌迷你横条
+
+::aside title=带分节的信息框 align=center
+  ::banner mini text=第一节
+    这是第一节的内容。
+  ::banner mini text=第二节
+    这是第二节的内容。
 
 # 提示框
 
