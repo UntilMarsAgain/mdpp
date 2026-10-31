@@ -3,7 +3,7 @@
 .mdpp-content .fold {
   border: 1px solid var(--mdpp-border);
   border-radius: var(--mdpp-radius);
-  margin: var(--mdpp-gap) 0;
+  margin: var(--mdpp-gap);
   overflow: hidden;
 }
 
@@ -41,9 +41,4 @@
 
 .mdpp-content .fold > :last-child {
   margin-bottom: 0;
-}
-
-.mdpp-content .fold--custom > summary {
-  background: inherit;
-  color: inherit;
 }
