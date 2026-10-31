@@ -71,6 +71,7 @@
 #[doc = include_str!("../../README.md")]
 pub struct ReadmeSnippets;
 
+pub mod assets;
 pub mod block;
 pub mod context;
 pub mod engine;
@@ -86,10 +87,11 @@ pub mod telemetry;
 /// 使用方不必自己往 `Cargo.toml` 里加一条 `markdown-it` 就能对上版本。
 pub use markdown_it;
 
+pub use assets::{Asset, AssetKind, AssetMode};
 pub use block::fill::substitute_placeholders;
 pub use block::template::{TemplatePage, TemplateSource};
 pub use context::RenderContext;
-pub use engine::{Mdpp, MdppBuilder};
+pub use engine::{Mdpp, MdppBuilder, Rendered};
 pub use link::{LinkResolver, LinkTarget, NodeRenderer, ResolvedLink};
 pub use registry::{Block, BlockRegistry, BlockSpec, ContentMode};
 

@@ -29,8 +29,8 @@ pub(super) fn render_fold(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         return;
     }
 
-    let mut detail_class = "fold".to_string();
-    let mut summary_class = "fold--custom".to_string();
+    let detail_class = "fold".to_string();
+    let summary_class = "fold--custom".to_string();
     let mut summary_style = String::new();
     if let Some(color) = block.param("color") {
         let Some(hex) = normalize_hex(color) else {

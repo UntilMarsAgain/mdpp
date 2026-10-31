@@ -35,6 +35,7 @@ use std::sync::Arc;
 
 use markdown_it::MarkdownIt;
 
+use crate::assets::{self, Asset, AssetMode};
 use crate::block;
 use crate::context::{self, RenderContext};
 use crate::registry::BlockRegistry;
@@ -124,6 +125,8 @@ impl Mdpp {
 
     /// 渲染一段 markdown，用默认上下文：没有链接解析器、没有模板页，于是所有 `[[…]]`
     /// 落成红链，所有非内置的 `::名字` 落成「未知块」框。
+    ///
+    /// `::css` / `::js` / `::html js` 走**单页**模式：同内容按哈希去重后内联。
     pub fn render(&self, source: &str) -> String {
         self.render_with(source, &RenderContext::new())
     }
@@ -131,27 +134,76 @@ impl Mdpp {
     /// 带上下文渲染。这是**带上下文**的那一条：链接解析器与模板页来源都在
     /// [`RenderContext`] 里。两者进入时装上、返回时还原，所以本方法可以递归调用
     /// （`::html` 里的 `<markdown>` 就是这么做的），外层那一趟不受影响。
+    ///
+    /// `::css` / `::js` / `::html js` 走**单页**模式：同内容按哈希去重后内联。
     pub fn render_with(&self, source: &str, context: &RenderContext) -> String {
-        render_parts(&self.parser, &self.registry, context, source)
+        render_parts(
+            &self.parser,
+            &self.registry,
+            context,
+            source,
+            AssetMode::Inline,
+        )
+        .0
     }
+
+    /// 站点模式渲染：`::css` / `::js` / `::html js` 不内联，而是按 `asset_prefix`
+    /// 生成 `<link>` / `<script src>`，内容随 [`Rendered::assets`] 一起返回。
+    ///
+    /// `asset_prefix` 是**相对这一页**的前缀（如 `assets` 或 `../../assets`），
+    /// 由调用方按页面深度算好传进来 —— 库不知道页面在站点的哪一层。
+    pub fn render_with_assets(
+        &self,
+        source: &str,
+        context: &RenderContext,
+        asset_prefix: &str,
+    ) -> Rendered {
+        let (html, assets) = render_parts(
+            &self.parser,
+            &self.registry,
+            context,
+            source,
+            AssetMode::Linked {
+                prefix: asset_prefix.to_string(),
+            },
+        );
+        Rendered { html, assets }
+    }
+}
+
+/// 一次渲染的产物：HTML 与收集到的资源。
+///
+/// 单页模式（[`Mdpp::render`]）只有 HTML，资源已经内联进去；
+/// 站点模式（[`Mdpp::render_with_assets`]）的 HTML 里是链接，内容在这里。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rendered {
+    /// 渲染好的 HTML
+    pub html: String,
+    /// 收集到的 CSS / JS 资源（已按内容去重）
+    pub assets: Vec<Asset>,
 }
 
 /// 真正干活的那一趟。四样东西各自装上、各自还原，全在同一次调用里成对出现。
 ///
 /// 拆成自由函数（而不是留在 `&self` 的方法里）是因为嵌套渲染要在线程局部里存一个
 /// `'static` 闭包，而闭包得抓住解析器与上下文的**所有权**（`Rc` / `Arc` 的克隆）。
+///
+/// 返回值里的资源只在**最外层**有意义；嵌套渲染的资源由 [`assets::Guard`] 合并回
+/// 外层，不会丢。
 fn render_parts(
     parser: &Rc<MarkdownIt>,
     registry: &BlockRegistry,
     context: &RenderContext,
     source: &str,
-) -> String {
+    mode: AssetMode,
+) -> (String, Vec<Asset>) {
     // 目标里的空格先补成 `%20`（CommonMark 不认带空格的目标，见 `targets`）
     let prepared = targets::encode_target_spaces(source);
 
-    // 顺序无所谓，三个都是各自独立的槽位
+    // 顺序无所谓，四个都是各自独立的槽位
     let _registry_guard = crate::registry::enter(Arc::new(registry.clone()));
     let _context_guard = context::enter(context.clone());
+    let (assets_guard, nested) = assets::enter(mode.clone());
     // 「再渲染一段」用的是**当次这一趟**的上下文与注册表，而不是新的空的一份
     trace!(
         depth = crate::context::depth(),
@@ -163,7 +215,10 @@ fn render_parts(
                 let parser = Rc::clone(parser);
                 let registry = registry.clone();
                 let context = context.clone();
-                move |more: &str| render_parts(&parser, &registry, &context, more)
+                let mode = mode.clone();
+                move |more: &str| {
+                    render_parts(&parser, &registry, &context, more, mode.clone()).0
+                }
             }))
         }),
     };
@@ -177,7 +232,15 @@ fn render_parts(
         micros = size.micros,
         "渲染一趟"
     );
-    html
+
+    // 嵌套渲染不取资源：留在收集器里，守卫出栈时合并回外层
+    let assets = if nested {
+        Vec::new()
+    } else {
+        assets::take_assets()
+    };
+    drop(assets_guard);
+    (html, assets)
 }
 
 /// [`Mdpp`] 的构建器。

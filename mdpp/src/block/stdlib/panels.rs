@@ -381,4 +381,25 @@ mod tests {
         assert!(html.contains("<style>"), "{html}");
         assert!(!html.contains("theme-asset"), "theme 外不该输出 theme-asset：{html}");
     }
+
+    /// `::theme` 内部的资源不进入站点资源清单 —— 它们由主题脚本动态注入
+    #[test]
+    fn theme_assets_are_not_collected() {
+        use crate::{Mdpp, RenderContext};
+
+        let rendered = Mdpp::new().render_with_assets(
+            "::theme\n  [light]\n  ::css\n    .a { }\n  ::js\n    console.log(1);\n  [dark]\n  ::css\n    .b { }\n",
+            &RenderContext::new(),
+            "assets",
+        );
+        assert!(
+            rendered.assets.is_empty(),
+            "theme 内部资源不该进清单：{:?}",
+            rendered.assets
+        );
+        assert!(rendered.html.contains("theme-asset"), "{}", rendered.html);
+        // 没有外链（不生成 `<link>` / `<script src>`）
+        assert!(!rendered.html.contains("<link"), "{}", rendered.html);
+        assert!(!rendered.html.contains("<script src="), "{}", rendered.html);
+    }
 }
