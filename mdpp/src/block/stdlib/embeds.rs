@@ -13,6 +13,7 @@
 
 use super::super::dispatch::{current_theme_slot, render_problem};
 use super::super::fill;
+use crate::assets::{self, AssetKind, Emission};
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
 
@@ -23,6 +24,9 @@ use markdown_it::{Node, Renderer};
 ///
 /// 注入的脚本里若出现 `</script`，HTML 解析器会当场收尾，后面的字会漏到页面上，
 /// 所以那一处先转义（见 [`fill::escape_script_end`]）。
+///
+/// 单页模式下同一份脚本按内容哈希去重后内联；站点模式下输出 `<script src="…">`，
+/// 内容随 [`crate::Rendered::assets`] 返回交给调用方写盘。
 ///
 /// 在 `::theme` 内部时，不直接写 `<script>`，而是输出带 `data-theme` 的
 /// `.theme-asset` 占位容器，由页面脚本按当前主题选择性注入。
@@ -49,11 +53,22 @@ pub(super) fn render_js(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
         return;
     }
 
-    fmt.cr();
-    fmt.open("script", &[("class", "mdpp-js".to_string())]);
-    fmt.text_raw(&fill::escape_script_end(&filled));
-    fmt.close("script");
-    fmt.cr();
+    let escaped = fill::escape_script_end(&filled);
+    match assets::emit(AssetKind::Js, escaped) {
+        Emission::Inline(content) => {
+            fmt.cr();
+            fmt.open("script", &[("class", "mdpp-js".to_string())]);
+            fmt.text_raw(&content);
+            fmt.close("script");
+            fmt.cr();
+        }
+        Emission::Linked(url) => {
+            fmt.cr();
+            fmt.text_raw(&format!("<script src=\"{}\"></script>", escape_attr(&url)));
+            fmt.cr();
+        }
+        Emission::Duplicate => {}
+    }
 }
 
 /// `::mermaid` —— 画一张图（[mermaid](https://mermaid.js.org) 的语法）。
@@ -160,6 +175,9 @@ pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 ///
 /// 内容里的 `{{参数}}` 会被替换；`</style` 会被去掉，免得提前闭合样式块。
 ///
+/// 单页模式下同一份 CSS 按内容哈希去重后内联；站点模式下输出 `<link>`，
+/// 内容随 [`crate::Rendered::assets`] 返回交给调用方写盘。
+///
 /// 在 `::theme` 内部时，不直接写 `<style>`，而是输出带 `data-theme` 的
 /// `.theme-asset` 占位容器，由页面脚本按当前主题选择性注入。
 pub(super) fn render_css(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
@@ -187,17 +205,33 @@ pub(super) fn render_css(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
         return;
     }
 
-    fmt.cr();
-    fmt.open("style", &[]);
-    fmt.text_raw(&css);
-    fmt.close("style");
-    fmt.cr();
+    match assets::emit(AssetKind::Css, css) {
+        Emission::Inline(content) => {
+            fmt.cr();
+            fmt.open("style", &[]);
+            fmt.text_raw(&content);
+            fmt.close("style");
+            fmt.cr();
+        }
+        Emission::Linked(url) => {
+            fmt.cr();
+            fmt.text_raw(&format!(
+                "<link rel=\"stylesheet\" href=\"{}\">",
+                escape_attr(&url)
+            ));
+            fmt.cr();
+        }
+        Emission::Duplicate => {}
+    }
 }
 
 /// `::html` —— 把内容当**原始 HTML** 注入。
 ///
 /// 默认**过滤**掉会执行脚本的东西（`<script>`、`on*=` 事件属性、`javascript:` 协议）；
 /// 只有显式写了 `js`（或 `js=true`）才原样放行。默认安全，要开就得自己写出来。
+///
+/// 单页模式下，写了 `js` 的块里那些脚本按内容哈希去重后内联；站点模式下它们被
+/// 提取成资源、替换为 `<script src="…">`，内容随 [`crate::Rendered::assets`] 返回。
 ///
 /// 在 `::theme` 内部且写了 `js` 时，脚本内容会被放进带 `data-theme` 的
 /// `.theme-asset` 占位容器，由页面脚本按当前主题选择性注入；其余 HTML
@@ -234,14 +268,49 @@ pub(super) fn render_html(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
         return;
     }
 
-    let html = if fill::allows_js(block) {
-        filled
-    } else {
-        fill::sanitize_html(&filled)
-    };
+    // 写了 js：脚本提取成资源，其余 HTML 正常输出
+    if fill::allows_js(block) {
+        let js_content = extract_script_contents(&filled);
+        if !js_content.is_empty() {
+            let escaped = fill::escape_script_end(&js_content);
+            match assets::emit(AssetKind::Js, escaped) {
+                Emission::Inline(content) => {
+                    fmt.cr();
+                    fmt.open("script", &[("class", "mdpp-js".to_string())]);
+                    fmt.text_raw(&content);
+                    fmt.close("script");
+                    fmt.cr();
+                }
+                Emission::Linked(url) => {
+                    fmt.cr();
+                    fmt.text_raw(&format!("<script src=\"{}\"></script>", escape_attr(&url)));
+                    fmt.cr();
+                }
+                Emission::Duplicate => {}
+            }
+        }
+        let html_without_scripts = remove_script_tags(&filled);
+        if !html_without_scripts.is_empty() {
+            fmt.text_raw(&html_without_scripts);
+        }
+        fmt.cr();
+        return;
+    }
+
+    let html = fill::sanitize_html(&filled);
     fmt.cr();
     fmt.text_raw(&html);
     fmt.cr();
+}
+
+/// 进 HTML 属性值的转义。链接是我们自己拼的（前缀 + 哈希文件名），
+/// 但前缀来自调用方，转义一下更稳妥。
+fn escape_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// 从 HTML 字符串中提取所有 <script>...</script> 的内容，拼接返回。
@@ -348,7 +417,10 @@ mod tests {
     #[test]
     fn html_template_allows_scripts_only_when_asked() {
         let html = render("::html js\n  <script>alert(1)</script>\n");
-        assert!(html.contains("<script>alert(1)</script>"), "{html}");
+        // 脚本被提取成资源后内联，带上 mdpp-js 类；内容还在
+        assert!(html.contains("alert(1)"), "{html}");
+        assert!(html.contains("mdpp-js"), "{html}");
+        assert!(html.contains("<script"), "{html}");
     }
 
     /// `{{参数}}` 在写出去之前被填掉 —— 要执行的那几个块都得过这一遍
@@ -356,6 +428,95 @@ mod tests {
     fn placeholders_are_filled_from_params() {
         let html = render("::css 颜色=red\n  .a { color: {{颜色}}; }\n");
         assert!(html.contains("color: red"), "{html}");
+    }
+
+    /// 单页模式：重复的 `::css` 按内容哈希去重，只内联一次
+    #[test]
+    fn duplicate_css_is_inlined_once() {
+        let html = render("::css\n  .a { color: red }\n\n::css\n  .a { color: red }\n");
+        assert_eq!(html.matches("<style>").count(), 1, "{html}");
+    }
+
+    /// 单页模式：重复的 `::js` 只内联一次
+    #[test]
+    fn duplicate_js_is_inlined_once() {
+        let html = render("::js\n  console.log(1)\n\n::js\n  console.log(1)\n");
+        assert_eq!(html.matches("<script").count(), 1, "{html}");
+    }
+
+    /// 内容不同的 CSS 不会被误去重
+    #[test]
+    fn different_css_is_not_deduped() {
+        let html = render("::css\n  .a { }\n\n::css\n  .b { }\n");
+        assert_eq!(html.matches("<style>").count(), 2, "{html}");
+    }
+
+    /// 站点模式：HTML 里是链接，资源内容随 `Rendered::assets` 返回
+    #[test]
+    fn linked_mode_returns_assets_and_links() {
+        use crate::{AssetKind, Mdpp, RenderContext};
+
+        let rendered = Mdpp::new().render_with_assets(
+            "::css\n  .a { color: red }\n\n::js\n  console.log(1)\n",
+            &RenderContext::new(),
+            "assets",
+        );
+        assert!(
+            rendered
+                .html
+                .contains("<link rel=\"stylesheet\" href=\"assets/mdpp-"),
+            "{}",
+            rendered.html
+        );
+        assert!(
+            rendered.html.contains("<script src=\"assets/mdpp-"),
+            "{}",
+            rendered.html
+        );
+        assert_eq!(rendered.assets.len(), 2, "{:?}", rendered.assets);
+        assert!(
+            rendered
+                .assets
+                .iter()
+                .any(|asset| asset.kind == AssetKind::Css)
+        );
+        assert!(
+            rendered
+                .assets
+                .iter()
+                .any(|asset| asset.kind == AssetKind::Js)
+        );
+    }
+
+    /// 站点模式：重复资源只出现一次链接、清单里只有一份
+    #[test]
+    fn linked_mode_dedupes() {
+        use crate::{Mdpp, RenderContext};
+
+        let rendered = Mdpp::new().render_with_assets(
+            "::css\n  .a { }\n\n::css\n  .a { }\n",
+            &RenderContext::new(),
+            "assets",
+        );
+        assert_eq!(rendered.assets.len(), 1, "{:?}", rendered.assets);
+        assert_eq!(rendered.html.matches("<link").count(), 1, "{}", rendered.html);
+    }
+
+    /// 前缀按调用方给的原样用（嵌套页面传 `../../assets`）
+    #[test]
+    fn linked_mode_uses_the_given_prefix() {
+        use crate::{Mdpp, RenderContext};
+
+        let rendered = Mdpp::new().render_with_assets(
+            "::css\n  .a { }\n",
+            &RenderContext::new(),
+            "../../assets",
+        );
+        assert!(
+            rendered.html.contains("href=\"../../assets/mdpp-"),
+            "{}",
+            rendered.html
+        );
     }
 
     /// 行号、起始行与强调行只作为 `data-*` 提示交出去，怎么摆出来是界面那一层的事

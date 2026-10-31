@@ -226,6 +226,12 @@ enum Skip {
 
 /// 一个本地相对地址解出来是：源文件在哪儿、产物里该放哪儿
 fn resolve(value: &str, context: &Context) -> Result<(PathBuf, PathBuf), Skip> {
+    // 已经是产物里的资源地址（`assets/mdpp-…` 或 `../assets/mdpp-…`）——
+    // 那是 `::css` / `::js` 的站点模式自己写出去的链接，不必再去 `pages/` 找
+    let prefix = context.assets_prefix.trim_start_matches("./");
+    if value.starts_with(&format!("{prefix}/mdpp-")) {
+        return Err(Skip::NotOurs("已经是产物里的资源"));
+    }
     // 以 `/` 结尾的是**站内地址**（本页解析器给出去的每一条都以 `/` 收尾），
     // 不是文件 —— 别去 `pages/另一页/` 那儿找一个目录
     if value.trim().is_empty()

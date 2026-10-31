@@ -156,8 +156,27 @@ impl Pass<'_> {
             context = context.with_templates(templates.clone());
         }
 
+        // 站点模式：::css / ::js / ::html js 输出链接，资源随 rendered.assets 返回
+        let rendered = self
+            .parser
+            .render_with_assets(&source, &context, assets_prefix);
+
+        // 资源落盘：`assets/mdpp-<hash>.css|js`，已存在则跳过（多页共享同一份）
+        if !rendered.assets.is_empty() {
+            let assets_dir = self.site_dir.join(page::ASSET_DIR);
+            std::fs::create_dir_all(&assets_dir)
+                .map_err(|error| format!("建不了 {}：{error}", assets_dir.display()))?;
+            for asset in &rendered.assets {
+                let path = assets_dir.join(asset.file_name());
+                if !path.exists() {
+                    std::fs::write(&path, &asset.content)
+                        .map_err(|error| format!("写不了 {}：{error}", path.display()))?;
+                }
+            }
+        }
+
         let scan = assets::scan(
-            &self.parser.render_with(&source, &context),
+            &rendered.html,
             &assets::Context {
                 page_dir: page.source.parent().unwrap_or(self.pages_dir),
                 pages_dir: self.pages_dir,
