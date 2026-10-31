@@ -22,6 +22,7 @@
 
 mod callouts;
 mod embeds;
+mod flatlist;
 mod fold;
 mod media;
 mod navbox;
@@ -33,6 +34,7 @@ use markdown_it::Node;
 use callouts::{render_danger, render_error, render_note, render_tip, render_warning};
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
 use fold::render_fold;
+use flatlist::render_flatlist;
 use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;
 use panels::{render_columns, render_tabs, render_theme};
@@ -79,6 +81,7 @@ pub const NAMES: &[&str] = &[
     "danger",
     "error",
     "fold",
+    "flatlist",
     "navbox",
 ];
 
@@ -109,6 +112,7 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("danger", ContentMode::Markdown, render_danger))
         .register(spec("error", ContentMode::Markdown, render_error))
         .register(spec("fold", ContentMode::Markdown, render_fold))
+        .register(spec("flatlist", ContentMode::Markdown, render_flatlist))
         .register(spec("navbox", ContentMode::Sections, render_navbox));
 }
 
@@ -242,6 +246,8 @@ mod tests {
                 "theme" => format!("::{name}\n  [light]\n  正文一行\n"),
                 // 分栏与选项卡一样，每节都得有 [标签]，标签前不许有正文
                 "columns" => format!("::{name}\n  [甲]\n  正文一行\n"),
+                // flatlist 内容直接是列表，不分节，不需要 [标签]
+                "flatlist" => format!("::{name}\n  * 正文\n"),
                 // navbox 要一个标题与一行分组，否则那个样子是「用法有问题」的框
                 "navbox" => format!("::{name} title=某导航框\n  [分类]\n  甲\n"),
                 _ => format!("::{name}\n  正文一行\n"),
