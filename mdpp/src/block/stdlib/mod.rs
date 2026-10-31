@@ -22,6 +22,7 @@
 
 mod callouts;
 mod embeds;
+mod fold;
 mod media;
 mod navbox;
 mod panels;
@@ -31,6 +32,7 @@ use markdown_it::Node;
 
 use callouts::{render_danger, render_error, render_note, render_tip, render_warning};
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
+use fold::render_fold;
 use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;
 use panels::{render_columns, render_tabs, render_theme};
@@ -76,6 +78,7 @@ pub const NAMES: &[&str] = &[
     "warning",
     "danger",
     "error",
+    "fold",
     "navbox",
 ];
 
@@ -105,6 +108,7 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("warning", ContentMode::Markdown, render_warning))
         .register(spec("danger", ContentMode::Markdown, render_danger))
         .register(spec("error", ContentMode::Markdown, render_error))
+        .register(spec("fold", ContentMode::Markdown, render_fold))
         .register(spec("navbox", ContentMode::Sections, render_navbox));
 }
 
