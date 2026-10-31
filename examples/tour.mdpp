@@ -36,21 +36,30 @@
 
 # 横条：普通 vs 迷你
 
-`::banner` 默认占一整行；写 `mini=on` 变成**行内块**，不占整行，适合放在正文里或 `::aside` 里当分节标题。
+`::banner` 默认占一整行；写 `mini=on` 变成**行内块迷你标签**，如页面底部的「现状：施行中」，适合嵌进正文或 `::aside` 里当分节标题。
 
 ::banner
   普通横条，占一整行，正文不会跟它同行。
 
-::banner mini text=迷你横条
-  迷你横条，行内块，不占整行，可和正文同行。
+::banner mini text=现状：施行中
+  迷你横条，深色背景标签样式，不占整行，可和正文同行。
 
-# 在 ::aside 里嵌迷你横条
+# 信息栏位置：right / center / left
 
-::aside title=带分节的信息框 align=center
-  ::banner mini text=第一节
-    这是第一节的内容。
-  ::banner mini text=第二节
-    这是第二节的内容。
+`::aside` 的 `align=` 参数决定位置：
+
+- 不写或 `right`：右侧浮动（默认）
+- `center`：居中小框，宽度随内容，不浮动
+- `left`：左侧浮动
+
+::aside title=右侧信息栏 align=right
+  默认就是右侧浮动，正文会绕着它走。
+
+::aside title=居中小框 align=center
+  居中显示，宽度随内容（最宽 28rem），正文不绕。
+
+::aside title=左侧信息框 align=left
+  左侧浮动，正文会绕着它走。
 
 # 提示框
 
