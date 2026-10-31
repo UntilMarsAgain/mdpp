@@ -18,6 +18,15 @@
   border-radius: 0;
 }
 
+/* mini 模式：不占整行，变成行内块，适合嵌进正文或 ::aside 里当分节标题 */
+.mdpp-content .banner.banner--mini {
+  display: inline-block;
+  margin: 0.2em 0.4em;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.9em;
+  vertical-align: middle;
+}
+
 .mdpp-content .title-block {
   margin: 1.6em 0 0.6em;
   text-align: center;
@@ -51,6 +60,20 @@
     width: auto;
     margin: var(--mdpp-gap) 0;
   }
+}
+
+/* align=center 时不浮动，居中显示，宽度随内容 —— 维基式「居中信息框」 */
+.mdpp-content .aside.aside--center {
+  float: none;
+  display: block;
+  margin: var(--mdpp-gap) auto;
+  width: fit-content;
+  max-width: 90%;
+}
+
+/* align=left 时左浮动 */
+.mdpp-content .aside.aside--left {
+  float: left;
 }
 
 .mdpp-content .signature {

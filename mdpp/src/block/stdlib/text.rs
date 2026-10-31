@@ -46,9 +46,26 @@ pub(super) fn render_quote(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
 ///
 /// 用 `node.children`（已经解析好的内容）而不是原文：信息栏里也要能写链接、强调、列表。
 /// 它是一条**浮动**的栏：正文会绕着它走，这是信息栏该有的样子；窄屏上由样式取消浮动。
+///
+/// `align=` 决定位置：
+/// - 不写（或 `right`）：右侧浮动，正文绕着走（默认）
+/// - `center`：居中小框，不浮动，宽度随内容，正文不绕 —— 适合做维基式的「居中信息框」
+/// - `left`：左侧浮动
 pub(super) fn render_aside(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
+    let mut class = "aside".to_string();
+    let align = block.param("align").map(str::trim).map(str::to_lowercase);
+    match align.as_deref() {
+        None | Some("right") => {}
+        Some("center") => class.push_str(" aside--center"),
+        Some("left") => class.push_str(" aside--left"),
+        Some(_) => {
+            render_problem(block, fmt, "align= 只认 right / center / left");
+            return;
+        }
+    }
+
     fmt.cr();
-    fmt.open("aside", &[("class", "aside".to_string())]);
+    fmt.open("aside", &[("class", class)]);
     if let Some(title) = block.param("title") {
         fmt.open("p", &[("class", "aside__title".to_string())]);
         fmt.text(title);
@@ -144,6 +161,17 @@ pub(super) fn render_banner(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
         Some("off" | "false" | "no" | "0") => class.push_str(" banner--square"),
         Some(_) => {
             render_problem(block, fmt, "rounded= 只认 off（要直角）；不写就是圆角");
+            return;
+        }
+    }
+
+    // mini 模式：不占整行，变成行内块，适合嵌进正文或 ::aside 里当分节标题
+    let mini = block.param("mini").map(str::trim).map(str::to_lowercase);
+    match mini.as_deref() {
+        Some("on" | "true" | "yes" | "") => class.push_str(" banner--mini"),
+        None | Some("off" | "false" | "no" | "0") => {}
+        Some(_) => {
+            render_problem(block, fmt, "mini= 只认 on / off");
             return;
         }
     }
@@ -417,5 +445,59 @@ mod tests {
         assert!(html.contains(r#"<div class="signature">"#), "{html}");
         assert!(html.contains("甲"), "{html}");
         assert!(html.contains("2026 年秋"), "{html}");
+    }
+
+    /// `::aside align=center`：不浮动，居中小框，宽度随内容
+    #[test]
+    fn aside_center_is_inline_block() {
+        let html = render("::aside title=中心 align=center\n  居中信息框\n");
+        assert!(html.contains(r#"<aside class="aside aside--center">"#), "{html}");
+        assert!(html.contains("居中信息框"), "{html}");
+    }
+
+    /// `::aside align=left`：左浮动
+    #[test]
+    fn aside_left_floats_left() {
+        let html = render("::aside title=左边 align=left\n  左侧信息框\n");
+        assert!(html.contains(r#"<aside class="aside aside--left">"#), "{html}");
+    }
+
+    /// `::aside align=` 认不出的值报错
+    #[test]
+    fn aside_align_rejects_bad_value() {
+        let html = render("::aside align=maybe\n  内容\n");
+        assert!(html.contains("template--problem"), "{html}");
+        assert!(html.contains("align="), "{html}");
+    }
+
+    /// `::banner mini`：变成行内块，不占整行
+    #[test]
+    fn banner_mini_is_inline_block() {
+        let html = render("::banner mini\n  小横条\n");
+        assert!(
+            html.contains(r#"<p class="banner banner--mini">小横条</p>"#),
+            "{html}"
+        );
+        let param = render("::banner mini=on text=另一种写法\n");
+        assert!(param.contains("banner--mini"), "{param}");
+    }
+
+    /// `::banner mini=off`：不开迷你，仍是普通横条
+    #[test]
+    fn banner_mini_off_is_normal() {
+        let html = render("::banner mini=off\n  普通横条\n");
+        assert!(
+            html.contains(r#"<p class="banner">普通横条</p>"#),
+            "{html}"
+        );
+        assert!(!html.contains("banner--mini"), "{html}");
+    }
+
+    /// `::banner mini=` 认不出的值报错
+    #[test]
+    fn banner_mini_rejects_bad_value() {
+        let html = render("::banner mini=也许\n  内容\n");
+        assert!(html.contains("template--problem"), "{html}");
+        assert!(html.contains("mini="), "{html}");
     }
 }
