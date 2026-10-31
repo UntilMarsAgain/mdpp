@@ -36,7 +36,7 @@
 }
 
 .mdpp-content .fold > *:not(summary):not(:last-child) {
-  margin-bottom: 0.5em;
+  margin-bottom: 1em;
 }
 
 .mdpp-content .fold > :first-child:not(summary) {
