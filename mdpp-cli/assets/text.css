@@ -18,13 +18,19 @@
   border-radius: 0;
 }
 
-/* mini 模式：不占整行，变成行内块，适合嵌进正文或 ::aside 里当分节标题 */
+/* mini 模式：行内块标签样式，如「现状：施行中」，适合嵌进正文或 ::aside 里当分节标题 */
 .mdpp-content .banner.banner--mini {
   display: inline-block;
-  margin: 0.2em 0.4em;
-  padding: 0.2rem 0.6rem;
-  font-size: 0.9em;
+  margin: 0.1em 0.4em;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.85em;
+  font-weight: 600;
   vertical-align: middle;
+  border-radius: 0.35rem;
+  background: #1a5e1a;
+  color: #ffffff;
+  border: 1px solid #154a15;
+  white-space: nowrap;
 }
 
 .mdpp-content .title-block {
@@ -68,12 +74,14 @@
   display: block;
   margin: var(--mdpp-gap) auto;
   width: fit-content;
-  max-width: 90%;
+  max-width: 28rem;
 }
 
-/* align=left 时左浮动 */
+/* align=left 时左浮动：显式覆盖 .aside 的 float: right */
 .mdpp-content .aside.aside--left {
-  float: left;
+  float: left !important;
+  width: fit-content;
+  max-width: 28rem;
 }
 
 .mdpp-content .signature {
