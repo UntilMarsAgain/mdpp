@@ -21,9 +21,11 @@
 //! `normalize_hex`（`color=` 只认十六进制）与 `text_on`（底色 → 字色）。
 
 mod callouts;
+mod class;
 mod embeds;
 mod flatlist;
 mod fold;
+mod indent;
 mod media;
 mod navbox;
 mod panels;
@@ -32,9 +34,11 @@ mod text;
 use markdown_it::Node;
 
 use callouts::{render_danger, render_error, render_note, render_tip, render_warning};
+use class::render_class;
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
 use fold::render_fold;
 use flatlist::render_flatlist;
+use indent::render_indent;
 use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;
 use panels::{render_columns, render_tabs, render_theme};
@@ -82,6 +86,8 @@ pub const NAMES: &[&str] = &[
     "error",
     "fold",
     "flatlist",
+    "class",
+    "indent",
     "navbox",
 ];
 
@@ -113,6 +119,8 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("error", ContentMode::Markdown, render_error))
         .register(spec("fold", ContentMode::Markdown, render_fold))
         .register(spec("flatlist", ContentMode::Markdown, render_flatlist))
+        .register(spec("class", ContentMode::Markdown, render_class))
+        .register(spec("indent", ContentMode::Markdown, render_indent))
         .register(spec("navbox", ContentMode::Sections, render_navbox));
 }
 
@@ -248,6 +256,9 @@ mod tests {
                 "columns" => format!("::{name}\n  [甲]\n  正文一行\n"),
                 // flatlist 内容直接是列表，不分节，不需要 [标签]
                 "flatlist" => format!("::{name}\n  * 正文\n"),
+                // class 需要 class= 参数，indent 需要 indent= 参数
+                "class" => format!("::{name} class=foo\n  内容\n"),
+                "indent" => format!("::{name} indent=1\n  内容\n"),
                 // navbox 要一个标题与一行分组，否则那个样子是「用法有问题」的框
                 "navbox" => format!("::{name} title=某导航框\n  [分类]\n  甲\n"),
                 _ => format!("::{name}\n  正文一行\n"),
