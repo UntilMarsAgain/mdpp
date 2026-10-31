@@ -34,6 +34,11 @@
 .mdpp-content .theme__part--light { display: none; }
 .mdpp-content .theme__part--dark { display: none; }
 
+/* ::theme 里的 ::css / ::js / ::html js 被渲染为带 data-theme 的
+ * .theme-asset 占位容器，容器本身不可见，只由页面脚本按主题
+ * 选择性把内容真正注入到文档里（见 mdpp.js 的 injectThemeAssets）。 */
+.mdpp-content .theme-asset { display: none; }
+
 /* 页面没有明确指定主题时，跟随系统。
  * `:not([data-mdpp-theme='…'])` 是为了让「明确说了 light 就别再被深色那条拿走」。 */
 @media (prefers-color-scheme: dark) {
