@@ -159,10 +159,30 @@
     injectThemeAssets(currentTheme());
   };
 
+  // ---- mermaid / KaTeX -----------------------------------------------
+  // 页面里若用了 ::mermaid（pre.mermaid）或 ::math
+  //（div.math，带 data-tex 属性），需要把对应的前端脚本
+  // 跑起来才能在浏览器里画出来。脚本是由 page.rs 按 external-script
+  // 参数从 CDN 写进页面的；这里只负责调用它们的渲染 API。
+  function bindDiagrams() {
+    if (window.mermaid) {
+      window.mermaid.initialize({ startOnLoad: true });
+    }
+    if (window.katex) {
+      document.querySelectorAll(".math").forEach(function (el) {
+        var tex = el.getAttribute("data-tex");
+        if (tex) {
+          window.katex.render(tex, el, { throwOnError: false });
+        }
+      });
+    }
+  }
+
   function bindAll(root) {
     root.querySelectorAll(".tabs").forEach(bind);
     root.querySelectorAll(".navbox").forEach(bindNavbox);
     bindTheme();
+    bindDiagrams();
   }
 
   if (document.readyState === "loading") {
