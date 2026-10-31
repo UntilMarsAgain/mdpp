@@ -1,0 +1,49 @@
+/* ---- 折叠 --------------------------------------------------------- */
+
+.mdpp-content .fold {
+  border: 1px solid var(--mdpp-border);
+  border-radius: var(--mdpp-radius);
+  margin: var(--mdpp-gap) 0;
+  overflow: hidden;
+}
+
+.mdpp-content .fold > summary {
+  padding: 0.6rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+  background: var(--mdpp-surface);
+  border-bottom: 1px solid var(--mdpp-border);
+}
+
+/* 隐藏浏览器自带的小三角，自己画一个 */
+.mdpp-content .fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mdpp-content .fold > summary::after {
+  content: " ▾";
+  font-size: 0.8em;
+  opacity: 0.6;
+}
+
+.mdpp-content .fold[open] > summary::after {
+  content: " ▴";
+}
+
+.mdpp-content .fold > *:not(summary) {
+  padding: 0.6rem 1rem;
+}
+
+.mdpp-content .fold > :first-child:not(summary) {
+  margin-top: 0;
+}
+
+.mdpp-content .fold > :last-child {
+  margin-bottom: 0;
+}
+
+.mdpp-content .fold--custom > summary {
+  background: inherit;
+  color: inherit;
+}
