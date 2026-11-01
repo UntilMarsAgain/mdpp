@@ -56,8 +56,9 @@ impl InlineRule for MathScanner {
     const MARKER: char = '$';
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        // 只看这一行剩下的部分（`pos_max` 就是行尾）：公式不跨行
-        let rest = &state.src[state.pos..state.pos_max];
+        // 只认这一行剩下的部分：行内解析是整段一递的（见 [`super::line_of`]），
+        // 配对跨了软换行就当作没有闭合 —— 多行的整块公式是 [`crate::block`] 的 `::math` 块
+        let rest = super::line_of(&state.src, state.pos, state.pos_max);
 
         // `$$…$$` 先认：它更具体，不然会被行内那条吃掉两个 `$`
         if let Some(body) = rest.strip_prefix("$$") {
@@ -145,6 +146,14 @@ mod tests {
         let html = render("`echo $HOME` 与\n\n```sh\necho $HOME\n```\n");
         assert!(!html.contains("math--"), "{html}");
         assert!(html.contains("$HOME"), "{html}");
+    }
+
+    /// 配对不跨软换行：换行那一头再有 `$` 也不算闭合 —— 隔行的两个记号
+    /// 结不成对，免得把中间一大段吞进去
+    #[test]
+    fn pairing_does_not_cross_a_line_break() {
+        let html = render("上 $a\nb$ 下\n");
+        assert!(!html.contains("math--"), "{html}");
     }
 
     /// 特殊字符要被转义，不能因为写着公式就把 HTML 放进来

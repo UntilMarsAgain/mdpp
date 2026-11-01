@@ -7,6 +7,7 @@
 //! - 不嵌套 —— 第一对先认：`==a==b==c==` 高亮 a 与 c，各自成档；
 //! - 内部**照常按行内规则解析**：粗体、`[[内部链接]]`、`$公式$` 都能带，做法同
 //!   cmark 链接 —— 换上自己的节点，把子窗口递回 `tokenize` 再换回来；
+//! - 只认**当前一行**：配对跨了软换行就当作没有闭合（见 [`super::line_of`]）。
 //!
 //! `<mark>` 本来就在 [`crate::block::html`] 的净化白名单里，此前正文只能借 `::html`
 //! 绕着写；这里给的是一条不碰净化的正路。代码块与行内代码里的 `==` 不受影响 ——
@@ -43,8 +44,9 @@ impl InlineRule for MarkScanner {
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let start = state.pos;
-        // 只看这一行剩下的部分：高亮不跨行（`pos_max` 就是行尾）
-        let after = state.src[start..state.pos_max].strip_prefix("==")?;
+        // 只认这一行剩下的部分：行内解析是整段一递的（见 [`super::line_of`]），
+        // 配对跨了软换行就当作没有闭合
+        let after = super::line_of(&state.src, start, state.pos_max).strip_prefix("==")?;
 
         // 剩下还是 `=`，说明写下的是三连或更多（`===`、`====`）—— 不是开
         if after.starts_with('=') {
@@ -149,5 +151,12 @@ mod tests {
         assert!(html.contains(r#"data-tex="a = 1""#), "{html}");
         assert!(html.contains("<s>删掉</s>"), "{html}");
         assert!(html.contains("<mark>高亮</mark>"), "{html}");
+    }
+
+    /// 配对不跨软换行：换行那一头再有 `==` 也不算闭合
+    #[test]
+    fn pairing_does_not_cross_a_line_break() {
+        let html = render("上 ==a\nb== 下\n");
+        assert!(!html.contains("<mark"), "{html}");
     }
 }
