@@ -1,16 +1,41 @@
-# docs
+# Markdown++
 
-欢迎使用Markdown++，这是一个简易、高效、紧密联系的静态站点生成器。
+::title
+  👋欢迎使用Markdown++👋
 
-::example
-  传入的信息显示在此处。
+::image src=../assets/favicon.svg
+  Markdown++ 图标
 
-## 开始使用
+Markdown++是一个简易、高效、紧密联系的标记语言和静态站点生成器，
+基于[markdown-it](https://github.com/Markdown-it/markdown-it)构造，
+并融入了多种增强文档间联系的语法。
 
-- 可在`pages/`下新建`.mdpp`文件，或使用`mdpp new <页名>`，以创建页面；
-- 可在`templates/`下新建`.mdpp`文件，以创建模板；
-- 可在`mdpp.toml`编辑配置文件。
+## 快速开始
 
-## 查阅文档
+Markdown++可以作为Rust库使用，也提供`mdpp`命令，用以编译文件或创建静态站点。
 
-更多文档，请在我们的[Github仓库](https://github.com/UntilMarsAgain/mdpp)和我们的[在线文档](https://untilmarsagain.github.io/mdpp/)查看。
+### 使用Markdown++编译单个文件
+
+::main
+  编译文件
+
+TODO
+
+### 使用Markdown++作为站点生成器
+
+::main
+  站点生成器
+
+TODO
+
+### 使用Markdown++作为Rust库
+
+::main
+  Rust库
+
+TODO
+
+## 示例
+
+本站点使用Markdown++编写，可在项目
+[Github仓库](https://github.com/UntilMarsAgain/mdpp)查看代码。
