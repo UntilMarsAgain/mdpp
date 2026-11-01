@@ -28,11 +28,15 @@
 //!   不区分代码片段。
 //! - **syntect**（随 `plugins::extra` 的默认 features 进来）：它把高亮配色以内联
 //!   style 写死，跟随不了主题。
+//! - **下划线档的强调**（`_斜_` / `__粗__`）：这两个记号在 mdpp 里改行当了 ——
+//!   分别是下标与下划线，另有 `^…^` 上标（[`crate::syntax::baseline`]）；
+//!   星号那对原封不动，还是 CommonMark 的全部活性。
 
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use markdown_it::generics::inline::emph_pair::EmphPairScanner;
 use markdown_it::MarkdownIt;
 
 use crate::assets::{self, Asset, AssetMode};
@@ -415,6 +419,14 @@ impl MdppBuilder {
         }
         // 行内高亮没有开关 —— 一条随库的基础语法，跟删除线一个待遇
         syntax::mark::add(&mut md);
+
+        // `__` 与 `_` 从 CommonMark 的强调档整体退役：同一对记号分别是下划线与
+        // 下标，`^…^` 补上标（那把「贴字」的尺与代价见 syntax::baseline 的模块
+        // 头）。摘的是下划线那一个扫描器 —— 一条规则管着两个长度的配对，星号
+        // 的机器不受牵动。
+        md.inline
+            .remove_rule::<EmphPairScanner<{'_'}, false>>();
+        syntax::baseline::add(&mut md);
 
         // `::` 块。挂载位置是刻意的：必须排在段落规则**之前**，否则 `::名字`
         // 会先被当成一行普通文字收走。
