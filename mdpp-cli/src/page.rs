@@ -183,8 +183,14 @@ pub struct Chrome {
     pub description: String,
     /// 顶栏右端那个仓库链接（只给 http/https）
     pub repo_url: String,
-    /// 底栏那句话。空的就是没有底栏
+    /// 底栏那句话的**原始文本**。空的就是没有底栏。
+    ///
+    /// 与 `copyright_html` 二选一：有 `copyright_html` 时这条不出场。
     pub copyright: String,
+    /// 底栏那句话经过 mdpp 解析后的 HTML 片段。有它时底栏直接输出这段 HTML，
+    /// 于是 `footer` 里可以写 `::note`、`[[内部链接]]`、`**粗体**` 之类的 mdpp 语法。
+    /// 没配就没有底栏。
+    pub copyright_html: Option<String>,
     /// 顶栏那块底的主题色。`None` 就是**不覆盖** —— 默认值在 `base.css` 的调色板里，
     /// 不必每页都带着一份一模一样的
     pub theme_color: Option<Color>,
@@ -485,8 +491,19 @@ fn nav_bar(chrome: &Chrome) -> String {
 }
 
 /// 底下那一条。**没写 copyright 就没有底栏** —— 与 mkdocs 一个规矩：
-/// 空的那句不必摆在那儿
+/// 空的那句不必摆在那儿。
+///
+/// 有 `copyright_html` 时直接输出那段已解析的 HTML（于是 `footer` 里能写
+/// `::note`、`[[内部链接]]`、`**粗体**` 之类的 mdpp 语法），没有就退回到
+/// 原始 `copyright` 字段（只做 HTML 转义，当纯文本）。
 fn bottom_bar(chrome: &Chrome) -> String {
+    if let Some(html) = &chrome.copyright_html {
+        return format!(
+            "<div class=\"mdpp-foot\">\n<div class=\"mdpp-foot__inner\">\n\
+             <span class=\"mdpp-foot__text\">{html}</span>\n\
+             <span class=\"mdpp-foot__made\">由 mdpp 生成</span>\n</div>\n</div>"
+        );
+    }
     let text = chrome.copyright.trim();
     if text.is_empty() {
         return String::new();
