@@ -118,7 +118,7 @@ mod tests {
             "mdpp.toml",
             ".gitignore",
             "pages/index.mdpp",
-            "templates/main.mdpp",
+            "templates/example.mdpp",
             "assets/favicon.svg",
             "assets/logo.svg",
             "build",
@@ -200,7 +200,7 @@ mod tests {
         for path in [
             "mdpp.toml",
             "pages/index.mdpp",
-            "templates/main.mdpp",
+            "templates/example.mdpp",
         ] {
             let text = std::fs::read_to_string(dir.path().join(path)).expect("读得动");
             assert!(
@@ -217,7 +217,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         init_at(dir.path(), Some("某站")).expect("建得出");
         let template =
-            std::fs::read_to_string(dir.path().join("templates/main.mdpp")).expect("读得动");
+            std::fs::read_to_string(dir.path().join("templates/example.mdpp")).expect("读得动");
         assert!(template.contains("{{body}}"), "{template}");
         assert!(!template.contains(SITE_NAME_TOKEN), "{template}");
     }

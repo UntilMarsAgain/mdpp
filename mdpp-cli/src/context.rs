@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn a_directory_becomes_a_page_table() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        std::fs::write(dir.path().join("main.mdpp"), "::banner\n  卡片来了\n").expect("写得下");
+        std::fs::write(dir.path().join("example.mdpp"), "::banner\n  卡片来了\n").expect("写得下");
         // 后缀不对的、根本没有后缀的，都不是模板页
         std::fs::write(dir.path().join("不是模板.md"), "不认").expect("写得下");
         std::fs::write(dir.path().join("也没有后缀"), "也不认").expect("写得下");
@@ -138,7 +138,7 @@ mod tests {
     #[test]
     fn the_prefixed_spelling_finds_the_same_page() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        std::fs::write(dir.path().join("main.mdpp"), "::banner\n  卡片来了\n").expect("写得下");
+        std::fs::write(dir.path().join("example.mdpp"), "::banner\n  卡片来了\n").expect("写得下");
 
         let context =
             RenderContext::new().with_templates(template_pages(dir.path()).expect("读得动"));
@@ -180,7 +180,7 @@ mod tests {
     #[test]
     fn only_the_marked_suffix_counts_as_a_template_page() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        for name in ["main.mdpp", "别的.md", "别的.txt", "别的"] {
+        for name in ["example.mdpp", "别的.md", "别的.txt", "别的"] {
             std::fs::write(dir.path().join(name), "::banner\n  卡片来了\n").expect("写得下");
         }
 

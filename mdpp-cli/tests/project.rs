@@ -53,7 +53,7 @@ fn init_new_build_is_a_whole_ride() {
     for path in [
         "mdpp.toml",
         "pages/index.mdpp",
-        "templates/main.mdpp",
+        "templates/example.mdpp",
         ".gitignore",
     ] {
         assert!(root.join(path).exists(), "少了 {path}");
