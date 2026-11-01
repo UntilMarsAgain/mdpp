@@ -118,8 +118,7 @@ mod tests {
             "mdpp.toml",
             ".gitignore",
             "pages/index.mdpp",
-            "pages/示例.mdpp",
-            "templates/卡片.mdpp",
+            "templates/example.mdpp",
             "assets/favicon.svg",
             "assets/logo.svg",
             "build",
@@ -142,7 +141,7 @@ mod tests {
         init_at(dir.path(), None).expect("建得出");
         let project = crate::project::Project::load(dir.path()).expect("这是个项目");
         let pages = Site::collect(&project.pages_dir()).expect("扫得动");
-        assert!(pages.pages().len() >= 2);
+        assert!(!pages.pages().is_empty(), "骨架里至少该有一页");
 
         let templates = crate::context::template_pages(&project.templates_dir()).expect("读得动");
         let context = mdpp::RenderContext::new().with_templates(templates);
@@ -201,8 +200,7 @@ mod tests {
         for path in [
             "mdpp.toml",
             "pages/index.mdpp",
-            "pages/示例.mdpp",
-            "templates/卡片.mdpp",
+            "templates/example.mdpp",
         ] {
             let text = std::fs::read_to_string(dir.path().join(path)).expect("读得动");
             assert!(
@@ -212,15 +210,16 @@ mod tests {
         }
     }
 
-    /// 模板页里的 `{{标题}}` / `{{body}}` **不是**站点名 —— 那是块填空用的，
+    /// 模板页里的 `{{body}}` **不是**站点名 —— 那是块填空用的，
     /// 由渲染时填。init 要是把它也换了，那一页就废了
     #[test]
     fn the_template_pages_keep_their_own_placeholders() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         init_at(dir.path(), Some("某站")).expect("建得出");
-        let card = std::fs::read_to_string(dir.path().join("templates/卡片.mdpp")).expect("读得动");
-        assert!(card.contains("{{标题}}"), "{card}");
-        assert!(card.contains("{{body}}"), "{card}");
+        let template =
+            std::fs::read_to_string(dir.path().join("templates/example.mdpp")).expect("读得动");
+        assert!(template.contains("{{body}}"), "{template}");
+        assert!(!template.contains(SITE_NAME_TOKEN), "{template}");
     }
 
     /// **只在空目录里工作** —— 这是这一条命令唯一的前置条件

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-hidden="true">
+  <!--
+    Markdown++ 的站点 logo —— 摆在顶栏里、站点名**旁边**。
+
+    配色是**为彩色顶栏准备的**：主体白、点缀青，于是它在顶栏那块有色的底上读得出来
+    （顶栏底色默认是蓝 #2f6fd0，也可以由 mdpp.toml 的 theme_color 换；压在底上的字
+    永远是构建期按亮度算出来的对比色，logo 要与那一片底站得住）。
+
+    另一枚同形状、深色的 favicon.svg 用在浏览器标签页上 —— 那儿的底是**浅色**的，
+    白 logo 会看不见。两枚共用同一套几何，只有配色不同。
+
+    画法上刻意从简：一枚粗环 + 一个 markdown 三角（▾）+ 一枚落在环上的圆点。
+    顶栏里它只有一二十个像素，细笔画（小虚线、坐标轴、箭头）在那个尺寸上会糊成一团，
+    所以这里只留几笔粗的 —— 缩小之后仍然认得出，比画全了看不清强。
+
+    **图形在画布里是居中的**：外轮廓（那枚环）取 cx=cy=32、半径 21、描边 5，于是它连同
+    描边正好落在 8.5…55.5，四边余量都是 23.5 —— 上下左右一样宽，图形不偏。
+    （环顶 8.5 与那枚圆点的顶 8.5 恰好齐平，所以圆点没有把上边撑出去。）
+    要验证的话：把它按 viewBox 的尺寸渲染成透明底，`-trim` 出来的偏移应当四边相等。
+  -->
+  <circle cx="32" cy="32" r="21" fill="none" stroke="#ffffff" stroke-width="5" />
+  <path d="M23 28 L32 40 L41 28" fill="none" stroke="#ffffff" stroke-width="5"
+        stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="46" cy="15" r="6.5" fill="#5fd4c8" />
+</svg>

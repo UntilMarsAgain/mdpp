@@ -1,0 +1,4 @@
+::tip title=提示
+  模板页内容出现在此处
+::banner color=#0055a4
+  {{body}}

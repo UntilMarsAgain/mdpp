@@ -53,7 +53,7 @@ fn init_new_build_is_a_whole_ride() {
     for path in [
         "mdpp.toml",
         "pages/index.mdpp",
-        "templates/卡片.mdpp",
+        "templates/example.mdpp",
         ".gitignore",
     ] {
         assert!(root.join(path).exists(), "少了 {path}");
@@ -226,6 +226,14 @@ fn every_link_in_the_built_site_points_at_a_page_that_exists() {
             format!("/{page}/")
         };
         for target in links_in(&html) {
+            // 带协议的（外链）、锚点、邮件不是站内页面，不归这条验
+            if target.starts_with("http://")
+                || target.starts_with("https://")
+                || target.starts_with("mailto:")
+                || target.starts_with('#')
+            {
+                continue;
+            }
             let landed = normalize(&address, &target);
             // 样式与脚本落在 `assets/`，那是另一条管线验的
             if landed.starts_with("/assets/") {
