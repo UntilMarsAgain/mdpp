@@ -37,7 +37,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use markdown_it::generics::inline::emph_pair::EmphPairScanner;
-use markdown_it::MarkdownIt;
+use markdown_it::parser::core::CoreRule;
+use markdown_it::{MarkdownIt, Node};
 
 use crate::assets::{self, Asset, AssetMode};
 use crate::block;
@@ -409,6 +410,11 @@ impl MdppBuilder {
 
         if options.heading_anchors {
             markdown_it::plugins::extra::heading_anchors::add(&mut md, slug::heading_id);
+            // 紧接着把重复的收掉：标题 id 那条规则每跑一次 `md.parse` 都走**整棵
+            // 树**，包括子解析（Markdown 档的块、分栏的每一节、模板页展开）搬进来
+            // 的孩子 —— 子解析已挂过一次，外层再挂一次，页面上就成了
+            // `id="甲" id="甲"`。详见 [`DropDuplicateHeadingIds`]。
+            md.add_rule::<DropDuplicateHeadingIds>();
         }
 
         if options.math {
@@ -443,6 +449,30 @@ impl MdppBuilder {
             parser: Rc::new(md),
             registry,
         }
+    }
+}
+
+/// 收掉重复的标题 `id`，**留下先挂的那一个**。
+///
+/// `heading_anchors` 的 core 规则每跑一次 `md.parse` 都会走整棵树。嵌套解析把
+/// 子树的节点搬进外层之后，外层那一遍会再挂一次 —— `::note` 里的标题于是有两个
+/// `id`，经模板页展开的语法页有三个。重复的 `id` 是无效 HTML，锚点也会指错。
+///
+/// 挂完立刻收，顺序就定死在这一处：不依赖渲染时去重，也不会改到别的属性。
+struct DropDuplicateHeadingIds;
+
+impl CoreRule for DropDuplicateHeadingIds {
+    fn run(root: &mut Node, _md: &MarkdownIt) {
+        root.walk_mut(|node, _| {
+            let mut kept = false;
+            node.attrs.retain(|(name, _)| {
+                if *name != "id" {
+                    return true;
+                }
+                // 第一个留下，后面的都丢掉
+                !std::mem::replace(&mut kept, true)
+            });
+        });
     }
 }
 
@@ -513,6 +543,18 @@ mod tests {
     fn headings_get_anchor_ids() {
         let html = md_of("## 文本与行内元素\n");
         assert!(html.contains(r#"id="文本与行内元素""#), "{html}");
+    }
+
+    /// 嵌套解析（块里的标题、模板页展开）不该把同一个标题挂两遍 `id` ——
+    /// 子解析挂一次，外层 core 再走整棵树又挂一次，重复的 id 是无效 HTML
+    #[test]
+    fn nested_parses_do_not_duplicate_heading_ids() {
+        let html = md_of("::note\n  # 标题甲\n");
+        assert_eq!(
+            html.matches(r#"id="标题甲""#).count(),
+            1,
+            "一个标题只该有一个 id：{html}"
+        );
     }
 
     /// 关掉之后一个 `id=` 都不剩 —— 开关要关得干净，而不是只关掉一半
