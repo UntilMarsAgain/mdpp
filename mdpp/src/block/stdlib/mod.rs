@@ -22,6 +22,7 @@
 
 mod callouts;
 mod class;
+mod demo;
 mod embeds;
 mod flatlist;
 mod fold;
@@ -35,6 +36,7 @@ use markdown_it::Node;
 
 use callouts::{render_danger, render_error, render_note, render_tip, render_warning};
 use class::render_class;
+use demo::render_demo;
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
 use fold::render_fold;
 use flatlist::render_flatlist;
@@ -79,6 +81,7 @@ pub const NAMES: &[&str] = &[
     "js",
     "mermaid",
     "math",
+    "demo",
     "signature",
     "small",
     "note",
@@ -113,6 +116,7 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("js", ContentMode::Raw, render_js))
         .register(spec("mermaid", ContentMode::Raw, render_mermaid))
         .register(spec("math", ContentMode::Raw, render_math))
+        .register(spec("demo", ContentMode::Raw, render_demo))
         .register(spec("signature", ContentMode::Markdown, render_signature))
         .register(spec("small", ContentMode::Markdown, render_small))
         .register(spec("note", ContentMode::Markdown, render_note))
