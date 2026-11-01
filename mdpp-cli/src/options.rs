@@ -135,8 +135,9 @@ pub struct Render {
     #[arg(long, value_name = "文件", requires = "full")]
     pub js: Vec<PathBuf>,
 
-    /// mermaid / math 前端脚本的加载方式：cdn（默认，从 CDN 引入）、none（不加载）。
-    /// 页面里若用了 ::mermaid / ::math 块，才会把对应的脚本标签写进 HTML。
+    /// mermaid / math / 代码高亮 前端脚本的加载方式：cdn（默认，从 CDN 引入）、none（不加载）。
+    /// 页面里若用了 ::mermaid / ::math / ::code 块，才会把对应的脚本标签写进 HTML。
+    /// 代码高亮需配合 highlight.js 的 CSS 主题（可用 `--css` 引入一份，如 github.min.css）。
     #[arg(
         long,
         value_name = "方式",
@@ -279,8 +280,9 @@ pub struct Build {
     #[arg(long)]
     pub strict: bool,
 
-    /// mermaid / math 前端脚本的加载方式：cdn（默认，从 CDN 引入）、none（不加载）。
-    /// 页面里若用了 ::mermaid / ::math 块，才会把对应的脚本标签写进 HTML。
+    /// mermaid / math / 代码高亮 前端脚本的加载方式：cdn（默认，从 CDN 引入）、none（不加载）。
+    /// 页面里若用了 ::mermaid / ::math / ::code 块，才会把对应的脚本标签写进 HTML。
+    /// 代码高亮需配合 highlight.js 的 CSS 主题（可用 `--css` 引入一份，如 github.min.css）。
     #[arg(
         long,
         value_name = "方式",

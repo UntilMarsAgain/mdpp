@@ -101,6 +101,9 @@ const MERMAID_CDN: &str = "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.
 /// KaTeX 的 CDN 地址（jsDelivr）。
 const KATEX_CDN: &str = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js";
 
+/// highlight.js 的 CDN 地址（jsDelivr）。
+const HLJS_CDN: &str = "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/highlight.min.js";
+
 /// 默认样式表：下面那几个按次序拼起来的
 pub fn default_css() -> String {
     CSS_FILES
@@ -285,8 +288,9 @@ pub fn document(page: &Page) -> String {
         Assets::Inline => format!("<script>\n{}\n</script>", close_tag(default_js(), "script")),
         Assets::Linked(prefix) => script_tag(prefix, SCRIPT_FILE),
     };
-    // mermaid / math 前端脚本：页面里若用了 ::mermaid / ::math 块，
+    // mermaid / math / highlight.js 前端脚本：页面里若用了对应的块，
     // 需要把对应的 JS 引进来才能在浏览器里渲染。
+    // `::code` 块输出 `class="language-…"`，有代码块时才引入 highlight.js。
     let mut diagram_scripts = String::new();
     if page.external_script == ExternalScript::Cdn {
         if page.body.contains("class=\"mermaid\"") {
@@ -299,6 +303,12 @@ pub fn document(page: &Page) -> String {
             diagram_scripts.push_str(&format!(
                 "<script src=\"{}\"></script>\n",
                 KATEX_CDN
+            ));
+        }
+        if page.body.contains("class=\"language-") {
+            diagram_scripts.push_str(&format!(
+                "<script src=\"{}\"></script>\n",
+                HLJS_CDN
             ));
         }
     }
