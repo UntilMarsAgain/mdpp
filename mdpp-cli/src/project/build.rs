@@ -315,7 +315,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
             title: &title,
             lang: project.config.lang.as_deref(),
             theme: Some(project.config.theme.as_str()),
-            chrome: chrome(project, &nav, &logo),
+            chrome: chrome(project, &parser, &nav, &logo),
             canonical: page::Canonical {
                 root: project.config.base_url.clone(),
                 path: page.url_path(),
@@ -442,13 +442,29 @@ fn copy_asset_into(
 /// 顶栏与底栏那几句话 —— 配置里那几个单行字段，原样递过去。
 /// `nav` 是这一页要用的那一份（每页里「哪一项是当前页」不一样）；
 /// `logo` 是站点名旁边那个图标的地址（**已带好这一页的深度前缀**）
-fn chrome(project: &Project, nav: &[NavLink], logo: &str) -> page::Chrome {
+///
+/// `footer` 会用 `parser` 做一遍 mdpp 解析，于是 `footer` 里能写 `::note`、
+/// `[[内部链接]]`、`**粗体**` 之类的 mdpp 语法；解析后的 HTML 存进
+/// `copyright_html`，原始文本仍留在 `copyright` 里作为兜底。
+fn chrome(
+    project: &Project,
+    parser: &Mdpp,
+    nav: &[NavLink],
+    logo: &str,
+) -> page::Chrome {
+    let footer_raw = project.config.footer.clone().unwrap_or_default();
+    let footer_html = if footer_raw.trim().is_empty() {
+        None
+    } else {
+        Some(parser.render(&footer_raw))
+    };
     page::Chrome {
         name: project.config.site_name.clone(),
         logo: logo.to_string(),
         description: project.config.site_description.clone().unwrap_or_default(),
         repo_url: project.config.repo_url.clone().unwrap_or_default(),
-        copyright: project.config.footer.clone().unwrap_or_default(),
+        copyright: footer_raw,
+        copyright_html: footer_html,
         // `check()` 已经筛过这个值，这里是把十六进制变成**能算的东西**（字色、
         // 深色那一档都要当场算）。theme_color 总有值（默认 "#2f6fd0"），不存在
         // 缺失的情况，直接解析即可

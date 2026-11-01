@@ -27,6 +27,7 @@ favicon = "assets/favicon.svg"
 logo = "assets/logo.svg"
 
 # 底栏
+# 底栏可使用mdpp格式书写
 footer = "底栏显示在这里"
 
 # 正文文件夹（必填）
@@ -60,4 +61,4 @@ theme_color = "#2f6fd0"
 
 # 目录页在导航栏的显示名
 # 不提供则不生成
-toc = "目录"
+toc = "所有页面"
