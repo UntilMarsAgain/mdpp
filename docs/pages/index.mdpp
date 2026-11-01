@@ -1,0 +1,16 @@
+# docs
+
+欢迎使用Markdown++，这是一个简易、高效、紧密联系的静态站点生成器。
+
+::example
+  传入的信息显示在此处。
+
+## 开始使用
+
+- 可在`pages/`下新建`.mdpp`文件，或使用`mdpp new <页名>`，以创建页面；
+- 可在`templates/`下新建`.mdpp`文件，以创建模板；
+- 可在`mdpp.toml`编辑配置文件。
+
+## 查阅文档
+
+更多文档，请在我们的[Github仓库](https://github.com/UntilMarsAgain/mdpp)和我们的[在线文档](https://untilmarsagain.github.io/mdpp/)查看。

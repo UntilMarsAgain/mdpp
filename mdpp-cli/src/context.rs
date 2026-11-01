@@ -117,19 +117,19 @@ mod tests {
         assert!(html.contains("wikilink"), "{html}");
     }
 
-    /// 读目录不是读完就算：`::卡片` 要真从那张表里取出那一页 ——
+    /// 读目录不是读完就算：`::example` 要真从那张表里取出那一页 ——
     /// 表没接上，页面上就是「未知块」，而作者明明写了模板页
     #[test]
     fn a_directory_becomes_a_page_table() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        std::fs::write(dir.path().join("卡片.mdpp"), "::banner\n  卡片来了\n").expect("写得下");
+        std::fs::write(dir.path().join("example.mdpp"), "::banner\n  卡片来了\n").expect("写得下");
         // 后缀不对的、根本没有后缀的，都不是模板页
         std::fs::write(dir.path().join("不是模板.md"), "不认").expect("写得下");
         std::fs::write(dir.path().join("也没有后缀"), "也不认").expect("写得下");
 
         let pages = template_pages(dir.path()).expect("读得动");
         let context = RenderContext::new().with_templates(pages);
-        let html = Mdpp::new().render_with("::卡片\n", &context);
+        let html = Mdpp::new().render_with("::example\n", &context);
         assert!(html.contains("banner"), "{html}");
         assert!(html.contains("卡片来了"), "{html}");
     }
@@ -138,13 +138,13 @@ mod tests {
     #[test]
     fn the_prefixed_spelling_finds_the_same_page() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        std::fs::write(dir.path().join("卡片.mdpp"), "::banner\n  卡片来了\n").expect("写得下");
+        std::fs::write(dir.path().join("example.mdpp"), "::banner\n  卡片来了\n").expect("写得下");
 
         let context =
             RenderContext::new().with_templates(template_pages(dir.path()).expect("读得动"));
         // 注意第三个要加引号：不加的话头解析会在空白处断开，变成两个参数 ——
         // 那不是归一失灵，是词法如此
-        for src in ["卡片", "template:卡片", r#""Template:  卡片  ""#] {
+        for src in ["example", "template:example", r#""Template:  example  ""#] {
             let html = Mdpp::new().render_with(&format!("::css src={src}\n  .a{{}}\n"), &context);
             assert!(html.contains("卡片来了"), "src={src} 没找到那一页：{html}");
         }
@@ -180,14 +180,14 @@ mod tests {
     #[test]
     fn only_the_marked_suffix_counts_as_a_template_page() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        for name in ["卡片.mdpp", "别的.md", "别的.txt", "别的"] {
+        for name in ["example.mdpp", "别的.md", "别的.txt", "别的"] {
             std::fs::write(dir.path().join(name), "::banner\n  卡片来了\n").expect("写得下");
         }
 
         let context =
             RenderContext::new().with_templates(template_pages(dir.path()).expect("读得动"));
         let mdpp = Mdpp::new();
-        assert!(mdpp.render_with("::卡片\n", &context).contains("卡片来了"));
+        assert!(mdpp.render_with("::example\n", &context).contains("卡片来了"));
         let absent = mdpp.render_with("::别的\n", &context);
         assert!(
             absent.contains("template--unknown"),
