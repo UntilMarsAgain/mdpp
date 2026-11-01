@@ -43,7 +43,8 @@ use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;
 use panels::{render_columns, render_tabs, render_theme};
 use text::{
-    render_aside, render_banner, render_fields, render_quote, render_signature, render_title,
+    render_aside, render_banner, render_fields, render_quote, render_signature, render_small,
+    render_title,
 };
 
 use crate::registry::{Block, BlockRegistry, BlockSpec, ContentMode};
@@ -79,6 +80,7 @@ pub const NAMES: &[&str] = &[
     "mermaid",
     "math",
     "signature",
+    "small",
     "note",
     "tip",
     "warning",
@@ -112,6 +114,7 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("mermaid", ContentMode::Raw, render_mermaid))
         .register(spec("math", ContentMode::Raw, render_math))
         .register(spec("signature", ContentMode::Markdown, render_signature))
+        .register(spec("small", ContentMode::Markdown, render_small))
         .register(spec("note", ContentMode::Markdown, render_note))
         .register(spec("tip", ContentMode::Markdown, render_tip))
         .register(spec("warning", ContentMode::Markdown, render_warning))

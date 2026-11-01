@@ -228,6 +228,42 @@ pub(super) fn render_signature(_block: &Block, node: &Node, fmt: &mut dyn Render
     fmt.cr();
 }
 
+/// `::small` —— 把内容包进带 `small` 类的容器里，显示为小字。
+///
+/// 内容照常按 markdown 解析，所以里面能写链接、强调、内部链接，也能再嵌块。
+/// 可选 `class=` 参数再追加一个类名（与 `small` 合并写在同一个 `class` 属性上）。
+///
+/// ```text
+/// ::small
+///   这里的字会显示得更小一些。
+///
+/// ::small class=注释
+///   既有 `small` 类，又有 `注释` 类，方便用 `::css` 再定制。
+/// ```
+pub(super) fn render_small(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
+    if node.children.is_empty() {
+        render_problem(block, fmt, "内容是空的：::small 要包裹点东西");
+        return;
+    }
+
+    let mut class = "small".to_string();
+    if let Some(extra) = block.param("class") {
+        let trimmed = extra.trim();
+        if !trimmed.is_empty() {
+            class.push(' ');
+            class.push_str(trimmed);
+        }
+    }
+
+    fmt.cr();
+    fmt.open("div", &[("class", class)]);
+    fmt.cr();
+    fmt.contents(&node.children);
+    fmt.cr();
+    fmt.close("div");
+    fmt.cr();
+}
+
 /// 「一行内容」的块（横条、大标题）里的东西该按行内还是按块渲染
 enum InlineOrBlocks<'a> {
     /// 一个段落：渲染它里面的行内内容
@@ -499,5 +535,44 @@ mod tests {
         let html = render("::banner mini=也许\n  内容\n");
         assert!(html.contains("template--problem"), "{html}");
         assert!(html.contains("mini="), "{html}");
+    }
+
+    /// `::small`：内容包进带 `small` 类的 div 里
+    #[test]
+    fn small_wraps_content_in_div_with_small_class() {
+        let html = render("::small\n  这里是小字\n");
+        assert!(
+            html.contains(r#"<div class="small">"#),
+            "{html}"
+        );
+        assert!(html.contains("这里是小字"), "{html}");
+        assert!(html.contains("</div>"), "{html}");
+    }
+
+    /// `::small` 的内容照常按 markdown 解析
+    #[test]
+    fn small_body_is_markdown() {
+        let html = render("::small\n  这里有**加粗**与[[链接]]\n");
+        assert!(html.contains("<strong>加粗</strong>"), "{html}");
+        assert!(html.contains("wikilink"), "{html}");
+    }
+
+    /// `::small class=`：额外的类名会与 `small` 合并写进同一个 class 属性
+    #[test]
+    fn small_with_extra_class() {
+        let html = render("::small class=注释\n  带额外类名的小字\n");
+        assert!(
+            html.contains(r#"<div class="small 注释">"#),
+            "{html}"
+        );
+        assert!(html.contains("带额外类名的小字"), "{html}");
+    }
+
+    /// `::small` 空内容报错
+    #[test]
+    fn small_empty_content_is_problem() {
+        let html = render("::small\n");
+        assert!(html.contains("template--problem"), "{html}");
+        assert!(html.contains("是空的"), "{html}");
     }
 }
