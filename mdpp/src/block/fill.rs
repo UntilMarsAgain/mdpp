@@ -31,6 +31,18 @@ pub fn substitute(text: &str, block: &Block, body: &str) -> String {
 /// **认不出的名字原样留着**（`{{key}}` 一字不动），没有闭合的 `{{` 也原样留着 ——
 /// 让作者看见自己写错了，比悄悄换成空串好。
 ///
+/// 值是**多行**的时候，除第一行外的每一行都补上占位符所在行的行首缩进
+/// （见 [`reindent`]）—— 模板里写的是
+///
+/// ```text
+/// ::code lang=mdpp
+///   {{body}}
+/// ```
+///
+/// 块内容就得整体落在那两个空格里。只把第一行填进缩进位置的话，后面的行会
+/// 落回行首，靠缩进划范围的块（`::code`、分栏的每一节）当场被截断，剩下的行
+/// 漏成页面内容 —— 而页面上看起来只是「模板没生效」。
+///
 /// 这一份是用户块（[`substitute`]）与命令行页外壳（`mdpp-cli/src/page.rs`）共用的
 /// 扫描核心：两处各写一遍，认不出的名字怎么处理迟早会对不上，而那是静悄悄的。
 pub fn substitute_placeholders(text: &str, lookup: impl Fn(&str) -> Option<String>) -> String {
@@ -45,7 +57,12 @@ pub fn substitute_placeholders(text: &str, lookup: impl Fn(&str) -> Option<Strin
         };
         let key = after[..end].trim();
         match lookup(key) {
-            Some(value) => out.push_str(&value),
+            Some(value) => {
+                // 占位符在**原文**里的位置：缩进要照作者写下的那一行算，
+                // 不能照已经填过一部分的 `out` 算（前一个值可能带来换行）
+                let at = text.len() - rest.len() + start;
+                out.push_str(&reindent(&value, line_indent(text, at)));
+            }
             None => {
                 // 原样留回 `{{…}}`（含键名本身，保留作者写的空白）
                 out.push_str(&rest[start..start + 2 + end + 2]);
@@ -54,6 +71,39 @@ pub fn substitute_placeholders(text: &str, lookup: impl Fn(&str) -> Option<Strin
         rest = &after[end + 2..];
     }
     out.push_str(rest);
+    out
+}
+
+/// `at` 所在那一行的行首空白（占位符在列 0 时是空串）。
+///
+/// 行中间有字也算这一行的缩进：`  前缀 {{body}}` 的后续行与 `前缀` 对齐，
+/// 这是作者看着最自然的位置。
+fn line_indent(text: &str, at: usize) -> &str {
+    let line_start = text[..at].rfind('\n').map_or(0, |newline| newline + 1);
+    let line = &text[line_start..];
+    let width = line.len() - line.trim_start_matches([' ', '\t']).len();
+    &line[..width]
+}
+
+/// 把多行值接到占位符后面：第一行就地接着，其余每行补上 `indent`。
+///
+/// 两种情形原样返回：缩进为空（占位符在列 0，页外壳填的就是这一类）、值只有一行。
+/// **空行不补缩进** —— 补了就成了「只含空白的行」，markdown 会把它当成段落里的
+/// 普通行，该断开的地方反而断不开。
+fn reindent(value: &str, indent: &str) -> String {
+    if indent.is_empty() || !value.contains('\n') {
+        return value.to_string();
+    }
+    let mut out = String::with_capacity(value.len() + indent.len() * value.matches('\n').count());
+    for (index, line) in value.split('\n').enumerate() {
+        if index > 0 {
+            out.push('\n');
+            if !line.trim().is_empty() {
+                out.push_str(indent);
+            }
+        }
+        out.push_str(line);
+    }
     out
 }
 
@@ -336,6 +386,42 @@ mod tests {
         assert_eq!(
             substitute("a {{颜色}} b {{body}} c", &item, "块内容"),
             "a 红 b 块内容 c"
+        );
+    }
+
+    /// 多行值要跟着占位符所在行的缩进走 —— 只缩第一行的话，后面的行落回行首，
+    /// 靠缩进划范围的块当场被截断（语法页的分栏模板就是这么坏的）
+    #[test]
+    fn a_multiline_value_inherits_the_placeholders_indent() {
+        let item = block("x", &[], "甲\n乙");
+        assert_eq!(
+            substitute("::code\n  {{body}}\n", &item, "甲\n乙"),
+            "::code\n  甲\n  乙\n"
+        );
+    }
+
+    /// 占位符在列 0 或值只有一行：一个字都不动 —— 页外壳填的就是这一类
+    #[test]
+    fn a_column_zero_or_single_line_value_is_left_alone() {
+        let item = block("x", &[], "甲\n乙");
+        assert_eq!(substitute("{{body}}", &item, "甲\n乙"), "甲\n乙");
+        assert_eq!(substitute("  {{body}}", &item, "甲"), "  甲");
+    }
+
+    /// 空行不补缩进：补了就是「只含空白的行」，该断开的地方反而断不开
+    #[test]
+    fn blank_lines_in_a_multiline_value_are_not_padded() {
+        let item = block("x", &[], "甲\n\n乙");
+        assert_eq!(substitute("  {{body}}", &item, "甲\n\n乙"), "  甲\n\n  乙");
+    }
+
+    /// 占位符在行中间时，后续行仍跟这一行的行首缩进对齐
+    #[test]
+    fn a_midline_placeholder_uses_the_lines_indent() {
+        let item = block("x", &[], "甲\n乙");
+        assert_eq!(
+            substitute("  前缀 {{body}}", &item, "甲\n乙"),
+            "  前缀 甲\n  乙"
         );
     }
 

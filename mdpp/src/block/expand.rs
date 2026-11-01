@@ -202,6 +202,23 @@ mod tests {
         assert!(html.contains("template:转圈"), "{html}");
     }
 
+    /// 正文是多行、模板里的 `{{body}}` 又缩进着：填完的每一行都得落在那份缩进里，
+    /// 否则 `::code` 只收下第一行，其余漏成页面内容（语法页的分栏模板踩的就是这个）
+    #[test]
+    fn a_multiline_body_keeps_the_indent_of_the_placeholder() {
+        let mut pages = Pages::default();
+        pages.0.insert(
+            "对照".to_string(),
+            TemplatePage::Ready("::code lang=mdpp\n  {{body}}\n".into()),
+        );
+        let context = RenderContext::new().with_templates(Arc::new(pages));
+        let html = Mdpp::new().render_with("::对照\n  甲\n  乙\n", &context);
+        // 两行都在代码块里
+        assert!(html.contains("甲\n乙"), "{html}");
+        // 第二行没有漏到代码块外面
+        assert!(!html.contains("<p>乙</p>"), "{html}");
+    }
+
     /// 没有这一页 → `None`，调用方（[`crate::block::dispatch`]）照旧报「未知块」。
     ///
     /// 这条钉的是**分工**：展开这条路只处理「有这一页」，不越界替别人报错
