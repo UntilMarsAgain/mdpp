@@ -7,7 +7,8 @@
 //! - 不嵌套 —— 第一对先认：`==a==b==c==` 高亮 a 与 c，各自成档；
 //! - 内部**照常按行内规则解析**：粗体、`[[内部链接]]`、`$公式$` 都能带，做法同
 //!   cmark 链接 —— 换上自己的节点，把子窗口递回 `tokenize` 再换回来；
-//! - 只认**当前一行**：配对跨了软换行就当作没有闭合（见 [`super::line_of`]）。
+//! - 配对在**块**内进行（CommonMark 行内记号的约定）：跨软换行照样成对，
+//!   到段尾都没有闭合才当普通文字；
 //!
 //! `<mark>` 本来就在 [`crate::block::html`] 的净化白名单里，此前正文只能借 `::html`
 //! 绕着写；这里给的是一条不碰净化的正路。代码块与行内代码里的 `==` 不受影响 ——
@@ -44,9 +45,9 @@ impl InlineRule for MarkScanner {
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
         let start = state.pos;
-        // 只认这一行剩下的部分：行内解析是整段一递的（见 [`super::line_of`]），
-        // 配对跨了软换行就当作没有闭合
-        let after = super::line_of(&state.src, start, state.pos_max).strip_prefix("==")?;
+        // 行内解析整段一递（CommonMark 行内记号的约定）：配对在**块**内找闭合 ——
+        // 跨软换行也行，到段尾都没有就当普通文字
+        let after = state.src[start..state.pos_max].strip_prefix("==")?;
 
         // 剩下还是 `=`，说明写下的是三连或更多（`===`、`====`）—— 不是开
         if after.starts_with('=') {
@@ -153,10 +154,18 @@ mod tests {
         assert!(html.contains("<mark>高亮</mark>"), "{html}");
     }
 
-    /// 配对不跨软换行：换行那一头再有 `==` 也不算闭合
+    /// 软换行不挡配对 —— CommonMark 行内记号的约定：配对的舞台是整段
     #[test]
-    fn pairing_does_not_cross_a_line_break() {
-        let html = render("上 ==a\nb== 下\n");
+    fn a_soft_break_does_not_end_a_pair() {
+        let html = render("上 ==跨\n行== 下\n");
+        assert!(html.contains("<mark>跨"), "{html}");
+        assert!(html.contains("行</mark>"), "{html}");
+    }
+
+    /// 空行隔开的是两个段落 —— 配对的舞台就是块，跨段没有对手
+    #[test]
+    fn a_blank_line_leaves_each_side_alone() {
+        let html = render("上 ==a\n\nb== 下\n");
         assert!(!html.contains("<mark"), "{html}");
     }
 }

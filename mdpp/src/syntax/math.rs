@@ -5,8 +5,10 @@
 //!
 //! 识别的规矩取「宁可漏认、也别把正文里的美元符号吞掉」：
 //!
-//! - `$…$`：单行；两个 `$` 都**紧挨着**内容（`$ 5 $` 不算），中间不能再有 `$`；
-//! - `$$…$$`：同样单行。多行的整块公式用 [`crate::block`] 的 `::math` 块。
+//! - `$…$`：两个 `$` 在**同一段**里才结成对 —— 行内解析是整段一递的，软换行
+//!   不挡路（CommonMark 行内记号的约定）；两个 `$` 都**紧挨着**内容
+//!   （`$ 5 $` 不算），中间不能再有 `$`；
+//! - `$$…$$`：同样一段里认。整段落、独立多行的公式用 [`crate::block`] 的 `::math` 块。
 //!
 //! 代码块与行内代码里的 `$` 不受影响 —— 那是更外层的规则先接走的。
 
@@ -56,9 +58,10 @@ impl InlineRule for MathScanner {
     const MARKER: char = '$';
 
     fn run(state: &mut InlineState) -> Option<(Node, usize)> {
-        // 只认这一行剩下的部分：行内解析是整段一递的（见 [`super::line_of`]），
-        // 配对跨了软换行就当作没有闭合 —— 多行的整块公式是 [`crate::block`] 的 `::math` 块
-        let rest = super::line_of(&state.src, state.pos, state.pos_max);
+        // 只看这一段剩下的部分（`pos_max` 是段尾，不是行尾）：配对按 CommonMark
+        // 行内记号的约定在**块**内进行 —— 软换行不挡路，跨了段落（空行）本来
+        // 也遇不到对手
+        let rest = &state.src[state.pos..state.pos_max];
 
         // `$$…$$` 先认：它更具体，不然会被行内那条吃掉两个 `$`
         if let Some(body) = rest.strip_prefix("$$") {
@@ -148,11 +151,17 @@ mod tests {
         assert!(html.contains("$HOME"), "{html}");
     }
 
-    /// 配对不跨软换行：换行那一头再有 `$` 也不算闭合 —— 隔行的两个记号
-    /// 结不成对，免得把中间一大段吞进去
+    /// 软换行不挡配对 —— CommonMark 行内记号的约定：配对的舞台是整段
     #[test]
-    fn pairing_does_not_cross_a_line_break() {
+    fn a_soft_break_does_not_end_a_formula() {
         let html = render("上 $a\nb$ 下\n");
+        assert!(html.contains("math--inline"), "{html}");
+    }
+
+    /// 空行隔开的是两个段落 —— 配对的舞台就是块，跨段没有对手
+    #[test]
+    fn a_blank_line_leaves_each_side_alone() {
+        let html = render("上 $a\n\nb$ 下\n");
         assert!(!html.contains("math--"), "{html}");
     }
 
