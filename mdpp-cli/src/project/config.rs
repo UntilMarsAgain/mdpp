@@ -6,7 +6,12 @@
 //! `deny_unknown_fields` 是有意的 —— 拼错一个键（`pages_dir` 写成 `page_dir`）在**解析**
 //! 时就该说，而默默用默认值的后果是「目录是空的」这种很难查的现象。
 //!
-//! 每个字段都有默认值，所以一份**空的** `mdpp.toml` 也是好配置。
+//! 字段分三类：
+//! - **必填**：`site_name`、`pages_dir`、`templates_dir`、`build_dir`，都不允许空串；
+//! - **可选**：`site_description`、`lang`、`base_url`、`repo_url`、`favicon`、`logo`、`footer`、`override_dir`，
+//!   不填写或写空串都等于不提供，各自的功能也就没有；
+//! - **有默认值**：`theme` 默认 `system`，`theme_color` 默认 `#2f6fd0`；
+//! - **无功能**：`extra_css`、`extra_js`、`nav`、`toc`，不写就空/不生成。
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -18,51 +23,36 @@ use serde::Deserialize;
 pub const FILE_NAME: &str = "mdpp.toml";
 
 /// 一份项目配置。路径都是**相对项目根**的（项目根 = 有这份文件的那一层）。
+///
+/// 字段顺序与 `mdpp.toml` 里的写法一致，方便对照。
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// 站点名，进 `<title>`（`页面名 —— 站点名`）
-    #[serde(default = "default_site_name")]
+    /// 站点名，进 `<title>`（`页面名 —— 站点名`）。**必填**，不能为空。
     pub site_name: String,
 
-    /// 一句话说明，进 `<meta name="description">`（也是搜索结果里那段话）
-    #[serde(default)]
-    pub site_description: String,
+    /// 一句话说明，进 `<meta name="description">`（也是搜索结果里那段话）。
+    /// 不填写就不提供、不显示。
+    pub site_description: Option<String>,
+
+    /// 站点语言，进 `<html lang>`。不填写就不提供。
+    pub lang: Option<String>,
 
     /// 站点在网上的**绝对**地址，如 `https://example.github.io/repo/`。
     ///
     /// 写了就出 `<link rel="canonical">`，而**页内链接一律仍是相对的** ——
-    /// 相对地址让整站能挂到任意子路径下；`site_url` 只回答「你在网上哪儿」那
+    /// 相对地址让整站能挂到任意子路径下；`base_url` 只回答「你在网上哪儿」那
     /// 一件事（给搜索引擎、给分享用的那个绝对地址）。
     ///
     /// 末尾那个 `/` 会在需要时补上。不写就没有 `canonical` —— 本地预览、
     /// 或者只是想 `build` 出来看看的人，不必先想这件事。
-    #[serde(default)]
-    pub site_url: Option<String>,
+    pub base_url: Option<String>,
 
-    /// 正文在哪：扫描这个目录，`.md` 与 `.mdpp` 都算页面
-    #[serde(default = "default_pages_dir")]
-    pub pages_dir: PathBuf,
-
-    /// 模板页在哪：`<目录>/<名字>.mdpp` 是一页，`::名字` 从这里取
-    #[serde(default = "default_templates_dir")]
-    pub templates_dir: PathBuf,
-
-    /// 站点输出到哪。`mdpp build` 写在这里
-    #[serde(default = "default_site_dir")]
-    pub site_dir: PathBuf,
-
-    /// 底栏那句话。**空的就是没有底栏**（与 mkdocs 的 `copyright` 一个意思）
-    #[serde(default)]
-    pub copyright: String,
-
-    /// 顶栏右端那个仓库链接。空的就是没有那个链接
-    #[serde(default)]
-    pub repo_url: String,
+    /// 站点的仓库地址，没有时可不填写。
+    pub repo_url: Option<String>,
 
     /// 标签页上那个小图标（favicon）。**相对项目根**，不是相对 pages/。
     /// 不写就没有那个 `<link>`，浏览器自己画一个
-    #[serde(default)]
     pub favicon: Option<PathBuf>,
 
     /// 顶栏里、站点名**旁边**那个图标。**相对项目根** —— 与 `favicon` 同一条路：
@@ -72,15 +62,30 @@ pub struct Config {
     /// 小方块（尺寸固定、离得远），logo 是站在站点名旁边、要看清的那个图。常见做法
     /// 是两个都指向同一张图（`logo = favicon = "assets/icon.svg"`），但不必如此。
     ///
-    /// 不写就没有那个 `<img>` —— 顶栏只是少了它，其余一字不变。
-    #[serde(default)]
+    /// 不写就没有那个 `` —— 顶栏只是少了它，其余一字不变。
     pub logo: Option<PathBuf>,
 
+    /// 底栏那句话。**不填写就没有底栏**（与 mkdocs 的 `copyright` 一个意思）。
+    pub footer: Option<String>,
+
+    /// 正文文件夹（必填）：扫描这个目录，`.md` 与 `.mdpp` 都算页面。
+    pub pages_dir: PathBuf,
+
+    /// 模板文件夹（必填）：`<目录>/<名字>.mdpp` 是一页，`::名字` 从这里取。
+    pub templates_dir: PathBuf,
+
+    /// 站点输出文件夹（必填）：`mdpp build` 写在这里。
+    pub build_dir: PathBuf,
+
+    /// **覆盖层目录**：build 完成后，把这个目录里的东西原样拷到产物里。
+    /// 重复就覆盖 —— 可以往里放 `CNAME`、自定义 `robots.txt`、把某页换成手写的 HTML……
+    /// 不填写就没有覆盖层。相对项目根。
+    pub override_dir: Option<PathBuf>,
+
     /// 整页的主题：`light` / `dark` 是钉死，`system` 是**跟随系统**。
-    /// 不写与写 `system` 等价 —— 页面上不落 `data-mdpp-theme`，
-    /// 深浅色由 `prefers-color-scheme` 当场定（`base.css` 里那条 `@media`）
-    #[serde(default)]
-    pub theme: Option<String>,
+    /// 不提供则为 `system`。
+    #[serde(default = "default_theme")]
+    pub theme: String,
 
     /// 顶栏那块底的**主题色**，十六进制：`theme_color = "#2f6fd0"`（`#rgb` 也认）。
     ///
@@ -88,27 +93,17 @@ pub struct Config {
     /// 颜色当场算（亮底配近黑字、暗底配白字），深色下再自动压暗一档 —— 亮块在暗页面
     /// 上是一条刺眼的亮带。
     ///
-    /// 不写就是 `base.css` 调色板里那套默认的蓝。
-    #[serde(default)]
-    pub theme_color: Option<String>,
+    /// 不提供则为 `#2f6fd0`。
+    #[serde(default = "default_theme_color")]
+    pub theme_color: String,
 
-    /// `<html lang>`
-    #[serde(default = "default_lang")]
-    pub lang: String,
-
-    /// 附加的 CSS，按给定次序接在默认样式之后
+    /// 附加的 CSS，按给定次序接在默认样式之后。
     #[serde(default)]
     pub extra_css: Vec<PathBuf>,
 
-    /// 附加的 JS，按给定次序接在默认脚本之后
+    /// 附加的 JS，按给定次序接在默认脚本之后。
     #[serde(default)]
     pub extra_js: Vec<PathBuf>,
-
-    /// **覆盖层目录**：build 完成后，把这个目录里的东西原样拷到产物里。
-    /// 重复就覆盖 —— 可以往里放 `CNAME`、自定义 `robots.txt`、把某页换成手写的 HTML……
-    /// 不写就没有这一层。相对项目根，默认 `override`。
-    #[serde(default = "default_override_dir")]
-    pub override_dir: PathBuf,
 
     /// 导航栏：顶栏下面那一行链接，mkdocs 的 `nav` 那套写法。
     ///
@@ -120,15 +115,14 @@ pub struct Config {
     /// ```
     ///
     /// 站内页的键就是 `pages/` 下的路径（不带后缀）；`index` 是首页。
-    /// 不写就没有那一行。
+    /// 不填写就没有那一行。
     #[serde(default)]
     pub nav: Vec<NavEntry>,
 
     /// 目录页的名字（键）。`mdpp build` 会额外生成一页「页面清单」——
     /// 列出全站每一页，并自动在导航栏末尾加一个按钮指过去。
-    /// 默认「目录」，也就是 `build/目录/`；写空串（`toc = ""`）就不生成。
-    #[serde(default = "default_toc")]
-    pub toc: String,
+    /// 不填写就不生成。
+    pub toc: Option<String>,
 }
 
 /// 导航栏里的一项。两种写法：
@@ -152,23 +146,23 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             site_name: default_site_name(),
-            site_description: String::new(),
-            site_url: None,
-            pages_dir: default_pages_dir(),
-            templates_dir: default_templates_dir(),
-            site_dir: default_site_dir(),
-            copyright: String::new(),
-            repo_url: String::new(),
+            site_description: None,
+            lang: None,
+            base_url: None,
+            repo_url: None,
             favicon: None,
             logo: None,
-            theme: None,
-            theme_color: None,
-            lang: default_lang(),
+            footer: None,
+            pages_dir: default_pages_dir(),
+            templates_dir: default_templates_dir(),
+            build_dir: default_site_dir(),
+            override_dir: None,
+            theme: default_theme(),
+            theme_color: default_theme_color(),
             extra_css: Vec::new(),
             extra_js: Vec::new(),
-            override_dir: default_override_dir(),
             nav: Vec::new(),
-            toc: default_toc(),
+            toc: None,
         }
     }
 }
@@ -189,17 +183,15 @@ fn default_site_dir() -> PathBuf {
     PathBuf::from("build")
 }
 
-fn default_lang() -> String {
-    "zh-Hans".to_string()
+fn default_theme() -> String {
+    "system".to_string()
 }
 
-fn default_override_dir() -> PathBuf {
-    PathBuf::from("override")
+fn default_theme_color() -> String {
+    "#2f6fd0".to_string()
 }
 
-fn default_toc() -> String {
-    "目录".to_string()
-}
+
 
 /// `theme` 认的三个取值，与 `render --theme` 同一套。
 /// `system` 不是一种配色，是「跟着系统走」
@@ -211,43 +203,94 @@ impl Config {
         let path = root.join(FILE_NAME);
         let text = std::fs::read_to_string(&path)
             .map_err(|error| format!("读不了 {}：{error}", path.display()))?;
-        let config: Config = toml::from_str(&text)
+        let mut config: Config = toml::from_str(&text)
             .map_err(|error| format!("{} 里写错了：\n{error}", path.display()))?;
+        config.normalize();
         config.check()?;
         Ok(config)
+    }
+
+    /// 把「写了空串」归一为「没写」：空串等于不填写。
+    ///
+    /// 有默认值的两项（`theme` / `theme_color`）空串也回落默认值。
+    fn normalize(&mut self) {
+        fn clean(value: &mut Option<String>) {
+            if value.as_deref().is_some_and(|text| text.trim().is_empty()) {
+                *value = None;
+            }
+        }
+        clean(&mut self.site_description);
+        clean(&mut self.lang);
+        clean(&mut self.base_url);
+        clean(&mut self.repo_url);
+        clean(&mut self.footer);
+        clean(&mut self.toc);
+
+        fn clean_path(value: &mut Option<PathBuf>) {
+            if value
+                .as_deref()
+                .is_some_and(|path| path.as_os_str().is_empty())
+            {
+                *value = None;
+            }
+        }
+        clean_path(&mut self.favicon);
+        clean_path(&mut self.logo);
+        clean_path(&mut self.override_dir);
+
+        if self.theme.trim().is_empty() {
+            self.theme = default_theme();
+        }
+        if self.theme_color.trim().is_empty() {
+            self.theme_color = default_theme_color();
+        }
     }
 
     /// 能在解析时查出来的错就在解析时查 —— 「主题只能是那三个值」这种事，
     /// 不该等到 `build` 跑了一半才发现。
     pub fn check(&self) -> Result<(), String> {
-        if let Some(theme) = &self.theme {
-            if !THEMES.contains(&theme.as_str()) {
-                return Err(format!(
-                    "theme 只能是 system、light 或 dark，写成了「{theme}」"
-                ));
-            }
+        // 必填字段不能为空
+        if self.site_name.trim().is_empty() {
+            return Err("site_name 不能为空".to_string());
+        }
+        if self.pages_dir.as_os_str().is_empty() {
+            return Err("pages_dir 不能为空".to_string());
+        }
+        if self.templates_dir.as_os_str().is_empty() {
+            return Err("templates_dir 不能为空".to_string());
+        }
+        if self.build_dir.as_os_str().is_empty() {
+            return Err("build_dir 不能为空".to_string());
+        }
+
+        // 可选字段里，空串等于不填写：统一把空串当成 None（在使用时统一处理，
+        // 这里只做格式校验）
+        if !THEMES.contains(&self.theme.as_str()) {
+            return Err(format!(
+                "theme 只能是 system、light 或 dark，写成了「{}」",
+                self.theme
+            ));
         }
         // 主题色要在**构建期**算出字色与深色那一档，所以只认十六进制 —— 名字与函数
         // 写法能塞进字符串的东西比颜色多，而这个值要落进 `<style>` 与 `<meta>`。
         // 坏值会在整站的顶栏上现形，报错该在这儿而不是渲染到一半时
-        if let Some(color) = &self.theme_color {
-            if crate::color::Color::parse(color).is_none() {
-                return Err(format!(
-                    "theme_color 得是十六进制颜色，如 \"#2f6fd0\"（#rgb 与 #rrggbb 都行），\
-                     写成了「{color}」"
-                ));
-            }
+        if crate::color::Color::parse(&self.theme_color).is_none() {
+            return Err(format!(
+                "theme_color 得是十六进制颜色，如 \"#2f6fd0\"（#rgb 与 #rrggbb 都行），\
+                 写成了「{}」",
+                self.theme_color
+            ));
         }
         // 协议只认 http/https —— 配错了的话 canonical 就是一个坏地址，
         // 而这类错误在产物里完全看不出来（只是搜索引擎不认）
-        if let Some(url) = &self.site_url {
+        if let Some(url) = &self.base_url {
             let trimmed = url.trim();
             if !trimmed.is_empty()
                 && !trimmed.starts_with("http://")
                 && !trimmed.starts_with("https://")
             {
                 return Err(format!(
-                    "site_url 要以 http:// 或 https:// 开头，写成了「{trimmed}」"
+                    "base_url 要以 http:// 或 https:// 开头，写成了「{trimmed}」"
                 ));
             }
         }
@@ -294,30 +337,28 @@ mod tests {
             .expect("站点模板里有 mdpp.toml");
         // 骨架里带着站点名的占位符（那是 init 要替换的），它本身也是一份合法配置
         let filled = text.replace(crate::project::SITE_NAME_TOKEN, "我的站点");
-        let config: Config = toml::from_str(&filled).expect("骨架配置该能被解析");
-        assert_eq!(config.pages_dir, PathBuf::from("pages"));
-        assert_eq!(config.site_dir, PathBuf::from("build"));
-        assert_eq!(config.templates_dir, PathBuf::from("templates"));
-        // 模板里主题写明了「system」—— 它与「不写」（`None`）是一回事，
-        // 两者都跟随系统；写成 light / dark 才是另一件事（钉死）
-        assert_eq!(config.theme.as_deref(), Some("system"));
-        assert!(config.check().is_ok(), "骨架自己该是份好配置");
+        let mut config: Config = toml::from_str(&filled).expect("骨架配置该能被解析");
+        config.normalize();
+        config.check().expect("骨架自己该是份好配置");
 
-        // 除主题之外，模板里写的都等于默认值 —— 写重复了就有两份答案
-        assert_eq!(
-            Config {
-                theme: None,
-                ..config
-            },
-            Config::default()
-        );
+        assert_eq!(config.site_name, "我的站点");
+        assert_eq!(config.pages_dir, PathBuf::from("pages"));
+        assert_eq!(config.templates_dir, PathBuf::from("templates"));
+        assert_eq!(config.build_dir, PathBuf::from("build"));
+        assert_eq!(config.theme, "system");
+        assert_eq!(config.theme_color, "#2f6fd0");
+        // 骨架里显式给了这几项
+        assert_eq!(config.lang.as_deref(), Some("zh-Hans"));
+        assert_eq!(config.footer.as_deref(), Some("底栏显示在这里"));
+        assert_eq!(config.toc.as_deref(), Some("目录"));
     }
 
-    /// 一份空的 mdpp.toml 也是好配置：每个字段都有默认值
+    /// 空文件不再是合法配置：四个必填项缺失，解析时就该说
     #[test]
-    fn an_empty_file_is_a_valid_config() {
-        let config: Config = toml::from_str("").expect("空的该行");
-        assert_eq!(config, Config::default());
+    fn an_empty_file_is_missing_required_fields() {
+        let error = toml::from_str::<Config>("").expect_err("空的该报缺必填项");
+        let message = error.to_string();
+        assert!(message.contains("site_name"), "{message}");
     }
 
     /// 拼错的键必须在**解析时**就说 —— 默默用默认值的后果是「目录是空的」
@@ -327,100 +368,103 @@ mod tests {
         assert!(error.to_string().contains("page_dir"), "{error}");
     }
 
-    /// 主题只认那三个值，写错的在**读配置时**就说；不写主题本身也得是好的 ——
-    /// 放过去的话页面照出得来，只是配色没变，而没人会想到去翻 `mdpp.toml`
+    /// 四个必填项不能是空串 —— 空串等于不填写，而必填必须给
+    #[test]
+    fn required_fields_refuse_empty_strings() {
+        for (field, text) in [
+            ("site_name", "site_name = \"\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n"),
+            ("pages_dir", "site_name = \"甲\"\npages_dir = \"\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n"),
+            ("templates_dir", "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"\"\nbuild_dir = \"b\"\n"),
+            ("build_dir", "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"\"\n"),
+        ] {
+            let mut config: Config = toml::from_str(text).expect("结构上能解析");
+            config.normalize();
+            let error = config.check().expect_err("空必填项该被拒绝");
+            assert!(error.contains(field), "{field} 没被点名：{error}");
+        }
+    }
+
+    /// 可选字段写空串等于不填写：归一之后是 None
+    #[test]
+    fn empty_optional_strings_become_none() {
+        let mut config: Config = toml::from_str(
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nsite_description = \"\"\nlang = \"\"\nbase_url = \"\"\nrepo_url = \"\"\nfooter = \"\"\ntoc = \"\"\nfavicon = \"\"\nlogo = \"\"\noverride_dir = \"\"\n",
+        )
+        .expect("能解析");
+        config.normalize();
+        assert_eq!(config.site_description, None);
+        assert_eq!(config.lang, None);
+        assert_eq!(config.base_url, None);
+        assert_eq!(config.repo_url, None);
+        assert_eq!(config.footer, None);
+        assert_eq!(config.toc, None);
+        assert_eq!(config.favicon, None);
+        assert_eq!(config.logo, None);
+        assert_eq!(config.override_dir, None);
+    }
+
+    /// 主题只认那三个值，写错的在**读配置时**就说；不写默认 system
     #[test]
     fn theme_only_takes_system_light_or_dark() {
-        let config = Config {
-            theme: Some("blue".to_string()),
-            ..Config::default()
-        };
+        let mut config: Config = toml::from_str(
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n",
+        )
+        .expect("能解析");
+        config.normalize();
+        assert_eq!(config.theme, "system");
+
+        for theme in ["system", "light", "dark"] {
+            config.theme = theme.to_string();
+            assert!(config.check().is_ok(), "{theme} 该是好的");
+        }
+        config.theme = "blue".to_string();
         let error = config.check().expect_err("blue 本该报错");
         for value in ["system", "light", "dark"] {
             assert!(error.contains(value), "{error}");
         }
-        assert!(Config::default().check().is_ok(), "不写主题该是好的");
-        for theme in ["system", "light", "dark"] {
-            assert!(
-                Config {
-                    theme: Some(theme.to_string()),
-                    ..Config::default()
-                }
-                .check()
-                .is_ok(),
-                "{theme} 该是好的"
-            );
-        }
     }
 
-    /// 主题色只认十六进制 —— 它要落进 `<style>` 与 `<meta>`，还得在构建期算字色。
-    /// 写错的在**读配置时**就说，不放过去（放过去的话整站的顶栏会是默认蓝，
-    /// 而没人会想到去翻 `mdpp.toml`）
+    /// 主题色默认 #2f6fd0，只认十六进制
     #[test]
-    fn theme_color_only_takes_hex() {
+    fn theme_color_defaults_and_only_takes_hex() {
+        let mut config: Config = toml::from_str(
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n",
+        )
+        .expect("能解析");
+        config.normalize();
+        assert_eq!(config.theme_color, "#2f6fd0");
+
         for good in ["#2f6fd0", "#F0C", " #2f6fd0 "] {
-            assert!(
-                Config {
-                    theme_color: Some(good.to_string()),
-                    ..Config::default()
-                }
-                .check()
-                .is_ok(),
-                "「{good}」该是好的"
-            );
+            config.theme_color = good.to_string();
+            assert!(config.check().is_ok(), "「{good}」该是好的");
         }
         for bad in ["red", "rgb(1,2,3)", "#12345", "#12345678", " onload=\"x"] {
-            let error = Config {
-                theme_color: Some(bad.to_string()),
-                ..Config::default()
-            }
-            .check()
-            .expect_err("「{bad}」本该报错");
+            config.theme_color = bad.to_string();
+            let error = config.check().expect_err("「{bad}」本该报错");
             assert!(error.contains("theme_color"), "{error}");
         }
-        assert!(Config::default().check().is_ok(), "不写主题色该是好的");
     }
 
-    /// `site_url` 只认 http/https —— 写别的那个地址在产物里完全看不出来
+    /// `base_url` 只认 http/https —— 写别的那个地址在产物里完全看不出来
     #[test]
-    fn site_url_takes_http_or_https() {
-        assert!(
-            Config {
-                site_url: Some("ftp://x/".into()),
-                ..Config::default()
-            }
-            .check()
-            .is_err()
-        );
-        assert!(
-            Config {
-                site_url: Some("/repo/".into()),
-                ..Config::default()
-            }
-            .check()
-            .is_err()
-        );
-        for good in ["https://x.github.io/repo/", "http://127.0.0.1:8080/"] {
-            assert!(
-                Config {
-                    site_url: Some(good.into()),
-                    ..Config::default()
-                }
-                .check()
-                .is_ok(),
-                "{good} 该被接受"
-            );
+    fn base_url_takes_http_or_https() {
+        let mut config: Config = toml::from_str(
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n",
+        )
+        .expect("能解析");
+        config.normalize();
+
+        for bad in ["ftp://x/", "/repo/"] {
+            config.base_url = Some(bad.to_string());
+            assert!(config.check().is_err(), "{bad} 该被拒绝");
         }
-        // 不写（本地预览）与写空串都该过
-        assert!(Config::default().check().is_ok());
-        assert!(
-            Config {
-                site_url: Some(String::new()),
-                ..Config::default()
-            }
-            .check()
-            .is_ok()
-        );
+        for good in ["https://x.github.io/repo/", "http://127.0.0.1:8080/"] {
+            config.base_url = Some(good.to_string());
+            assert!(config.check().is_ok(), "{good} 该被接受");
+        }
+        // 不写或空串都该过（空串归一后是 None）
+        config.base_url = None;
+        assert!(config.check().is_ok());
     }
 
     /// 导航的两种写法都能解析；写坏了（空文字、多项表）在解析时就该说
@@ -428,6 +472,10 @@ mod tests {
     fn nav_accepts_both_shapes_and_refuses_bad_ones() {
         let config: Config = toml::from_str(
             r#"
+site_name = "甲"
+pages_dir = "p"
+templates_dir = "t"
+build_dir = "b"
 nav = ["首页", { "指南" = "指南/入门" }]
 "#,
         )
@@ -442,47 +490,32 @@ nav = ["首页", { "指南" = "指南/入门" }]
             )]))
         );
 
-        // 空 nav 也是好配置
-        assert!(Config::default().check().is_ok());
-
         // 单项表里写了两项 —— 解析得过（毕竟是个表），check 时该说
-        let config: Config =
-            toml::from_str(r#"nav = [{ "甲" = "a", "乙" = "b" }]"#).expect("表里多少项都能解析");
+        let mut config: Config = toml::from_str(
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nnav = [{ \"甲\" = \"a\", \"乙\" = \"b\" }]\n",
+        )
+        .expect("表里多少项都能解析");
+        config.normalize();
         assert!(config.check().is_err(), "多项表不该被接受");
+
+        // 空显示文字也是配置错误
+        let mut config: Config = toml::from_str(
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nnav = [\"   \"]\n",
+        )
+        .expect("能解析");
+        config.normalize();
+        assert!(config.check().is_err());
     }
 
-    /// 导航里空显示文字 / 空键是配置错误；`toc` 默认「目录」，空串不生成
+    /// `toc` 不提供就不生成：默认 None
     #[test]
-    fn nav_and_toc_defaults_and_validation() {
-        assert_eq!(Config::default().toc, "目录");
-        assert!(
-            Config {
-                nav: vec![NavEntry::Named(BTreeMap::from([(
-                    "".to_string(),
-                    "a".to_string()
-                )]))],
-                ..Config::default()
-            }
-            .check()
-            .is_err()
-        );
-        assert!(
-            Config {
-                nav: vec![NavEntry::SameName("   ".to_string())],
-                ..Config::default()
-            }
-            .check()
-            .is_err()
-        );
-        // 正常的写法要能过
-        assert!(
-            Config {
-                toc: String::new(),
-                nav: vec![NavEntry::SameName("首页".to_string())],
-                ..Config::default()
-            }
-            .check()
-            .is_ok()
-        );
+    fn toc_defaults_to_none() {
+        let mut config: Config = toml::from_str(
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n",
+        )
+        .expect("能解析");
+        config.normalize();
+        assert_eq!(config.toc, None);
+        assert!(config.check().is_ok());
     }
 }

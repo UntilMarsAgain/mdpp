@@ -245,7 +245,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
 
     // 目录页：配置里 `toc` 那一页（默认「目录」），生成后插进站点 ——
     // 导航解析与站内链接都能指到它，报告里也数得进页数
-    let toc_key = project.config.toc.trim().to_string();
+    let toc_key = project.config.toc.as_deref().unwrap_or("").trim().to_string();
     if !toc_key.is_empty() {
         Arc::make_mut(&mut site).insert(Page {
             source: PathBuf::new(),
@@ -313,11 +313,11 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
             .unwrap_or_default();
         let document = page::document(&page::Page {
             title: &title,
-            lang: &project.config.lang,
-            theme: project.config.theme.as_deref(),
+            lang: project.config.lang.as_deref(),
+            theme: Some(project.config.theme.as_str()),
             chrome: chrome(project, &nav, &logo),
             canonical: page::Canonical {
-                root: project.config.site_url.clone(),
+                root: project.config.base_url.clone(),
                 path: page.url_path(),
             },
             // 嵌套页里的图标地址也要数对层数（`../../assets/favicon.svg`）——
@@ -346,7 +346,9 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
     } = pass;
 
     // 覆盖层：把 `override/` 里的东西原样拷到产物里，重复就覆盖
-    copy_override(&project.config.override_dir, &project.root, site_dir)?;
+    if let Some(override_dir) = &project.config.override_dir {
+        copy_override(override_dir, &project.root, site_dir)?;
+    }
 
     let links: Vec<String> = missing
         .lock()
@@ -444,17 +446,13 @@ fn chrome(project: &Project, nav: &[NavLink], logo: &str) -> page::Chrome {
     page::Chrome {
         name: project.config.site_name.clone(),
         logo: logo.to_string(),
-        description: project.config.site_description.clone(),
-        repo_url: project.config.repo_url.clone(),
-        copyright: project.config.copyright.clone(),
+        description: project.config.site_description.clone().unwrap_or_default(),
+        repo_url: project.config.repo_url.clone().unwrap_or_default(),
+        copyright: project.config.footer.clone().unwrap_or_default(),
         // `check()` 已经筛过这个值，这里是把十六进制变成**能算的东西**（字色、
-        // 深色那一档都要当场算）。万一没有（不该发生），回落到 `base.css` 的默认蓝，
-        // 而不是让整站构建失败
-        theme_color: project
-            .config
-            .theme_color
-            .as_deref()
-            .and_then(crate::color::Color::parse),
+        // 深色那一档都要当场算）。theme_color 总有值（默认 "#2f6fd0"），不存在
+        // 缺失的情况，直接解析即可
+        theme_color: crate::color::Color::parse(&project.config.theme_color),
         nav: nav.to_vec(),
     }
 }

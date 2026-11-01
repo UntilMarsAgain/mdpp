@@ -1,67 +1,63 @@
-# mdpp 项目的配置。这一层只管「东西在哪」与「站点叫什么」——
-# 正文怎么写见仓库的 examples/，其中 tour.mdpp 是一个块的巡览。
+# Markdown++ 站点配置
 
-# 站点名。它出现在每一页顶上那条的左边
-site_name = "{{站点名}}"
+# 站点名称（必填）
+site_name = "{{site_name}}"
 
-# 一句话说明。它出现在顶栏里，站点名右边，也进每一页的 <meta name="description">
+# 站点描述
 site_description = ""
 
-# 站点在网上的绝对地址，如 https://example.github.io/repo/。
-# 写了每一页就多一条 <link rel="canonical">，告诉搜索引擎「你在网上是哪一个」。
-# 页内链接一律仍是相对的 —— 整站能挂在任意子路径下，site_url 只回答那一个问题。
-# 本地预览不必写它。
-# site_url = "https://example.github.io/repo/"
-
-# 顶栏右端那个仓库链接。只认 http/https
-repo_url = ""
-
-# 底栏那句话。空的就是没有底栏
-copyright = ""
-
-# 标签页上那个小图标。相对本文件，不写就没有（浏览器自己画一个）
-# favicon = "assets/favicon.svg"
-
-# 顶栏里、站点名旁边那个图标。与 favicon 是两件事，可以都指向同一张图。
-# 相对本文件，不写就没有那个图（顶栏只是少了它，其余不变）
-# logo = "assets/logo.svg"
-
-# 正文在哪。mdpp build 递归扫这个目录，.md 与 .mdpp 都算页面
-pages_dir = "pages"
-
-# 模板页在哪。<目录>/<名字>.mdpp 是一页，正文里 ::名字 从这里取
-templates_dir = "templates"
-
-# 站点输出到哪。mdpp build 写在这里
-site_dir = "build"
-
-# 整页的主题：light / dark 是钉死，system 或不写 = 跟随系统（prefers-color-scheme）
-theme = "system"
-
-# 顶栏那块底的主题色，十六进制（#rgb 与 #rrggbb 都行）。
-# 顶栏（站点名那一行与它下面的导航）是一整块有色的底：压在它上面的字由这个颜色
-# 当场算（亮底配近黑字、暗底配白字），深色下再自动压暗一档 —— 亮块在暗页面上
-# 是一条刺眼的亮带。不写就是默认的蓝（base.css 调色板里那套）。
-# theme_color = "#2f6fd0"
-
-# <html lang>
+# 站点语言
 lang = "zh-Hans"
 
-# 附加的 CSS 与 JS，按给定次序接在默认的之后。路径相对本文件
-extra_css = []
-extra_js = []
+# 站点地址
+# 在静态托管部署时，需要使用站点地址以确保链接指向正确页面
+# 本地预览时可不填写
+# base_url = "https://example.github.io/repo/"
 
-# 覆盖层目录：build 完成后把这个目录里的东西原样拷到产物里，重复就覆盖
-override_dir = "override"
+# 仓库地址
+# 站点的仓库地址，没有时可不填写
+# repo_url = ""
 
-# 导航栏：顶栏下面那一行链接，mkdocs 的 nav 那套写法。
-# 每一项是一个字符串（显示文字，指「全站唯一叫这个名字的页」），
-# 或一个单项表（显示文字 → 站内页的键；键是 pages/ 下的路径，index 是首页）：
+# 图标
+# 此图标会出现在浏览器的标签页上
+favicon = "assets/favicon.svg"
+
+# 标识
+# 此图标会出现在页面顶栏
+logo = "assets/logo.svg"
+
+# 底栏
+footer = "底栏显示在这里"
+
+# 正文文件夹（必填）
+pages_dir = "pages"
+
+# 模板文件夹（必填）
+templates_dir = "templates"
+
+# 站点输出文件夹（必填）
+# 构建静态站点时，会输出到此文件夹
+build_dir = "build"
+
+# 覆盖目录
+# 此目录能在完成构建后，覆盖构建目录中的对应文件，并创建尚不存在的文件
+# override_dir = "override"
+
+# 页面主题
+# 可选：light、dark、system
+theme = "system"
+
+# 主题色
+# 顶栏文本会自动适配颜色亮暗
+theme_color = "#2f6fd0"
+
+# 附加的CSS与JS。
+# extra_css = []
+# extra_js = []
+
+# 导航栏
 # nav = ["首页", { "指南" = "指南/入门" }]
-# 不写就没有导航栏。
-# nav = []
 
-# 目录页：build 会额外生成一页「页面清单」，列出全站每一页，
-# 并自动在导航栏末尾加一个按钮。这里写的是它的名字（键）。
-# 写空串（toc = ""）就不生成目录页。
+# 目录页在导航栏的显示名
+# 不提供则不生成
 toc = "目录"

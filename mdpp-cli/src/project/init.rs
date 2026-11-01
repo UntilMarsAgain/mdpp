@@ -120,17 +120,19 @@ mod tests {
             "pages/index.mdpp",
             "pages/示例.mdpp",
             "templates/卡片.mdpp",
+            "assets/favicon.svg",
+            "assets/logo.svg",
             "build",
         ] {
             assert!(dir.path().join(path).exists(), "少了 {path}");
         }
-        // 骨架里没有的，init 也不该造出来：根上正好是 mdpp.toml、.gitignore 与三个目录
+        // 骨架里没有的，init 也不该造出来：根上正好是 mdpp.toml、.gitignore 与四个目录
         let top: Vec<String> = std::fs::read_dir(dir.path())
             .expect("读得动")
             .filter_map(Result::ok)
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .collect();
-        assert_eq!(top.len(), 5, "根上多了或少了东西：{top:?}");
+        assert_eq!(top.len(), 6, "根上多了或少了东西：{top:?}");
     }
 
     /// init 的产出得真的能 build —— 骨架里的块名/参数一改，这里就先红
@@ -190,7 +192,7 @@ mod tests {
     }
 
     /// 骨架里那些占位符**都**被换掉了 —— 漏一个，用户看到的项目里就留着一个
-    /// `{{站点名}}`。钉住「骨架里只有那两处用它」
+    /// `{{site_name}}`。钉住「骨架里只有那两处用它」
     #[test]
     fn no_placeholder_survives_the_copy() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
@@ -272,6 +274,6 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         init_at(dir.path(), None).expect("建得出");
         let config = Config::load(dir.path()).expect("读得动");
-        assert_eq!(config.site_dir, PathBuf::from("build"));
+        assert_eq!(config.build_dir, PathBuf::from("build"));
     }
 }

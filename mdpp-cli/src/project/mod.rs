@@ -34,7 +34,7 @@ pub use config::Config;
 pub static SITE: Dir = include_dir!("$CARGO_MANIFEST_DIR/site");
 
 /// 站点模板里那个站点名的占位符
-pub const SITE_NAME_TOKEN: &str = "{{站点名}}";
+pub const SITE_NAME_TOKEN: &str = "{{site_name}}";
 
 /// 骨架里带占位符的那些文件（拷过去之后要把占位符换成真名字）
 const SITE_NAME_FILES: [&str; 2] = [config::FILE_NAME, "pages/index.mdpp"];
@@ -92,7 +92,7 @@ impl Project {
 
     /// 站点输出目录
     pub fn site_dir(&self) -> PathBuf {
-        under(&self.root, &self.config.site_dir)
+        under(&self.root, &self.config.build_dir)
     }
 
     /// `<title>` 里站点名那一半（没写站点名就当没有那一半）
@@ -183,7 +183,11 @@ mod tests {
     #[test]
     fn a_project_is_found_from_a_subdirectory() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        std::fs::write(dir.path().join("mdpp.toml"), "").expect("写得下");
+        std::fs::write(
+            dir.path().join("mdpp.toml"),
+            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
+        )
+        .expect("写得下");
         let deep = dir.path().join("pages").join("指南");
         std::fs::create_dir_all(&deep).expect("建得出");
 
@@ -212,27 +216,33 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         std::fs::write(
             dir.path().join("mdpp.toml"),
-            "pages_dir = \"正文\"\nsite_dir = \"产物\"\n",
+            "site_name = \"甲\"\npages_dir = \"正文\"\ntemplates_dir = \"模板\"\nbuild_dir = \"产物\"\n",
         )
         .expect("写得下");
         let project = Project::load(dir.path()).expect("读得动");
 
         assert_eq!(project.pages_dir(), dir.path().join("正文"));
         assert_eq!(project.site_dir(), dir.path().join("产物"));
-        // 没写的那几个走默认值
-        assert_eq!(project.templates_dir(), dir.path().join("templates"));
+        assert_eq!(project.templates_dir(), dir.path().join("模板"));
     }
 
-    /// 不写站点名就不该在标题里多出那一半 —— 免得页面标题变成「页面名 —— 」
+    /// 必填的站点名**不能写空串** —— 空串等于不填写，而它是必填
     #[test]
-    fn an_empty_site_name_contributes_nothing_to_the_title() {
+    fn an_empty_site_name_is_refused() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        std::fs::write(dir.path().join("mdpp.toml"), "site_name = \"\"\n").expect("写得下");
-        assert_eq!(
-            Project::load(dir.path()).expect("读得动").title_suffix(),
-            None
-        );
-        std::fs::write(dir.path().join("mdpp.toml"), "site_name = \"甲\"\n").expect("写得下");
+        std::fs::write(
+            dir.path().join("mdpp.toml"),
+            "site_name = \"\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
+        )
+        .expect("写得下");
+        let error = Project::load(dir.path()).expect_err("空站点名该被拒绝");
+        assert!(error.contains("site_name"), "{error}");
+
+        std::fs::write(
+            dir.path().join("mdpp.toml"),
+            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
+        )
+        .expect("写得下");
         assert_eq!(
             Project::load(dir.path()).expect("读得动").title_suffix(),
             Some("甲")
@@ -253,7 +263,7 @@ mod tests {
     }
 
     /// 骨架里的站点名占位符只出现在那两个文件里 —— 多一个文件用上它，
-    /// `init` 就漏换一个，用户看到的项目里留着一个 `{{站点名}}`
+    /// `init` 就漏换一个，用户看到的项目里留着一个 `{{site_name}}`
     #[test]
     fn the_site_name_token_only_lives_where_init_replaces_it() {
         for relative in SITE_NAME_FILES {

@@ -75,7 +75,7 @@ pub fn run(options: &Render) -> Result<(), String> {
         let chunk = if options.full {
             page::document(&page::Page {
                 title: name,
-                lang: DEFAULT_LANG,
+                lang: Some(DEFAULT_LANG),
                 theme: options.theme.as_deref(),
                 // 单篇没有「站点」这一说：没有站点名，于是没有顶栏也没有底栏
                 chrome: page::Chrome::default(),
