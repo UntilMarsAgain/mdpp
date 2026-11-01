@@ -413,6 +413,8 @@ impl MdppBuilder {
         if options.wikilink {
             syntax::wikilink::add(&mut md);
         }
+        // 行内高亮没有开关 —— 一条随库的基础语法，跟删除线一个待遇
+        syntax::mark::add(&mut md);
 
         // `::` 块。挂载位置是刻意的：必须排在段落规则**之前**，否则 `::名字`
         // 会先被当成一行普通文字收走。
