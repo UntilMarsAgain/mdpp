@@ -237,7 +237,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         std::fs::write(
             dir.path().join("mdpp.toml"),
-            "pages_dir = \"根本没有这个\"\n",
+            "site_name = \"甲\"\npages_dir = \"根本没有这个\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
         )
         .expect("写得下");
         let project = Project::load(dir.path()).expect("读得动");

@@ -27,7 +27,7 @@
 //!
 //! | 占位符 | 填什么 |
 //! |---|---|
-//! | `{{lang}}` | `<html lang>`，如 `zh-Hans` |
+//! | `{{lang_attr}}` | `<html lang="…">` 那一段；不提供语言时是空 |
 //! | `{{theme_attr}}` | 主题属性，如 ` data-mdpp-theme="dark"`；不钉主题（`system` 或不写）就是空 |
 //! | `{{title}}` | `<title>` 的内容 |
 //! | `{{icons}}` | `<link rel="icon">`；没配 favicon 就是空 |
@@ -233,8 +233,8 @@ impl Canonical {
 pub struct Page<'a> {
     /// `<title>` 的内容
     pub title: &'a str,
-    /// `<html lang>`
-    pub lang: &'a str,
+    /// `<html lang>`。`None` 就不写这条属性 —— 不提供就不提供。
+    pub lang: Option<&'a str>,
     /// 主题：`Some("light" | "dark")` 时设 `data-mdpp-theme`，`::theme` 那两节由它挑。
     /// `Some("system")` 与 `None` **一样**，都是跟随系统 —— 于是属性不落
     pub theme: Option<&'a str>,
@@ -311,10 +311,16 @@ pub fn document(page: &Page) -> String {
         _ => String::new(),
     };
 
+    // 不提供语言就**不写**这条属性（空串也一样）—— 与配置里「不填写就不提供」一致
+    let lang_attr = match page.lang.map(str::trim).filter(|lang| !lang.is_empty()) {
+        Some(lang) => format!(" lang=\"{}\"", escape(lang)),
+        None => String::new(),
+    };
+
     fill(
         template(),
         &[
-            ("lang", &escape(page.lang)),
+            ("lang_attr", &lang_attr),
             ("theme_attr", &theme_attr),
             ("title", &escape(page.title)),
             ("styles", &styles),
@@ -635,7 +641,7 @@ mod tests {
     fn page<'a>(body: &'a str, assets: Assets) -> Page<'a> {
         Page {
             title: "某篇笔记",
-            lang: "zh-Hans",
+            lang: Some("zh-Hans"),
             theme: None,
             chrome: Chrome::default(),
             canonical: Canonical::default(),
@@ -729,6 +735,23 @@ mod tests {
             html_tag(&html),
             r#"<html lang="zh-Hans" data-mdpp-theme="dark">"#
         );
+    }
+
+    /// 不提供语言就不写 `<html lang>` —— 与配置里「不填写就不提供」一致
+    #[test]
+    fn a_missing_lang_leaves_the_html_element_without_lang() {
+        let html = document(&Page {
+            lang: None,
+            ..page("x", Assets::Inline)
+        });
+        assert_eq!(html_tag(&html), "<html>");
+
+        // 空串也当没写
+        let blank = document(&Page {
+            lang: Some("   "),
+            ..page("x", Assets::Inline)
+        });
+        assert_eq!(html_tag(&blank), "<html>");
     }
 
     /// 标题常常是文件名，里面带 `&` 与引号很常见 —— 不转义就进不了属性
@@ -1417,7 +1440,7 @@ mod tests {
     fn the_template_still_has_the_placeholders_the_filler_fills() {
         let template = template();
         for name in [
-            "lang",
+            "lang_attr",
             "theme_attr",
             "title",
             "icons",

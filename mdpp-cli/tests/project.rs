@@ -146,7 +146,7 @@ fn site_url_gives_a_canonical_and_leaves_the_links_alone() {
     .expect("写得下");
     std::fs::write(root.join("pages/乙.mdpp"), "# 乙\n").expect("写得下");
 
-    // 没配 `site_url`：没有 canonical
+    // 没配 `base_url`：没有 canonical
     assert!(mdpp(&root, &["build"]).status.success());
     let plain = std::fs::read_to_string(root.join("build/甲/index.html")).expect("读得动");
     assert!(!plain.contains("rel=\"canonical"), "{plain}");
@@ -161,7 +161,7 @@ fn site_url_gives_a_canonical_and_leaves_the_links_alone() {
         )
         .replace(
             "site_name =",
-            "site_url = \"https://x.github.io/repo\"\nsite_name =",
+            "base_url = \"https://x.github.io/repo\"\nsite_name =",
         ),
     )
     .expect("改得下");
@@ -369,6 +369,15 @@ fn the_override_directory_is_copied_after_build() {
     let dir = empty_dir();
     let root = init(dir.path());
 
+    // 骨架里 `override_dir` 是注释掉的 —— 要用覆盖层得自己写出来
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(
+        &config,
+        format!("{text}\noverride_dir = \"override\"\n"),
+    )
+    .expect("改得下");
+
     std::fs::create_dir_all(root.join("override")).expect("建得出");
     std::fs::write(
         root.join("override/CNAME"),
@@ -461,7 +470,10 @@ fn a_binary_favicon_is_copied_and_linked() {
     let text = std::fs::read_to_string(&config).expect("读得动");
     std::fs::write(
         &config,
-        format!("{text}\nfavicon = \"assets/icon.png\"\n"),
+        text.replace(
+            "favicon = \"assets/favicon.svg\"",
+            "favicon = \"assets/icon.png\"",
+        ),
     )
     .expect("改得下");
 
@@ -500,6 +512,14 @@ fn a_binary_favicon_is_copied_and_linked() {
 fn without_a_favicon_there_is_no_icon_link() {
     let dir = empty_dir();
     let root = init(dir.path());
+    // 骨架里配了 favicon —— 把它去掉，验证「不提供就不显示」
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(
+        &config,
+        text.replace("favicon = \"assets/favicon.svg\"\n", ""),
+    )
+    .expect("改得下");
     assert!(mdpp(&root, &["build"]).status.success());
     let home = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
     assert!(!home.contains("rel=\"icon\""), "{home}");
@@ -515,7 +535,10 @@ fn a_favicon_that_cannot_be_read_is_refused() {
     let text = std::fs::read_to_string(&config).expect("读得动");
     std::fs::write(
         &config,
-        format!("{text}\nfavicon = \"assets/没有这个.png\"\n"),
+        text.replace(
+            "favicon = \"assets/favicon.svg\"",
+            "favicon = \"assets/没有这个.png\"",
+        ),
     )
     .expect("改得下");
 
@@ -537,7 +560,12 @@ fn a_logo_lands_next_to_the_site_name() {
 
     let config = root.join("mdpp.toml");
     let text = std::fs::read_to_string(&config).expect("读得动");
-    std::fs::write(&config, format!("{text}\nlogo = \"assets/logo.svg\"\n")).expect("改得下");
+    // 骨架里 favicon 与 logo 都配了；这一条只留 logo
+    std::fs::write(
+        &config,
+        text.replace("favicon = \"assets/favicon.svg\"\n", ""),
+    )
+    .expect("改得下");
 
     let out = mdpp(&root, &["build"]);
     assert!(out.status.success(), "{}", stderr_of(&out));
@@ -580,7 +608,11 @@ fn logo_and_favicon_can_point_at_the_same_file() {
     let text = std::fs::read_to_string(&config).expect("读得动");
     std::fs::write(
         &config,
-        format!("{text}\nfavicon = \"assets/icon.svg\"\nlogo = \"assets/icon.svg\"\n"),
+        text.replace(
+            "favicon = \"assets/favicon.svg\"",
+            "favicon = \"assets/icon.svg\"",
+        )
+        .replace("logo = \"assets/logo.svg\"", "logo = \"assets/icon.svg\""),
     )
     .expect("改得下");
 
@@ -602,6 +634,10 @@ fn logo_and_favicon_can_point_at_the_same_file() {
 fn without_a_logo_the_title_still_shows() {
     let dir = empty_dir();
     let root = init(dir.path());
+    // 骨架里配了 logo —— 把它去掉，验证「不提供就不显示」
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(&config, text.replace("logo = \"assets/logo.svg\"\n", "")).expect("改得下");
     assert!(mdpp(&root, &["build"]).status.success());
     let home = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
     assert!(!home.contains("mdpp-bar__logo"), "不该凭空有那个图标：{home}");
