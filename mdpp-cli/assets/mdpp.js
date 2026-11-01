@@ -159,11 +159,14 @@
     injectThemeAssets(currentTheme());
   };
 
-  // ---- mermaid / KaTeX -----------------------------------------------
+  // ---- mermaid / KaTeX / highlight.js ----------------------------------
   // 页面里若用了 ::mermaid（pre.mermaid）或 ::math
   //（div.math，带 data-tex 属性），需要把对应的前端脚本
   // 跑起来才能在浏览器里画出来。脚本是由 page.rs 按 external-script
   // 参数从 CDN 写进页面的；这里只负责调用它们的渲染 API。
+  //
+  // 页面里若出现了 `class="language-…"`（::code 块），也会从 CDN
+  // 引入 highlight.js；这里负责调用 hljs.highlightAll() 把代码高亮起来。
   function bindDiagrams() {
     if (window.mermaid) {
       window.mermaid.initialize({ startOnLoad: true });
@@ -175,6 +178,9 @@
           window.katex.render(tex, el, { throwOnError: false });
         }
       });
+    }
+    if (window.hljs) {
+      window.hljs.highlightAll();
     }
   }
 
