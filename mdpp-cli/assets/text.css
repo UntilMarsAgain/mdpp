@@ -92,6 +92,12 @@
   white-space: pre-line;
 }
 
+/* ::small：显示小字，适合辅助说明、备注、脚注之类的内容 */
+.mdpp-content .small {
+  font-size: 0.85em;
+  color: var(--mdpp-text-dim);
+}
+
 .mdpp-content table.fields th,
 .mdpp-content table.fields td {
   padding: 0.3em 0.9em;
