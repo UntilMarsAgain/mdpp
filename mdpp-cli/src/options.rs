@@ -136,8 +136,9 @@ pub struct Render {
     pub js: Vec<PathBuf>,
 
     /// mermaid / math / 代码高亮 前端脚本的加载方式：cdn（默认，从 CDN 引入）、none（不加载）。
-    /// 页面里若用了 ::mermaid / ::math / ::code 块，才会把对应的脚本标签写进 HTML。
-    /// 代码高亮需配合 highlight.js 的 CSS 主题（可用 `--css` 引入一份，如 github.min.css）。
+    /// 页面里若用了 ::mermaid / ::math 或写了代码块，才会把对应的资源写进 HTML。
+    /// 代码高亮的 JS 连同主题（github 浅色 / 深色，随系统深浅自动挑一份）一并引入；
+    /// `--css` 附加的样式排在主题之后，用自己的配色还能换掉它。
     #[arg(
         long,
         value_name = "方式",
@@ -281,8 +282,9 @@ pub struct Build {
     pub strict: bool,
 
     /// mermaid / math / 代码高亮 前端脚本的加载方式：cdn（默认，从 CDN 引入）、none（不加载）。
-    /// 页面里若用了 ::mermaid / ::math / ::code 块，才会把对应的脚本标签写进 HTML。
-    /// 代码高亮需配合 highlight.js 的 CSS 主题（可用 `--css` 引入一份，如 github.min.css）。
+    /// 页面里若用了 ::mermaid / ::math 或写了代码块，才会把对应的资源写进 HTML。
+    /// 代码高亮的 JS 连同主题（github 浅色 / 深色，随系统深浅自动挑一份）一并引入；
+    /// `--css` 附加的样式排在主题之后，用自己的配色还能换掉它。
     #[arg(
         long,
         value_name = "方式",

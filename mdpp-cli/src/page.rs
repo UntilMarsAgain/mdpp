@@ -104,6 +104,16 @@ const KATEX_CDN: &str = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.mi
 /// highlight.js 的 CDN 地址（jsDelivr）。
 const HLJS_CDN: &str = "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/highlight.min.js";
 
+/// highlight.js 的 GitHub 主题（浅色 / 深色）的 CDN 地址（jsDelivr）。
+///
+/// 浅色那份的文件名就没有 `-light` —— highlight.js 的老规矩，`github` 是浅色，
+/// 深色才带 `-dark`。两份**都**引着：`<link>` 上的 `media="prefers-color-scheme: …"`
+/// 让当时那套深浅色自己挑，切主题不必重新渲染。
+const HLJS_CSS_LIGHT_CDN: &str =
+    "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/styles/github.min.css";
+const HLJS_CSS_DARK_CDN: &str =
+    "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/styles/github-dark.min.css";
+
 /// 默认样式表：下面那几个按次序拼起来的
 pub fn default_css() -> String {
     CSS_FILES
@@ -141,16 +151,17 @@ pub enum Assets {
     Linked(String),
 }
 
-/// mermaid / math 前端脚本的加载方式。
+/// mermaid / math / 代码高亮 前端资源的加载方式。
 ///
 /// `::mermaid` 输出 `<pre class="mermaid">`，`::math` 输出 `<div class="math">`，
-/// 它们需要页面里引入 mermaid.js / katex.js 才能在浏览器里画出来。
+/// 代码块产出 `class="language-…"`；它们需要页面里引入 mermaid.js / katex.js /
+/// highlight.js（连同 GitHub 浅深两份主题样式）才能在浏览器里画出来、高亮出来。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ExternalScript {
     /// 从 CDN 引入 `<script src="…">`（默认）
     #[default]
     Cdn,
-    /// 不加载任何 mermaid / math 脚本，由使用方自己负责
+    /// 不加载任何 mermaid / math / 代码高亮的脚本与样式，由使用方自己负责
     None,
 }
 
@@ -262,7 +273,7 @@ pub struct Page<'a> {
     pub extra_js: &'a [String],
     /// 资源怎么进页面
     pub assets: Assets,
-    /// mermaid / math 前端脚本的加载方式
+    /// mermaid / math / 代码高亮 前端资源的加载方式
     pub external_script: ExternalScript,
 }
 
@@ -279,6 +290,27 @@ pub fn document(page: &Page) -> String {
             .collect::<Vec<_>>()
             .join("\n"),
     };
+    // 有没有高亮要引：页面里有 `class="language-…"`（围栏代码块、`::code` 都产出
+    // 它）才算。JS 与它的主题样式同进同出，判一次，两处都用。
+    let highlight_on = page.external_script == ExternalScript::Cdn
+        && page.body.contains("class=\"language-");
+    // highlight.js 的浅深两份主题。位置与主题色那几层同一档：在默认样式之后、
+    // 用户附的样式之前 —— `--css` 里自带的配色仍然是最后说话的那个。
+    let hljs_themes = if highlight_on {
+        vec![
+            format!(
+                "<link rel=\"stylesheet\" href=\"{}\" media=\"(prefers-color-scheme: light)\">",
+                HLJS_CSS_LIGHT_CDN
+            ),
+            format!(
+                "<link rel=\"stylesheet\" href=\"{}\" media=\"(prefers-color-scheme: dark)\">",
+                HLJS_CSS_DARK_CDN
+            ),
+        ]
+    } else {
+        Vec::new()
+    };
+    let styles = join_blocks(styles, hljs_themes);
     // 主题色那几层覆盖摆在默认样式**之后**、用户附的样式**之前**：它要盖掉
     // `base.css` 调色板里的默认值，而用户 `extra_css` 仍是最后说话的那个
     let styles = join_blocks(styles, vec![bar_color_style(page.chrome.theme_color)]);
@@ -288,9 +320,9 @@ pub fn document(page: &Page) -> String {
         Assets::Inline => format!("<script>\n{}\n</script>", close_tag(default_js(), "script")),
         Assets::Linked(prefix) => script_tag(prefix, SCRIPT_FILE),
     };
-    // mermaid / math / highlight.js 前端脚本：页面里若用了对应的块，
-    // 需要把对应的 JS 引进来才能在浏览器里渲染。
-    // `::code` 块输出 `class="language-…"`，有代码块时才引入 highlight.js。
+    // mermaid / math / highlight.js 前端脚本：页面里若用了对应的东西，
+    // 需要把对应的 JS 引进来才能在浏览器里渲染。代码块在不在，上方的
+    // `highlight_on` 已经判过 —— JS 与那两份主题样式同进同出。
     let mut diagram_scripts = String::new();
     if page.external_script == ExternalScript::Cdn {
         if page.body.contains("class=\"mermaid\"") {
@@ -305,7 +337,7 @@ pub fn document(page: &Page) -> String {
                 KATEX_CDN
             ));
         }
-        if page.body.contains("class=\"language-") {
+        if highlight_on {
             diagram_scripts.push_str(&format!(
                 "<script src=\"{}\"></script>\n",
                 HLJS_CDN
@@ -1541,5 +1573,66 @@ mod tests {
         };
         let html = document(&page);
         assert!(!html.contains("cdn.jsdelivr.net"), "{html}");
+    }
+
+    /// 页面里有代码块（`class="language-…"`）时，`cdn` 模式把 highlight.js
+    /// 连同 github 浅深两份主题一起写进页面 —— 主题靠 `media` 让系统挑。
+    #[test]
+    fn external_script_cdn_injects_hljs_with_both_themes() {
+        let page = Page {
+            body: "<pre><code class=\"language-rust\">fn main() {}</code></pre>",
+            external_script: ExternalScript::Cdn,
+            ..site_page("x")
+        };
+        let html = document(&page);
+        assert!(
+            html.contains(
+                "cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/highlight.min.js"
+            ),
+            "{html}"
+        );
+        assert!(
+            html.contains("styles/github.min.css"),
+            "浅色主题没进来：{html}"
+        );
+        assert!(
+            html.contains("styles/github-dark.min.css"),
+            "深色主题没进来：{html}"
+        );
+        assert!(
+            html.contains("media=\"(prefers-color-scheme: light)\"")
+                && html.contains("media=\"(prefers-color-scheme: dark)\""),
+            "主题要靠 media 让系统挑：{html}"
+        );
+    }
+
+    /// 没有代码块的页面，highlight.js 与主题样式都不带 —— 多背一份不值。
+    #[test]
+    fn no_code_block_no_hljs_nor_theme() {
+        let page = Page {
+            body: "<p>只是普通文本</p>",
+            external_script: ExternalScript::Cdn,
+            ..site_page("x")
+        };
+        let html = document(&page);
+        assert!(!html.contains("highlightjs"), "{html}");
+        assert!(!html.contains("github"), "{html}");
+    }
+
+    /// 主题摆在用户附的样式之前：`--css` 里换一套自己的 highlight.js 配色，
+    /// 仍然是最后说话的那个。
+    #[test]
+    fn hljs_theme_yields_to_the_users_own_css() {
+        let extra = "/* 这是 --css 附的样式 */".to_string();
+        let page = Page {
+            body: "<pre><code class=\"language-rust\">fn main() {}</code></pre>",
+            external_script: ExternalScript::Cdn,
+            extra_css: &[extra],
+            ..site_page("x")
+        };
+        let html = document(&page);
+        let theme = html.find("github.min.css").expect("主题在");
+        let user = html.find("--css 附的样式").expect("用户样式也在");
+        assert!(theme < user, "主题要排在用户样式之前：\n{html}");
     }
 }
