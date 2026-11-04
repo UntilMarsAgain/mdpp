@@ -38,6 +38,9 @@ use std::sync::Arc;
 
 use markdown_it::generics::inline::emph_pair::EmphPairScanner;
 use markdown_it::parser::core::CoreRule;
+use markdown_it::plugins::cmark::inline::autolink::Autolink;
+use markdown_it::plugins::cmark::inline::link::Link;
+use markdown_it::plugins::extra::linkify::Linkified;
 use markdown_it::{MarkdownIt, Node};
 
 use crate::assets::{self, Asset, AssetMode};
@@ -417,6 +420,10 @@ impl MdppBuilder {
             md.add_rule::<DropDuplicateHeadingIds>();
         }
 
+        // 外部链接标记：给带协议的站外链接加一个 `external` 类，样式表据此
+        // 画「外链」符号。与 heading_anchors 无关，无条件挂。
+        md.add_rule::<MarkExternalLinks>();
+
         if options.math {
             syntax::math::add(&mut md);
         }
@@ -476,6 +483,47 @@ impl CoreRule for DropDuplicateHeadingIds {
     }
 }
 
+/// 给**站外链接**挂 `class="external"`，样式表据此画外链符号。
+///
+/// 认的是 CommonMark 的普通链接（`[文字](地址)`、`<地址>` 自动链接，以及
+/// linkify 认出来的裸地址），地址以 `http://`、`https://`、`//` 开头就是站外。
+///
+/// 不碰 [`crate::syntax::wikilink`] 造的节点：内部链接的目标由解析器决定，
+/// 它是站内导航，哪怕解析出来是个绝对地址也不该画「出站」符号。
+///
+/// 每层 `md.parse` 的 core 阶段都会走整棵树（嵌套块的子解析已挂过一次），
+/// 所以加之前先看类里有没有 —— 否则嵌套一深就是 `class="external external"`。
+struct MarkExternalLinks;
+
+impl CoreRule for MarkExternalLinks {
+    fn run(root: &mut Node, _md: &MarkdownIt) {
+        root.walk_mut(|node, _| {
+            // 三种链接节点各存各的地址：普通链接、尖括号自动链接、linkify 认出的裸地址。
+            // 先克隆出来，后面要改 `attrs`，不能一边借着值一边改节点。
+            let url = node
+                .cast::<Link>()
+                .map(|link| link.url.clone())
+                .or_else(|| node.cast::<Autolink>().map(|link| link.url.clone()))
+                .or_else(|| node.cast::<Linkified>().map(|link| link.url.clone()));
+            let Some(url) = url else {
+                return;
+            };
+            if !(url.starts_with("http://") || url.starts_with("https://") || url.starts_with("//"))
+            {
+                return;
+            }
+
+            if let Some((_, class)) = node.attrs.iter_mut().find(|(name, _)| *name == "class") {
+                if !class.split_whitespace().any(|item| item == "external") {
+                    class.push_str(" external");
+                }
+            } else {
+                node.attrs.push(("class", "external".to_string()));
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Mdpp;
@@ -508,6 +556,43 @@ mod tests {
     fn dangerous_link_protocols_are_rejected() {
         let html = md_of("[x](javascript:alert(1))\n");
         assert!(!html.contains(r#"href="javascript:"#), "{html}");
+    }
+
+    /// 站外链接挂 `external` 类，相对地址与内部链接都不挂 —— 样式表靠这个类画外链符号
+    #[test]
+    fn external_links_are_marked_but_internal_ones_are_not() {
+        let html = md_of("[外](https://example.com/x) [内](../指南/) [[某页]]\n");
+        assert!(
+            html.contains(r#"<a class="external" href="https://example.com/x">"#),
+            "{html}"
+        );
+        // 全页只有那一条外链带这个类
+        assert_eq!(html.matches("external").count(), 1, "{html}");
+    }
+
+    /// 三种链接节点（普通链接、尖括号自动链接、裸地址）都认，站内与邮件不认
+    #[test]
+    fn every_kind_of_external_link_is_marked() {
+        let html = md_of("[外](https://example.com/x) <https://example.com/y> https://example.com/z\n");
+        assert_eq!(
+            html.matches(r#"class="external""#).count(),
+            3,
+            "{html}"
+        );
+        // 相对地址、内部链接、邮件都不该带这个类
+        let html = md_of("[内](../指南/) [[某页]] [信](mailto:a@b.c)\n");
+        assert!(!html.contains("external"), "{html}");
+    }
+
+    /// 嵌套块里的外链也只挂一次类：core 规则每层 `md.parse` 都会走整棵树
+    #[test]
+    fn nested_blocks_do_not_duplicate_the_external_class() {
+        let html = md_of("::note\n  [外](https://example.com/x)\n");
+        assert_eq!(
+            html.matches(r#"class="external""#).count(),
+            1,
+            "{html}"
+        );
     }
 
     /// 围栏上的语言名要带进 `class="language-…"` —— 高亮与样式都认这个类
