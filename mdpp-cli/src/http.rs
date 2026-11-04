@@ -474,7 +474,7 @@ mod tests {
         std::fs::write(dir.path().join("index.html"), "根").expect("写得下");
         std::fs::write(dir.path().join("指南/index.html"), "指南").expect("写得下");
         std::fs::write(dir.path().join("指南/深入/index.html"), "深入").expect("写得下");
-        std::fs::write(dir.path().join("assets/base.css"), "body{}").expect("写得下");
+        std::fs::write(dir.path().join("assets/mdpp.css"), "body{}").expect("写得下");
         dir
     }
 
@@ -496,10 +496,10 @@ mod tests {
     #[test]
     fn files_are_served_as_they_are() {
         let dir = tree();
-        let Target::File(file) = resolve(dir.path(), "/assets/base.css").expect("找得到") else {
+        let Target::File(file) = resolve(dir.path(), "/assets/mdpp.css").expect("找得到") else {
             panic!("该给文件");
         };
-        assert!(file.ends_with("assets/base.css"));
+        assert!(file.ends_with("assets/mdpp.css"));
         assert!(resolve(dir.path(), "/没有这个.css").is_none());
         assert!(resolve(dir.path(), "/指南/没有这一页").is_none());
     }

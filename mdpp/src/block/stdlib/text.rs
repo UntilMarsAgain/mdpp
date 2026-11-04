@@ -126,7 +126,7 @@ pub(super) fn render_banner(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
 
     // 颜色只认十六进制：这个值会写进 style 属性，宽松了就等于允许塞任意声明。
     // 另立一个 banner--tinted 类：横条里那点行内代码的芯子底色要按「这条横条
-    // 有没有自己的底色」来定（见 base.css），靠 style 属性去猜既绕也不可靠。
+    // 有没有自己的底色」来定（见 mdpp.css），靠 style 属性去猜既绕也不可靠。
     let mut class = "banner".to_string();
     let mut style = String::new();
     if let Some(color) = block.param("color") {

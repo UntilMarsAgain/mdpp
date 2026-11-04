@@ -291,8 +291,8 @@ pub fn is_template_target(target: &str) -> bool {
 
 /// 从一页走到站点根的资源目录：`../` × (键的段数) + `assets`。
 ///
-/// 与 [`href`] 同样要数层数：产物是目录式地址，`示例/` 里写 `assets/base.css` 会解析到
-/// `/示例/assets/base.css` —— 那里没有东西，于是**样式与脚本全丢，而且不报错**
+/// 与 [`href`] 同样要数层数：产物是目录式地址，`示例/` 里写 `assets/mdpp.css` 会解析到
+/// `/示例/assets/mdpp.css` —— 那里没有东西，于是**样式与脚本全丢，而且不报错**
 /// （页面照出得来，只是光着身子）。
 pub fn assets_href(key: &str) -> String {
     format!("{}{}", "../".repeat(segments(key)), crate::page::ASSET_DIR)
