@@ -517,7 +517,8 @@ pub(super) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     }
 
     // 折起来时用 `hidden` 而不是 CSS —— 打印规则要能把它放出来（见
-    // `mdpp-cli/assets/print.css`），而 `display: none` 打印时救不回来
+    // `mdpp-cli/assets/mdpp.css` 的 `@media print` 那一节），而 `display: none`
+    // 打印时救不回来
     let mut body: Vec<(&str, String)> = vec![("class", "navbox__body".to_string())];
     if collapsed {
         body.push(("hidden", "hidden".to_string()));

@@ -6,11 +6,11 @@
 //! | 文件 | 是什么 |
 //! |---|---|
 //! | `site.html` | 页面**模板**：带 `{{占位符}}`，是这个二进制的页面骨架 |
-//! | `base.css` | 配色变量 + 通用排版 + 出错时摆的那几个框 |
-//! | `callouts.css` `text.css` `media.css` `panels.css` `embeds.css` | 按块分的那几组 |
-//! | `print.css` | `@media print`：屏幕上折叠的，打印时都展开 |
+//! | `mdpp.css` | **正文唯一的样式表**：配色变量、通用排版、每个块的样子、打印规则 |
 //! | `mdpp.js` | **最简**的默认行为：点一下就切选项卡 |
 //! | `site.css` | **只在站点里**的那一层外壳：顶栏、那一列的限宽与卡片、页首页尾 |
+//!
+//! 样式只有这两份：正文的 `mdpp.css` 与站点外壳的 `site.css`，**不再按块拆**。
 //!
 //! **模板与资源都不写在代码里**：那整个目录由 [`include_dir!`] 在**编译期**嵌进二进制，
 //! 于是
@@ -66,32 +66,20 @@ pub const TEMPLATE_FILE: &str = "site.html";
 /// 默认脚本的文件名
 const SCRIPT_FILE: &str = "mdpp.js";
 
-/// 资源在产物里的目录名（页面上是 `assets/base.css` 这样）
+/// 资源在产物里的目录名（页面上是 `assets/mdpp.css` 这样）
 pub const ASSET_DIR: &str = "assets";
 
 /// 编译期嵌进来的那一整个目录（[`include_dir!`]：编译时读磁盘，运行时不碰文件系统）
 static ASSETS: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets");
 
-/// 样式表按这个次序拼起来。
-///
-/// **次序有意义**：base 在前（它定义那组 `--mdpp-*` 变量，后面的都在用），print 在最后
-/// （打印规则是覆盖，得压过前面的）。
-const CSS_FILES: [&str; 10] = [
-    "base.css",
-    "callouts.css",
-    "flatlist.css",
-    "fold.css",
-    "text.css",
-    "media.css",
-    "panels.css",
-    "navbox.css",
-    "embeds.css",
-    "print.css",
-];
+/// 正文样式表的文件名。**正文只有这一份**：配色变量、通用排版、每个块的
+/// 样子、打印规则都在里面 —— 分发时少一堆文件，也少一处「漏拼一个文件」的
+/// 静默故障。
+const CORE_CSS: &str = "mdpp.css";
 
 /// **站点模式额外**的那一份：顶栏、那一列的限宽与卡片、页首页尾。
 ///
-/// 不在上面那七个里 —— `render --full` 要的是一个自足的单文件页面，而这一份是给
+/// 与正文分开放 —— `render --full` 要的是一个自足的单文件页面，而这一份是给
 /// 整站用的外壳，对单文件页面没有意义。
 const SITE_CSS: &str = "site.css";
 
@@ -114,13 +102,9 @@ const HLJS_CSS_LIGHT_CDN: &str =
 const HLJS_CSS_DARK_CDN: &str =
     "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/styles/github-dark.min.css";
 
-/// 默认样式表：下面那几个按次序拼起来的
+/// 默认样式表：正文那唯一的一份
 pub fn default_css() -> String {
-    CSS_FILES
-        .iter()
-        .map(|name| asset(name))
-        .collect::<Vec<_>>()
-        .join("\n")
+    asset(CORE_CSS).to_string()
 }
 
 /// 默认脚本（`assets/mdpp.js` 的内容）
@@ -171,8 +155,8 @@ impl Assets {
     /// 只有站点那一路多出 [`SITE_CSS`]：单文件页面里没有「整站」这一层外壳。
     fn css_files(&self) -> Vec<&'static str> {
         match self {
-            Assets::Inline => CSS_FILES.to_vec(),
-            Assets::Linked(_) => CSS_FILES.iter().copied().chain([SITE_CSS]).collect(),
+            Assets::Inline => vec![CORE_CSS],
+            Assets::Linked(_) => vec![CORE_CSS, SITE_CSS],
         }
     }
 }
@@ -205,7 +189,7 @@ pub struct Chrome {
     /// 于是 `footer` 里可以写 `::note`、`[[内部链接]]`、`**粗体**` 之类的 mdpp 语法。
     /// 没配就没有底栏。
     pub copyright_html: Option<String>,
-    /// 顶栏那块底的主题色。`None` 就是**不覆盖** —— 默认值在 `base.css` 的调色板里，
+    /// 顶栏那块底的主题色。`None` 就是**不覆盖** —— 默认值在 `mdpp.css` 的调色板里，
     /// 不必每页都带着一份一模一样的
     pub theme_color: Option<Color>,
     /// 导航栏：顶栏下面那一行链接
@@ -312,7 +296,7 @@ pub fn document(page: &Page) -> String {
     };
     let styles = join_blocks(styles, hljs_themes);
     // 主题色那几层覆盖摆在默认样式**之后**、用户附的样式**之前**：它要盖掉
-    // `base.css` 调色板里的默认值，而用户 `extra_css` 仍是最后说话的那个
+    // `mdpp.css` 调色板里的默认值，而用户 `extra_css` 仍是最后说话的那个
     let styles = join_blocks(styles, vec![bar_color_style(page.chrome.theme_color)]);
     let styles = join_blocks(styles, inline_blocks(page.extra_css, "style"));
 
@@ -348,7 +332,7 @@ pub fn document(page: &Page) -> String {
     let scripts = join_blocks(scripts, inline_blocks(page.extra_js, "script"));
 
     // 只认 `light` / `dark` 两个值。`system` 与**不写**是一回事：属性不落，
-    // `base.css` 里那条 `prefers-color-scheme` 就是它，深浅色当场跟系统走。
+    // `mdpp.css` 里那条 `prefers-color-scheme` 就是它，深浅色当场跟系统走。
     //
     // 白名单之外的字符串连 `<html>` 都碰不到 —— 于是这里没有「转义得对不对」这回事，
     // 配置写错也轮不到这一层来兜（`Config::check` 与 clap 的 value_parser 先就报了）
@@ -426,7 +410,7 @@ fn meta(chrome: &Chrome, canonical: &Canonical) -> String {
 
 /// 主题色那几层覆盖：把顶栏那块底与压在它上面的字写进 `:root`。
 ///
-/// **四层与 `base.css` 的调色板一模一样**（默认、跟随系统的深色、钉死浅色、钉死深色）——
+/// **四层与 `mdpp.css` 的调色板一模一样**（默认、跟随系统的深色、钉死浅色、钉死深色）——
 /// 少一层就有一页掉回默认蓝：`:root[data-mdpp-theme='light']` 的权重比 `:root` 高，
 /// 钉死浅色的页面会把默认值捡回来。
 ///
@@ -434,7 +418,7 @@ fn meta(chrome: &Chrome, canonical: &Canonical) -> String {
 /// 混一档 —— 两样都等不到浏览器去算，CSS 里没有可靠的亮度函数。
 fn bar_color_style(color: Option<Color>) -> String {
     let Some(color) = color else {
-        // 没配就没有这一块：那两样变量由 `base.css` 的调色板给默认值
+        // 没配就没有这一块：那两样变量由 `mdpp.css` 的调色板给默认值
         return String::new();
     };
     let dark = color.darkened();
@@ -566,7 +550,7 @@ fn web_url(value: &str) -> Option<&str> {
 
 /// 把 `assets/` 里那些资源拷到 `<dest>/assets/`，模板不拷。
 ///
-/// 站点模式用它：页面指的是 `assets/base.css`，那些字节得真的在那儿。
+/// 站点模式用它：页面指的是 `assets/mdpp.css`，那些字节得真的在那儿。
 pub fn copy_assets(dest: &Path) -> Result<usize, String> {
     let dir = dest.join(ASSET_DIR);
     std::fs::create_dir_all(&dir).map_err(|error| format!("建不了 {}：{error}", dir.display()))?;
@@ -775,7 +759,7 @@ mod tests {
     }
 
     /// `<html …>` 那一整行。主题属性只可能落在这一行上 —— 正文里别的 `data-mdpp-theme`
-    /// 都是内联进来的样式表自己的选择器（`base.css` / `panels.css`），与属性落没落无关
+    /// 都是内联进来的样式表自己的选择器（都在 `mdpp.css` 里），与属性落没落无关
     fn html_tag(html: &str) -> &str {
         html.lines()
             .find(|line| line.starts_with("<html"))
@@ -840,7 +824,7 @@ mod tests {
     }
 
     /// `theme = "system"` 与**不写**一样：`<html>` 上不落属性，深浅色因此由
-    /// `prefers-color-scheme` 当场定（`base.css` 里那条 `@media`）；
+    /// `prefers-color-scheme` 当场定（`mdpp.css` 里那条 `@media`）；
     /// 而钉死的那两个照旧落属性
     #[test]
     fn system_theme_leaves_the_html_element_without_an_attribute() {
@@ -868,7 +852,7 @@ mod tests {
     fn linked_assets_point_at_the_copied_files() {
         let html = document(&page("x", Assets::Linked(ASSET_DIR.to_string())));
         assert!(
-            html.contains(r#"<link rel="stylesheet" href="assets/base.css">"#),
+            html.contains(r#"<link rel="stylesheet" href="assets/mdpp.css">"#),
             "{html}"
         );
         assert!(
@@ -886,15 +870,9 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         let copied = copy_assets(dir.path()).expect("拷得动");
 
-        // 默认那几个 css、站点外壳那一个，外加脚本
-        assert_eq!(
-            copied,
-            CSS_FILES.len() + 2,
-            "{} 个 css、一个站点 css、一个 js",
-            CSS_FILES.len()
-        );
-        assert!(dir.path().join("assets/base.css").is_file());
-        assert!(dir.path().join("assets/print.css").is_file());
+        // 正文样式、站点外壳、脚本 —— 就这三个
+        assert_eq!(copied, 3, "一份正文 css、一份站点 css、一个 js");
+        assert!(dir.path().join("assets/mdpp.css").is_file());
         assert!(dir.path().join("assets/site.css").is_file());
         assert!(dir.path().join("assets/mdpp.js").is_file());
         assert!(
@@ -920,10 +898,14 @@ mod tests {
         }
 
         let standalone = document(&page("x", Assets::Inline));
-        assert!(!standalone.contains("site.css"), "{standalone}");
+        // 单文件页面里没有 `site.css` 那条外链 —— 正文样式是内联进 `<style>` 的
+        assert!(
+            !standalone.contains(r#"href="assets/site.css""#),
+            "{standalone}"
+        );
         assert!(!standalone.contains("1080px"), "单文件页面不该带限宽");
         // 判据是**类选择器**（那个点得带着）：调色板里有两条 `--mdpp-bar-*` 变量
-        // 跟着 `base.css` 进了每一页，可单文件页面里没有顶栏这回事
+        // 跟着 `mdpp.css` 进了每一页，可单文件页面里没有顶栏这回事
         assert!(!standalone.contains(".mdpp-bar"), "单文件页面不该带顶栏");
     }
 
@@ -1258,37 +1240,38 @@ mod tests {
         assert!(css.contains(".mdpp-content"), "正文那一层得有样式");
     }
 
-    /// 八个文件按次序拼成一份 —— 次序错了会静悄悄地看起来对：
+    /// 一份文件内部的次序错了会静悄悄地看起来对：
     /// 变量那层必须在前（后面都在 `var(--mdpp-…)`），打印那层必须在最后（它是覆盖）。
     #[test]
-    fn the_pieces_are_concatenated_in_the_right_order() {
+    fn the_stylesheet_keeps_a_meaningful_internal_order() {
         let css = default_css();
         let base = css.find(":root").expect("变量那层");
         let callout = css.find(".callout {").expect("提示框");
         let tabs = css.find(".tabs__bar").expect("选项卡");
         let print = css.find("@media print").expect("打印");
         assert!(base < callout, "变量要在用它的那些之前");
-        assert!(callout < tabs, "按注册次序");
+        assert!(callout < tabs, "按拼进来的次序");
         assert!(tabs < print, "打印规则是覆盖，要压过前面的");
     }
 
-    /// 每个资源都得真的被拼进去 —— 漏一个是静默的：页面少几样样式，而编译不报错。
+    /// 正文那唯一一份样式表得**真的覆盖每个块** —— 少一节是静默的：
+    /// 页面少几样样式，而编译不报错。
     #[test]
-    fn every_asset_file_reaches_the_stylesheet() {
+    fn the_one_stylesheet_covers_every_block() {
         let css = default_css();
-        for (file, needle) in [
-            ("base.css", "--mdpp-accent"),
-            ("callouts.css", "callout--warning"),
-            ("flatlist.css", ".flatlist.hlist"),
-            ("fold.css", ".fold {"),
-            ("text.css", "title-block"),
-            ("media.css", "figcaption"),
-            ("panels.css", "theme__part--dark"),
-            ("navbox.css", "navbox__group"),
-            ("embeds.css", "math--display"),
-            ("print.css", "attr(data-label)"),
+        for (thing, needle) in [
+            ("配色变量", "--mdpp-accent"),
+            ("提示框", "callout--warning"),
+            ("平行列表", ".flatlist.hlist"),
+            ("折叠", ".fold {"),
+            ("标题带", "title-block"),
+            ("媒体", "figcaption"),
+            ("选项卡", "theme__part--dark"),
+            ("导航框", "navbox__group"),
+            ("图与公式", "math--display"),
+            ("打印", "attr(data-label)"),
         ] {
-            assert!(css.contains(needle), "{file} 没被拼进去（少 {needle}）");
+            assert!(css.contains(needle), "{thing} 没进样式表（少 {needle}）");
         }
     }
 
@@ -1337,7 +1320,7 @@ mod tests {
     }
 
     /// 顶上那一条（站点名那一行 + 下面的导航）是**一整块有色的底**：底色取
-    /// `--mdpp-bar-bg`、字取 `--mdpp-bar-fg`。两个变量的默认值在 `base.css` 的调色板
+    /// `--mdpp-bar-bg`、字取 `--mdpp-bar-fg`。两个变量的默认值在 `mdpp.css` 的调色板
     /// 里，`theme_color` 再盖掉它们 —— 所以 `site.css` 里一个颜色都没写死
     #[test]
     fn the_top_bar_is_one_colored_strip_read_off_css_variables() {
@@ -1388,7 +1371,7 @@ mod tests {
         );
     }
 
-    /// 没配 `theme_color` 就**没有那几层覆盖**：默认值在 `base.css` 的调色板里，
+    /// 没配 `theme_color` 就**没有那几层覆盖**：默认值在 `mdpp.css` 的调色板里，
     /// 不必每页都带着一份一模一样的
     #[test]
     fn no_theme_color_means_no_override_block() {
@@ -1406,7 +1389,7 @@ mod tests {
         assert!(html.contains("--mdpp-bar-fg: #1a1c1f"), "{html}");
     }
 
-    /// `::css` 注入的 CSS 靠 `var(--mdpp-…)` 取配色，变量名要与 `base.css` 对得上
+    /// `::css` 注入的 CSS 靠 `var(--mdpp-…)` 取配色，变量名要与 `mdpp.css` 对得上
     #[test]
     fn the_palette_variables_are_all_there() {
         let css = default_css();

@@ -257,7 +257,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
     // 导航：配置里那几项 + 自动补上的目录按钮，对着站点查好相对地址
     let nav = resolve_nav(&project.config.nav, &toc_key, &site)?;
 
-    // 资源从二进制里拷到产物里：页面指的是 `assets/base.css`，那些字节得真的在那儿。
+    // 资源从二进制里拷到产物里：页面指的是 `assets/mdpp.css`，那些字节得真的在那儿。
     // 每个页面都内联一遍的话，几十个页面就是几十份拷贝
     let assets = page::copy_assets(site_dir)?;
     info!(assets, "资源已拷进产物");

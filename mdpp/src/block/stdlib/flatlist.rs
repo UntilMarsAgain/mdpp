@@ -2,7 +2,7 @@
 //!
 //! 把列表项摊成一行水平排列，与 qiuwenbaike 的 `Template:Flatlist` 对齐：
 //! 根元素是一个带 `hlist` 类的 `<div>`，内容按 markdown 解析，列表项由
-//! CSS 水平排列（见 `mdpp-cli/assets/flatlist.css`），渲染器只吐结构，
+//! CSS 水平排列（见 `mdpp-cli/assets/mdpp.css` 的「平行列表」那一节），渲染器只吐结构，
 //! 不吐 `hlist` / `horizontal` / `inline` 之类标记，也不塞 `onclick`。
 //!
 //! ```text

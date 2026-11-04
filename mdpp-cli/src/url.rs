@@ -104,7 +104,7 @@ mod tests {
             encode_path("/指南/安装/"),
             "/%E6%8C%87%E5%8D%97/%E5%AE%89%E8%A3%85/"
         );
-        assert_eq!(encode_path("/assets/base.css"), "/assets/base.css");
+        assert_eq!(encode_path("/assets/mdpp.css"), "/assets/mdpp.css");
         // 空格与问号在路径里得编码 —— 问号是地址与查询的分界
         assert_eq!(encode_path("/a b?c"), "/a%20b%3Fc");
         assert_eq!(decode_lossy(&encode_path("/指南/安装/")), "/指南/安装/");
