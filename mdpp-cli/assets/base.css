@@ -154,6 +154,20 @@
   color: var(--mdpp-link);
 }
 
+/* 站外链接：末尾补一个 ↗，提醒这一步会离开本站。
+ *
+ * 这个类由渲染器挂（`http://`、`https://`、`//` 开头的链接），不靠 CSS 猜
+ * `href` —— 站内链接也可能写成绝对地址，猜错就把「出站」画在了自家页面上。
+ *
+ * 用 `::after` 而不是改文字：复制链接时不会把箭头一起带走；也不跟下划线
+ * 一起画，箭头不是链接文字的一部分。 */
+.mdpp-content a.external::after {
+  content: "↗";
+  margin-inline-start: 0.12em;
+  font-size: 0.8em;
+  text-decoration: none;
+}
+
 /* 内部链接解析器没给答案时的样子：可点，但明显还没连上 */
 .mdpp-content a.wikilink {
   color: var(--mdpp-accent);
