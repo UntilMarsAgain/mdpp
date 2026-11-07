@@ -167,7 +167,13 @@ fn rebuild_body(lines: &[(usize, &str)]) -> String {
 /// `- 甲` 紧接 `[读法二]` 这么连着写的，跟着 markdown 走会把第二个标签吃掉。
 /// 要在列表里放一个 `[x]`，**空一行再写**就行 —— 与块里嵌块那条规矩一样。
 fn split_sections(source: &str) -> Vec<(String, String)> {
-    let zones = raw_zones(source);
+    // 没有以 `[` 开头的行，就不可能有标签；连探针都不用跑
+    let maybe_label = source.split('\n').any(|line| line.starts_with('['));
+    let zones = if maybe_label {
+        raw_zones(source)
+    } else {
+        Vec::new()
+    };
     let mut out: Vec<(String, String)> = Vec::new();
     let mut at = 0usize;
     for line in source.split_inclusive('\n') {
