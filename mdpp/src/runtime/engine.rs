@@ -44,6 +44,7 @@ use markdown_it::{MarkdownIt, Node, NodeValue};
 use crate::assets::{self, Asset, AssetMode};
 use crate::block;
 use crate::context::RenderContext;
+use crate::parse::markdown::parse_markdown;
 use crate::registry::BlockRegistry;
 use crate::slug;
 use crate::syntax;
@@ -316,16 +317,6 @@ fn render_node_parts(
     };
     drop(guard);
     (html, assets)
-}
-
-/// 解析一段 markdown；**每一层**（顶层、块正文、模板展开、`<markdown>`）都走这里。
-///
-/// `targets` 的链接目标空格编码必须在原始区之外做，而原始区只有解析器自己
-/// 知道（块引用、列表、嵌套容器）。所以这里先探针解析一遍拿区间，再交给
-/// 真正的解析器 —— 顶层与嵌套层用的是同一条规矩。
-pub(crate) fn parse_markdown(parser: &MarkdownIt, source: &str) -> Node {
-    let prepared = crate::targets::encode_target_spaces(source);
-    parser.parse(&prepared)
 }
 
 /// [`Mdpp`] 的构建器。

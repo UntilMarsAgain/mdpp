@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 
 use mdpp::link::{LinkResolver, LinkTarget, ResolvedLink};
 
-use crate::url::encode_href;
+use crate::support::url::encode_href;
 
 use tracing::{debug, info};
 
@@ -396,7 +396,11 @@ pub fn is_template_target(target: &str) -> bool {
 /// `/示例/assets/mdpp.css` —— 那里没有东西，于是**样式与脚本全丢，而且不报错**
 /// （页面照出得来，只是光着身子）。
 pub fn assets_href(key: &str) -> String {
-    format!("{}{}", "../".repeat(segments(key)), crate::page::ASSET_DIR)
+    format!(
+        "{}{}",
+        "../".repeat(segments(key)),
+        crate::render::page::ASSET_DIR
+    )
 }
 
 /// 从 `from`（一页的键）走到 `to` 的地址。

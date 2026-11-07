@@ -22,16 +22,16 @@
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use crate::context::template_pages;
-use crate::options::Build;
-use crate::page;
-use crate::page::{ExternalScript, NavLink};
+use crate::cli::options::Build;
 use crate::project::assets;
 use crate::project::config::NavEntry;
 use crate::project::site::{
     INDEX_KEY, Links, Missing, Page, Site, assets_href, href, normalize, output_of,
 };
 use crate::project::{self, Project, ensure_dir, shown, under};
+use crate::render::context::template_pages;
+use crate::render::page;
+use crate::render::page::{ExternalScript, NavLink};
 
 use mdpp::{Mdpp, RenderContext};
 use tracing::{debug, info};
@@ -215,7 +215,7 @@ fn render_page(
     page: &Page,
     assets_prefix: &str,
 ) -> Result<PageBody, String> {
-    let source = crate::limits::read_text(&page.source)?;
+    let source = crate::support::limits::read_text(&page.source)?;
     let mut context = RenderContext::new().with_links(Arc::new(Links::for_page(
         site.clone(),
         page,
@@ -573,7 +573,7 @@ fn copy_asset_into(
     std::fs::copy(&from, &to)
         .map_err(|error| format!("读不了 {what} {}：{error}", shown(&from)))?;
     // 只给**文件名**：配置里写的是项目里的相对路径，而产物里它在 `assets/` 下
-    Ok(Some(crate::url::encode_href(&name)))
+    Ok(Some(crate::support::url::encode_href(&name)))
 }
 
 /// 顶栏与底栏那几句话 —— 配置里那几个单行字段，原样递过去。
@@ -600,7 +600,7 @@ fn chrome(project: &Project, parser: &Mdpp, nav: &[NavLink], logo: &str) -> page
         // `check()` 已经筛过这个值，这里是把十六进制变成**能算的东西**（字色、
         // 深色那一档都要当场算）。theme_color 总有值（默认 "#2f6fd0"），不存在
         // 缺失的情况，直接解析即可
-        theme_color: crate::color::Color::parse(&project.config.theme_color),
+        theme_color: crate::support::color::Color::parse(&project.config.theme_color),
         nav: nav.to_vec(),
     }
 }
@@ -837,7 +837,7 @@ fn read_all(paths: &[PathBuf], root: &Path) -> Result<Vec<String>, String> {
         .iter()
         .map(|path| {
             let full = project::under(root, path);
-            crate::limits::read_text(&full)
+            crate::support::limits::read_text(&full)
         })
         .collect()
 }

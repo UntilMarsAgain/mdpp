@@ -62,7 +62,7 @@ pub(crate) fn expand_user_block(
     let filled = fill::substitute(&source, &block, &body);
 
     let md = state.md;
-    let mut parsed = context::deeper(|| crate::engine::parse_markdown(md, &filled));
+    let mut parsed = context::deeper(|| crate::parse::markdown::parse_markdown(md, &filled));
     let mut node = Node::new(ExpandedBlock);
     node.children = std::mem::take(&mut parsed.children);
     Some(node)

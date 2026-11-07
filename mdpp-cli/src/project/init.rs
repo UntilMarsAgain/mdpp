@@ -15,7 +15,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::options::Init;
+use crate::cli::options::Init;
 use crate::project::{SITE, ensure_dir, shown, substitute_site_name};
 
 use tracing::info;
@@ -143,7 +143,8 @@ mod tests {
         let pages = Site::collect(&project.pages_dir()).expect("扫得动");
         assert!(!pages.pages().is_empty(), "骨架里至少该有一页");
 
-        let templates = crate::context::template_pages(&project.templates_dir()).expect("读得动");
+        let templates =
+            crate::render::context::template_pages(&project.templates_dir()).expect("读得动");
         let context = mdpp::RenderContext::new().with_templates(templates);
         for page in pages.pages() {
             let source = std::fs::read_to_string(&page.source).expect("读得动");

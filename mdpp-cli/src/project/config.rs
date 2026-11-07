@@ -272,7 +272,7 @@ impl Config {
         // 主题色要在**构建期**算出字色与深色那一档，所以只认十六进制 —— 名字与函数
         // 写法能塞进字符串的东西比颜色多，而这个值要落进 `<style>` 与 `<meta>`。
         // 坏值会在整站的顶栏上现形，报错该在这儿而不是渲染到一半时
-        if crate::color::Color::parse(&self.theme_color).is_none() {
+        if crate::support::color::Color::parse(&self.theme_color).is_none() {
             return Err(format!(
                 "theme_color 得是十六进制颜色，如 \"#2f6fd0\"（#rgb 与 #rrggbb 都行），\
                  写成了「{}」",
