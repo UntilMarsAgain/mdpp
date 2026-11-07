@@ -39,7 +39,7 @@ use markdown_it::plugins::cmark::block::lheading::SetextHeader;
 use markdown_it::plugins::cmark::inline::autolink::Autolink;
 use markdown_it::plugins::cmark::inline::link::Link;
 use markdown_it::plugins::extra::linkify::Linkified;
-use markdown_it::{MarkdownIt, Node};
+use markdown_it::{MarkdownIt, Node, NodeValue};
 
 use crate::assets::{self, Asset, AssetMode};
 use crate::block;
@@ -569,7 +569,9 @@ impl CoreRule for UniqueHeadingAnchors {
     }
 }
 
-/// 给**站外链接**挂 `class="external"`，样式表据此画外链符号。
+/// 给**站外链接**挂 `class="external"`，并把链接文字包进
+/// `.external__text`：链接本身不画下划线，只给文字画；末尾那个图标由 CSS
+/// 的 `::after` 补，于是复制链接不会把图标带走，图标也不会跟着下划线跑。
 ///
 /// 认的是 CommonMark 的普通链接（`[文字](地址)`、`<地址>` 自动链接，以及
 /// linkify 认出来的裸地址），地址以 `http://`、`https://`、`//` 开头就是站外。
@@ -580,6 +582,18 @@ impl CoreRule for UniqueHeadingAnchors {
 /// 每层 `md.parse` 的 core 阶段都会走整棵树（嵌套块的子解析已挂过一次），
 /// 所以加之前先看类里有没有 —— 否则嵌套一深就是 `class="external external"`。
 struct MarkExternalLinks;
+
+/// 外链文字的那层 span：`text-decoration` 只画在它上面，不画到 `::after` 图标上
+#[derive(Debug, Clone)]
+struct ExternalText;
+
+impl NodeValue for ExternalText {
+    fn render(&self, node: &Node, fmt: &mut dyn markdown_it::Renderer) {
+        fmt.open("span", &[("class", "external__text".to_string())]);
+        fmt.contents(&node.children);
+        fmt.close("span");
+    }
+}
 
 impl CoreRule for MarkExternalLinks {
     fn run(root: &mut Node, _md: &MarkdownIt) {
@@ -605,6 +619,17 @@ impl CoreRule for MarkExternalLinks {
                 }
             } else {
                 node.attrs.push(("class", "external".to_string()));
+            }
+
+            // 嵌套解析会把同一棵树再过一遍：已经包过就别再套一层
+            if node.children.iter().any(|child| child.is::<ExternalText>()) {
+                return;
+            }
+            let children = std::mem::take(&mut node.children);
+            if !children.is_empty() {
+                let mut wrapper = Node::new(ExternalText);
+                wrapper.children = children;
+                node.children.push(wrapper);
             }
         });
     }
@@ -690,8 +715,9 @@ mod tests {
             html.contains(r#"<a class="external" href="https://example.com/x">"#),
             "{html}"
         );
+        assert_eq!(html.matches("external__text").count(), 1, "{html}");
         // 全页只有那一条外链带这个类
-        assert_eq!(html.matches("external").count(), 1, "{html}");
+        assert_eq!(html.matches(r#"class="external""#).count(), 1, "{html}");
     }
 
     /// 三种链接节点（普通链接、尖括号自动链接、裸地址）都认，站内与邮件不认
@@ -710,6 +736,7 @@ mod tests {
     fn nested_blocks_do_not_duplicate_the_external_class() {
         let html = md_of("::note\n  [外](https://example.com/x)\n");
         assert_eq!(html.matches(r#"class="external""#).count(), 1, "{html}");
+        assert_eq!(html.matches("external__text").count(), 1, "{html}");
     }
 
     /// 围栏上的语言名要带进 `class="language-…"` —— 高亮与样式都认这个类

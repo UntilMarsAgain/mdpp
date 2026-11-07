@@ -42,6 +42,17 @@
 - `use_asset` / `AssetUse`：自定义块可以登记自己的 CSS / JS。
 - `mdpp/examples/bench.rs`：单线程与多线程渲染的轻量基准。
 
+### 前端
+
+- 站外链接标记改为「方框 + 斜向箭头」的 CSS mask 图标（取自 MediaWiki 的
+  external-link 图标），颜色跟 `currentColor` 走；图标不跟链接文字下划线。
+  打印时恢复成 ` (URL)` 文本。
+- 页面外壳加 `<noscript>` 降级：没有 JS 时 tabs 全部展开并带节标题，折叠的
+  navbox 也展开；与打印样式同一套。
+- `mdpp.js` 修复：重复包含时 `data-mdpp-bound` 空值判断失效、嵌套 tabs / navbox
+  误绑到外层、主题固定判断、整页级初始化重复执行。
+- 引入 KaTeX 的 CSS；此前只有 JS，公式的排版本该依赖那份样式表。
+
 ### 工程
 
 - `cargo fmt`、`cargo clippy -D warnings` 全绿；两个 crate 都 `forbid(unsafe_code)`。

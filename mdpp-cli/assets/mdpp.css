@@ -157,18 +157,51 @@
   color: var(--mdpp-link);
 }
 
-/* 站外链接：末尾补一个 ↗，提醒这一步会离开本站。
+/* 站外链接：末尾补一个「小方框 + 斜向箭头」的标记，提醒这一步会离开本站。
  *
  * 这个类由渲染器挂（`http://`、`https://`、`//` 开头的链接），不靠 CSS 猜
  * `href` —— 站内链接也可能写成绝对地址，猜错就把「出站」画在了自家页面上。
  *
- * 用 `::after` 而不是改文字：复制链接时不会把箭头一起带走；也不跟下划线
- * 一起画，箭头不是链接文字的一部分。 */
+ * 图标走内联 SVG 的 mask，颜色由 `currentColor` 给：亮色/暗色、链接色怎么变，
+ * 它都跟着变。不支持 mask 的浏览器退回一个 `↗`，不会显示成一块色块。
+ * 用伪元素而不是改文字：复制链接时不会把图标一起带走。 */
+.mdpp-content a.external {
+  text-decoration: none;
+}
+
+.mdpp-content a.external > .external__text {
+  text-decoration: underline;
+}
+
 .mdpp-content a.external::after {
   content: "↗";
   margin-inline-start: 0.12em;
   font-size: 0.8em;
   text-decoration: none;
+}
+
+@supports (mask-image: none) or (-webkit-mask-image: none) {
+  .mdpp-content a.external::after {
+    content: "";
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    min-width: 12px;
+    min-height: 12px;
+    margin-inline-start: 4px;
+    vertical-align: baseline;
+    background-color: currentColor;
+    opacity: 0.87;
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2720%27%20height%3D%2720%27%20viewBox%3D%270%200%2020%2020%27%20fill%3D%27black%27%3E%3Cpath%20d%3D%27M19%201h-8l3.286%203.286L6%2012l1.371%201.472%208.332-7.77.007.008L19%209zM2%205h4v2H3v10h10v-4.004h2V18a1%201%200%2001-1%201H2a1%201%200%2001-1-1V6a1%201%200%20011-1%27%2F%3E%3C%2Fsvg%3E");
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    -webkit-mask-size: contain;
+    mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2720%27%20height%3D%2720%27%20viewBox%3D%270%200%2020%2020%27%20fill%3D%27black%27%3E%3Cpath%20d%3D%27M19%201h-8l3.286%203.286L6%2012l1.371%201.472%208.332-7.77.007.008L19%209zM2%205h4v2H3v10h10v-4.004h2V18a1%201%200%2001-1%201H2a1%201%200%2001-1-1V6a1%201%200%20011-1%27%2F%3E%3C%2Fsvg%3E");
+    mask-repeat: no-repeat;
+    mask-position: center;
+    mask-size: contain;
+    text-decoration: none;
+  }
 }
 
 /* 内部链接解析器没给答案时的样子：可点，但明显还没连上 */
@@ -1169,6 +1202,18 @@
   /* 地址写出来：纸上看不见链接指向哪儿 */
   .mdpp-content a[href^="http"]::after {
     content: " (" attr(href) ")";
+    /* 屏幕上那个方框图标在纸上换成 URL：把图标的尺寸与 mask 一起撤掉，
+     * 否则 URL 会被 0.78em 的框裁掉。 */
+    display: inline;
+    width: auto;
+    height: auto;
+    min-width: auto;
+    min-height: auto;
+    margin-inline-start: 0;
+    background: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+    opacity: 1;
     font-size: 0.85em;
     word-break: break-all;
   }

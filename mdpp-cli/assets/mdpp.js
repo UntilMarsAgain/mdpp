@@ -13,12 +13,14 @@
   "use strict";
 
   var MARK = "data-mdpp-bound";
+  var PAGE_MARK = "data-mdpp-page-bound";
   var THEME_ATTR = "data-mdpp-theme";
   var INJECTED_MARK = "data-mdpp-theme-injected";
 
   function select(tabs, index) {
-    var labels = tabs.querySelectorAll(".tabs__tab");
-    var panels = tabs.querySelectorAll(".tabs__panel");
+    var bar = tabs.querySelector(":scope > .tabs__bar");
+    var labels = bar ? bar.querySelectorAll(":scope > .tabs__tab") : [];
+    var panels = tabs.querySelectorAll(":scope > .tabs__panel");
     for (var i = 0; i < labels.length; i++) {
       var on = i === index;
       labels[i].classList.toggle("tabs__tab--on", on);
@@ -36,11 +38,16 @@
   }
 
   function bind(tabs) {
-    if (tabs.getAttribute(MARK)) {
+    // 空字符串属性在 `getAttribute` 里是 falsey，必须用 `hasAttribute`
+    if (tabs.hasAttribute(MARK)) {
       return;
     }
     tabs.setAttribute(MARK, "");
-    tabs.querySelectorAll(".tabs__tab").forEach(function (label, index) {
+    var bar = tabs.querySelector(":scope > .tabs__bar");
+    if (!bar) {
+      return;
+    }
+    bar.querySelectorAll(":scope > .tabs__tab").forEach(function (label, index) {
       label.addEventListener("click", function () {
         select(tabs, index);
       });
@@ -50,7 +57,7 @@
   function fold(navbox, toggle) {
     // `aria-expanded` 说的是**现在**的样子，所以它就是「刚才是不是折着」
     var wasCollapsed = toggle.getAttribute("aria-expanded") === "false";
-    var body = navbox.querySelector(".navbox__body");
+    var body = navbox.querySelector(":scope > .navbox__body");
     if (!body) {
       return;
     }
@@ -71,9 +78,12 @@
   }
 
   function bindNavbox(navbox) {
-    var toggle = navbox.querySelector(".navbox__toggle");
+    // 只看**自己这一层**的开关：标题为空的嵌套 navbox 里可能装着另一个带开关的
+    // navbox，`querySelector` 会一路找到里面去，把别人的开关接到自己身上。
+    var bar = navbox.querySelector(":scope > .navbox__bar");
+    var toggle = bar ? bar.querySelector(":scope > .navbox__toggle") : null;
     // 嵌进去的（没有 title=）与 plain 的都没有开关，没什么可接的
-    if (!toggle || navbox.getAttribute(MARK)) {
+    if (!toggle || navbox.hasAttribute(MARK)) {
       return;
     }
     navbox.setAttribute(MARK, "");
@@ -145,7 +155,8 @@
     // 监听系统颜色方案变化（只有在未钉死主题时才跟随系统）
     var media = window.matchMedia("(prefers-color-scheme: dark)");
     media.addEventListener("change", function () {
-      if (!html.hasAttribute(THEME_ATTR)) {
+      var pinned = html.getAttribute(THEME_ATTR);
+      if (pinned !== "light" && pinned !== "dark") {
         injectThemeAssets(currentTheme());
       }
     });
@@ -187,8 +198,13 @@
   function bindAll(root) {
     root.querySelectorAll(".tabs").forEach(bind);
     root.querySelectorAll(".navbox").forEach(bindNavbox);
-    bindTheme();
-    bindDiagrams();
+    // 主题注入与外部渲染器是**整页一次**的事：同一段 mdpp.js 被内联两遍时，
+    // 不能挂两个 MutationObserver、也不能把同一段 KaTeX 再排版一遍。
+    if (!document.documentElement.hasAttribute(PAGE_MARK)) {
+      document.documentElement.setAttribute(PAGE_MARK, "");
+      bindTheme();
+      bindDiagrams();
+    }
   }
 
   if (document.readyState === "loading") {
