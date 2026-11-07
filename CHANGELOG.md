@@ -13,7 +13,8 @@
 - `::html` 的 `<markdown>` 槽位不再受 `raw_html` 影响，始终再净化一遍。
 - `srcset` 逐个候选地址校验协议；`target="_blank"` 自动补
   `rel="noopener noreferrer"`；媒体 `src` 的协议判定会先去掉空白与控制字符。
-- 单份输入上限 32 MiB；预览服务器限制请求行长度、加读写超时、不跟随符号链接。
+- 单份输入上限 32 MiB；预览服务器改用 `axum` + `tower-http`：请求解析、MIME、
+  range、HEAD、目录索引与 `..` 防护交给库，SSE 仍由本库发。
 
 ### 正确性
 
