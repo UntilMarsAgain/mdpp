@@ -197,11 +197,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         init_at(dir.path(), Some("某站")).expect("建得出");
 
-        for path in [
-            "mdpp.toml",
-            "pages/index.mdpp",
-            "templates/example.mdpp",
-        ] {
+        for path in ["mdpp.toml", "pages/index.mdpp", "templates/example.mdpp"] {
             let text = std::fs::read_to_string(dir.path().join(path)).expect("读得动");
             assert!(
                 !text.contains(SITE_NAME_TOKEN),

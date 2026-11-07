@@ -90,7 +90,8 @@ const MERMAID_CDN: &str = "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.
 const KATEX_CDN: &str = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js";
 
 /// highlight.js 的 CDN 地址（jsDelivr）。
-const HLJS_CDN: &str = "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/highlight.min.js";
+const HLJS_CDN: &str =
+    "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/highlight.min.js";
 
 /// highlight.js 的 GitHub 主题（浅色 / 深色）的 CDN 地址（jsDelivr）。
 ///
@@ -276,8 +277,8 @@ pub fn document(page: &Page) -> String {
     };
     // 有没有高亮要引：页面里有 `class="language-…"`（围栏代码块、`::code` 都产出
     // 它）才算。JS 与它的主题样式同进同出，判一次，两处都用。
-    let highlight_on = page.external_script == ExternalScript::Cdn
-        && page.body.contains("class=\"language-");
+    let highlight_on =
+        page.external_script == ExternalScript::Cdn && page.body.contains("class=\"language-");
     // highlight.js 的浅深两份主题。位置与主题色那几层同一档：在默认样式之后、
     // 用户附的样式之前 —— `--css` 里自带的配色仍然是最后说话的那个。
     let hljs_themes = if highlight_on {
@@ -310,22 +311,13 @@ pub fn document(page: &Page) -> String {
     let mut diagram_scripts = String::new();
     if page.external_script == ExternalScript::Cdn {
         if page.body.contains("class=\"mermaid\"") {
-            diagram_scripts.push_str(&format!(
-                "<script src=\"{}\"></script>\n",
-                MERMAID_CDN
-            ));
+            diagram_scripts.push_str(&format!("<script src=\"{}\"></script>\n", MERMAID_CDN));
         }
         if page.body.contains("class=\"math") {
-            diagram_scripts.push_str(&format!(
-                "<script src=\"{}\"></script>\n",
-                KATEX_CDN
-            ));
+            diagram_scripts.push_str(&format!("<script src=\"{}\"></script>\n", KATEX_CDN));
         }
         if highlight_on {
-            diagram_scripts.push_str(&format!(
-                "<script src=\"{}\"></script>\n",
-                HLJS_CDN
-            ));
+            diagram_scripts.push_str(&format!("<script src=\"{}\"></script>\n", HLJS_CDN));
         }
     }
     let scripts = join_blocks(scripts, vec![diagram_scripts]);

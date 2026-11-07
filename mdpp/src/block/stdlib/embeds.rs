@@ -43,10 +43,13 @@ pub(super) fn render_js(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     // 在 ::theme 内部：输出占位容器，等页面脚本按主题注入
     if let Some(slot) = current_theme_slot() {
         fmt.cr();
-        fmt.open("div", &[
-            ("class", "theme-asset theme-js".to_string()),
-            ("data-theme", slot.to_string()),
-        ]);
+        fmt.open(
+            "div",
+            &[
+                ("class", "theme-asset theme-js".to_string()),
+                ("data-theme", slot.to_string()),
+            ],
+        );
         fmt.text_raw(&fill::escape_script_end(&filled));
         fmt.close("div");
         fmt.cr();
@@ -195,10 +198,13 @@ pub(super) fn render_css(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     // 在 ::theme 内部：输出占位容器，等页面脚本按主题注入
     if let Some(slot) = current_theme_slot() {
         fmt.cr();
-        fmt.open("div", &[
-            ("class", "theme-asset theme-css".to_string()),
-            ("data-theme", slot.to_string()),
-        ]);
+        fmt.open(
+            "div",
+            &[
+                ("class", "theme-asset theme-css".to_string()),
+                ("data-theme", slot.to_string()),
+            ],
+        );
         fmt.text_raw(&css);
         fmt.close("div");
         fmt.cr();
@@ -252,10 +258,13 @@ pub(super) fn render_html(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
         if !js_content.is_empty() {
             let slot = current_theme_slot().unwrap();
             fmt.cr();
-            fmt.open("div", &[
-                ("class", "theme-asset theme-js".to_string()),
-                ("data-theme", slot.to_string()),
-            ]);
+            fmt.open(
+                "div",
+                &[
+                    ("class", "theme-asset theme-js".to_string()),
+                    ("data-theme", slot.to_string()),
+                ],
+            );
             fmt.text_raw(&fill::escape_script_end(&js_content));
             fmt.close("div");
             fmt.cr();
@@ -499,7 +508,12 @@ mod tests {
             "assets",
         );
         assert_eq!(rendered.assets.len(), 1, "{:?}", rendered.assets);
-        assert_eq!(rendered.html.matches("<link").count(), 1, "{}", rendered.html);
+        assert_eq!(
+            rendered.html.matches("<link").count(),
+            1,
+            "{}",
+            rendered.html
+        );
     }
 
     /// 前缀按调用方给的原样用（嵌套页面传 `../../assets`）

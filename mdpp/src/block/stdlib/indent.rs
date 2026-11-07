@@ -19,11 +19,7 @@ pub(super) fn render_indent(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     let indent = match block.param("indent") {
         Some(v) if !v.trim().is_empty() => v.trim(),
         _ => {
-            render_problem(
-                block,
-                fmt,
-                "indent= 缺失：写 ::indent indent=2",
-            );
+            render_problem(block, fmt, "indent= 缺失：写 ::indent indent=2");
             return;
         }
     };
@@ -31,21 +27,13 @@ pub(super) fn render_indent(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     let value: f64 = match indent.parse() {
         Ok(v) => v,
         Err(_) => {
-            render_problem(
-                block,
-                fmt,
-                "indent= 只认数字，例如 indent=2（缩进 3.2em）",
-            );
+            render_problem(block, fmt, "indent= 只认数字，例如 indent=2（缩进 3.2em）");
             return;
         }
     };
 
     if node.children.is_empty() {
-        render_problem(
-            block,
-            fmt,
-            "内容是空的：::indent 要包裹点东西",
-        );
+        render_problem(block, fmt, "内容是空的：::indent 要包裹点东西");
         return;
     }
 

@@ -19,21 +19,13 @@ pub(super) fn render_class(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     let class = match block.param("class") {
         Some(c) if !c.trim().is_empty() => c.trim().to_string(),
         _ => {
-            render_problem(
-                block,
-                fmt,
-                "class= 缺失：写 ::class class=我的类",
-            );
+            render_problem(block, fmt, "class= 缺失：写 ::class class=我的类");
             return;
         }
     };
 
     if node.children.is_empty() {
-        render_problem(
-            block,
-            fmt,
-            "内容是空的：::class 要包裹点东西",
-        );
+        render_problem(block, fmt, "内容是空的：::class 要包裹点东西");
         return;
     }
 
@@ -58,10 +50,7 @@ mod tests {
     #[test]
     fn class_wraps_content_in_div_with_class() {
         let html = render("::class class=我的类\n  这里是内容\n");
-        assert!(
-            html.contains(r#"<div class="我的类">"#),
-            "{html}"
-        );
+        assert!(html.contains(r#"<div class="我的类">"#), "{html}");
         assert!(html.contains("这里是内容"), "{html}");
         assert!(html.contains("</div>"), "{html}");
     }

@@ -109,8 +109,7 @@ impl Site {
         for mut page in found {
             // 键最终会变成产物里的路径。先校验再算 `output` —— 文件名里带
             // `a\..\..\x` 这种写法时，拼出来的路径能跑到站点目录外面去。
-            check_key(&page.key)
-                .map_err(|why| format!("{}：{why}", page.source.display()))?;
+            check_key(&page.key).map_err(|why| format!("{}：{why}", page.source.display()))?;
             page.output = output_of(&page.key);
             let key = normalize(&page.key).unwrap_or_default();
             let at = site.pages.len();
@@ -597,7 +596,10 @@ mod tests {
     fn a_backslash_in_a_page_name_cannot_escape_the_site_dir() {
         let dir = temp_pages(&["a\\..\\..\\pwn.mdpp"]);
         let error = Site::collect(dir.path()).expect_err("该拒绝");
-        assert!(error.contains("不是页名") || error.contains("反斜杠"), "{error}");
+        assert!(
+            error.contains("不是页名") || error.contains("反斜杠"),
+            "{error}"
+        );
     }
 
     /// 符号链接不跟：链接指向哪里是链接自己的事，站点不该替它把外面纳进来

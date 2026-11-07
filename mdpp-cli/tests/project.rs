@@ -380,11 +380,7 @@ fn the_override_directory_is_copied_after_build() {
     // 骨架里 `override_dir` 是注释掉的 —— 要用覆盖层得自己写出来
     let config = root.join("mdpp.toml");
     let text = std::fs::read_to_string(&config).expect("读得动");
-    std::fs::write(
-        &config,
-        format!("{text}\noverride_dir = \"override\"\n"),
-    )
-    .expect("改得下");
+    std::fs::write(&config, format!("{text}\noverride_dir = \"override\"\n")).expect("改得下");
 
     std::fs::create_dir_all(root.join("override")).expect("建得出");
     std::fs::write(
@@ -465,11 +461,11 @@ fn a_binary_favicon_is_copied_and_linked() {
 
     // 一个 1×1 的真 PNG：内容是**二进制**，按 UTF-8 读必然失败
     const PNG: &[u8] = &[
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
-        0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
-        0x42, 0x60, 0x82,
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
     ];
     std::fs::create_dir_all(root.join("assets")).expect("建得出");
     std::fs::write(root.join("assets/icon.png"), PNG).expect("写得下");
@@ -507,8 +503,7 @@ fn a_binary_favicon_is_copied_and_linked() {
     // 深层页：地址得退够层数（少退一层图标就 404，而页面照样出得来、不报错）
     assert!(mdpp(&root, &["new", "指南/安装"]).status.success());
     assert!(mdpp(&root, &["build"]).status.success());
-    let deep =
-        std::fs::read_to_string(root.join("build/指南/安装/index.html")).expect("读得动");
+    let deep = std::fs::read_to_string(root.join("build/指南/安装/index.html")).expect("读得动");
     assert!(
         deep.contains(r#"<link rel="icon" href="../../assets/icon.png">"#),
         "深层页的图标地址要数对层数：{deep}"
@@ -648,7 +643,10 @@ fn without_a_logo_the_title_still_shows() {
     std::fs::write(&config, text.replace("logo = \"assets/logo.svg\"\n", "")).expect("改得下");
     assert!(mdpp(&root, &["build"]).status.success());
     let home = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
-    assert!(!home.contains("mdpp-bar__logo"), "不该凭空有那个图标：{home}");
+    assert!(
+        !home.contains("mdpp-bar__logo"),
+        "不该凭空有那个图标：{home}"
+    );
     assert!(home.contains("mdpp-bar__title"), "站点名照旧：{home}");
 }
 
@@ -745,7 +743,10 @@ fn clean_refuses_a_build_dir_outside_the_project() {
     let out = mdpp(&root, &["build", "--clean"]);
     assert!(!out.status.success(), "该拒绝：{out:?}");
     let stderr = stderr_of(&out);
-    assert!(stderr.contains("site_dir") || stderr.contains("项目"), "{stderr}");
+    assert!(
+        stderr.contains("site_dir") || stderr.contains("项目"),
+        "{stderr}"
+    );
     assert!(
         victim.join("keep.txt").is_file(),
         "项目外的目录不该被清：{}",
@@ -793,7 +794,9 @@ fn custom_css_and_js_are_extracted_as_shared_assets() {
     assert!(index.contains("href=\"assets/mdpp-"), "{index}");
     assert!(index.contains("src=\"assets/mdpp-"), "{index}");
     assert_eq!(
-        index.matches("<link rel=\"stylesheet\" href=\"assets/mdpp-").count(),
+        index
+            .matches("<link rel=\"stylesheet\" href=\"assets/mdpp-")
+            .count(),
         1,
         "重复的 ::css 只该有一个链接：{index}"
     );

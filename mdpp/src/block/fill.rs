@@ -563,7 +563,8 @@ mod tests {
     #[test]
     fn markdown_inside_html_stays_sanitized_even_with_raw_html() {
         let mdpp = crate::engine::Mdpp::builder().raw_html(true).build();
-        let html = mdpp.render("::html\n  <markdown>\n  <script>alert(1)</script>\n  </markdown>\n");
+        let html =
+            mdpp.render("::html\n  <markdown>\n  <script>alert(1)</script>\n  </markdown>\n");
         assert!(!html.contains("<script"), "{html}");
     }
 }

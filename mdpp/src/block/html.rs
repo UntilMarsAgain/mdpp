@@ -580,7 +580,10 @@ fn finish_a_attrs(tag: &str, attrs: &mut Vec<(String, String)>) {
         Some((_, rel)) => {
             let mut tokens: Vec<&str> = rel.split_whitespace().collect();
             for wanted in ["noopener", "noreferrer"] {
-                if !tokens.iter().any(|token| token.eq_ignore_ascii_case(wanted)) {
+                if !tokens
+                    .iter()
+                    .any(|token| token.eq_ignore_ascii_case(wanted))
+                {
                     tokens.push(wanted);
                 }
             }
@@ -594,12 +597,7 @@ fn finish_a_attrs(tag: &str, attrs: &mut Vec<(String, String)>) {
 /// 里第一个协议合法，不代表整条都合法。逐个候选验，有一个不过就整条丢掉。
 fn safe_srcset(value: &str) -> bool {
     value.split(',').all(|candidate| {
-        let url = candidate
-            .trim()
-            .split_whitespace()
-            .next()
-            .unwrap_or("")
-            .trim();
+        let url = candidate.split_whitespace().next().unwrap_or("");
         !url.is_empty() && safe_url(url)
     })
 }
@@ -981,9 +979,8 @@ mod tests {
         assert!(html.contains("noreferrer"), "{html}");
 
         // 已有的 rel 不丢，只补缺的那两个
-        let with_rel = clean(
-            r#"<a href="https://example.com" target="_blank" rel="nofollow">外</a>"#,
-        );
+        let with_rel =
+            clean(r#"<a href="https://example.com" target="_blank" rel="nofollow">外</a>"#);
         assert!(with_rel.contains("nofollow"), "{with_rel}");
         assert!(with_rel.contains("noopener"), "{with_rel}");
     }

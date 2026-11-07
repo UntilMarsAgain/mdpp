@@ -245,7 +245,13 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
 
     // 目录页：配置里 `toc` 那一页（默认「目录」），生成后插进站点 ——
     // 导航解析与站内链接都能指到它，报告里也数得进页数
-    let toc_key = project.config.toc.as_deref().unwrap_or("").trim().to_string();
+    let toc_key = project
+        .config
+        .toc
+        .as_deref()
+        .unwrap_or("")
+        .trim()
+        .to_string();
     if !toc_key.is_empty() {
         Arc::make_mut(&mut site).insert(Page {
             source: PathBuf::new(),
@@ -434,7 +440,8 @@ fn copy_asset_into(
     if let Some(parent) = to.parent() {
         ensure_dir(parent)?;
     }
-    std::fs::copy(&from, &to).map_err(|error| format!("读不了 {what} {}：{error}", shown(&from)))?;
+    std::fs::copy(&from, &to)
+        .map_err(|error| format!("读不了 {what} {}：{error}", shown(&from)))?;
     // 只给**文件名**：配置里写的是项目里的相对路径，而产物里它在 `assets/` 下
     Ok(Some(crate::url::encode_href(&name)))
 }
@@ -446,12 +453,7 @@ fn copy_asset_into(
 /// `footer` 会用 `parser` 做一遍 mdpp 解析，于是 `footer` 里能写 `::note`、
 /// `[[内部链接]]`、`**粗体**` 之类的 mdpp 语法；解析后的 HTML 存进
 /// `copyright_html`，原始文本仍留在 `copyright` 里作为兜底。
-fn chrome(
-    project: &Project,
-    parser: &Mdpp,
-    nav: &[NavLink],
-    logo: &str,
-) -> page::Chrome {
+fn chrome(project: &Project, parser: &Mdpp, nav: &[NavLink], logo: &str) -> page::Chrome {
     let footer_raw = project.config.footer.clone().unwrap_or_default();
     let footer_html = if footer_raw.trim().is_empty() {
         None
@@ -622,7 +624,10 @@ fn clean(project: &Project, site_dir: &Path, allow_outside: bool) -> Result<(), 
 
     // 这几种位置，就算调用方允许「项目外」也不该清。
     if site_dir.parent().is_none() {
-        return Err(format!("site_dir（{}）是根目录，拒绝清空", shown(&site_dir)));
+        return Err(format!(
+            "site_dir（{}）是根目录，拒绝清空",
+            shown(&site_dir)
+        ));
     }
     for (what, keep) in [("项目根", &root), ("正文", &pages), ("模板", &templates)] {
         if keep.starts_with(&site_dir) {

@@ -48,10 +48,7 @@ mod tests {
     #[test]
     fn flatlist_renders_horizontal_list() {
         let html = render("::flatlist\n  * 甲\n  * 乙\n");
-        assert!(
-            html.contains(r#"<div class="flatlist hlist">"#),
-            "{html}"
-        );
+        assert!(html.contains(r#"<div class="flatlist hlist">"#), "{html}");
         assert_eq!(html.matches("<li>").count(), 2, "{html}");
         // 渲染器不额外吐 horizontal / inline 之类布局标记，水平由 CSS 负责
         //（“hlist”本身在 class 里，是 qiuwenbaike 模板约定，不算额外标记）
