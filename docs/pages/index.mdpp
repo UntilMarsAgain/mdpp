@@ -16,24 +16,38 @@ Markdown++可以作为Rust库使用，也提供`mdpp`命令，用以编译文件
 
 ### 使用Markdown++编译单个文件
 
-::main
-  编译文件
+```sh
+mdpp render 正文.md > 正文.html          # HTML 片段
+mdpp render --full 正文.md > 页面.html    # 可直接双击打开的整页
+```
 
-TODO
+`--full` 会内联默认样式与脚本；`--css` / `--js` 可以附上自己的资源。
+输入是标准输入时省略文件名即可，产物只走标准输出。
 
 ### 使用Markdown++作为站点生成器
 
-::main
-  站点生成器
+```sh
+mdpp init 我的站点
+cd 我的站点
+mdpp new 指南/安装
+mdpp build --jobs 4
+mdpp serve
+```
 
-TODO
+`build` 是整目录替换：失败时旧站点不动；`--jobs` 控制并行度；`--strict` 让红链
+与写坏的块变成非零退出码。产物在 `build/`，整站可以拷到任何地方或挂在子路径下。
 
 ### 使用Markdown++作为Rust库
 
-::main
-  Rust库
+```rust
+let html = mdpp::Mdpp::new().render("::note\n  这里可以写 **markdown**。\n");
+```
 
-TODO
+内部链接实现 `LinkResolver`、模板页实现 `TemplateSource`，分别交给
+`RenderContext::with_links` / `with_templates`。需要遍历或改写 AST 时用
+`Mdpp::parse` 与 `Mdpp::render_node`；自定义块的内容模式、资源登记与常用工具
+见 `mdpp::author`。库的 API 与扩展点在
+[README](https://github.com/UntilMarsAgain/mdpp) 里有完整说明。
 
 ## 示例
 
