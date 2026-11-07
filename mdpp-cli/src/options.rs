@@ -293,6 +293,13 @@ pub struct Build {
         hide_possible_values = true
     )]
     pub external_script: String,
+
+    /// 内部开关：允许清空项目外的目录。
+    ///
+    /// 只有 `serve` 用得到 —— 它出到系统临时目录里的预览缓存。命令行上**不暴露**，
+    /// 于是 `mdpp build --clean` 永远删不到项目外面。
+    #[arg(skip)]
+    pub allow_outside: bool,
 }
 
 /// 顶层 `--help` 的版式。
