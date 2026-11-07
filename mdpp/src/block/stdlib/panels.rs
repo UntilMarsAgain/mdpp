@@ -9,8 +9,9 @@
 //! 把两节都渲染进去、显示哪一节由样式按 `data-mdpp-theme` 决定（切主题不必重新渲染）；
 //! 分栏是把各节**一起摆出来**，横着排，窄屏由样式堆成一竖列。
 
-use super::super::dispatch::{enter_theme_slot, no_leading_content, render_problem, sections};
+use super::super::dispatch::{no_leading_content, render_problem, sections};
 use crate::registry::Block;
+use crate::variants::{ALWAYS, Control, Group};
 use markdown_it::{Node, Renderer};
 
 /// `::tabs` —— 选项卡：块里用 `[标签]` 分节，一节就是一个面板。
@@ -39,8 +40,16 @@ pub(super) fn render_tabs(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         return;
     }
 
+    // 选项值用下标：`0`、`1`……与旧版 `data-tab` 的取值一致，脚本不必换算。
+    let mut group = Group::new("tabs", Control::Choice);
+    for (index, (label, _)) in sections.iter().enumerate() {
+        group = group.option(index.to_string(), *label);
+    }
+
+    let mut container = vec![("class", "tabs".to_string())];
+    container.extend(group.container_attrs());
     fmt.cr();
-    fmt.open("div", &[("class", "tabs".to_string())]);
+    fmt.open("div", &container);
     fmt.cr();
     fmt.open(
         "div",
@@ -51,8 +60,9 @@ pub(super) fn render_tabs(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     );
     for (index, (label, _)) in sections.iter().enumerate() {
         let selected = index == 0;
+        let value = index.to_string();
         // 用真按钮：Tab 键走得到、回车就切（切换的那段脚本认 `role="tablist"`）
-        let attrs: Vec<(&str, String)> = vec![
+        let mut attrs: Vec<(&str, String)> = vec![
             (
                 "class",
                 if selected {
@@ -63,12 +73,14 @@ pub(super) fn render_tabs(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
             ),
             ("type", "button".to_string()),
             ("role", "tab".to_string()),
-            ("data-tab", index.to_string()),
+            // `data-tab` 是旧版留给自定义脚本的钩子；新代码认 `data-mdpp-option`。
+            ("data-tab", value.clone()),
             (
                 "aria-selected",
                 if selected { "true" } else { "false" }.to_string(),
             ),
         ];
+        attrs.extend(group.option_attrs(&value));
         fmt.open("button", &attrs);
         fmt.text(label);
         fmt.close("button");
@@ -78,20 +90,22 @@ pub(super) fn render_tabs(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     fmt.cr();
 
     for (index, (label, content)) in sections.iter().enumerate() {
+        let value = index.to_string();
         let mut attrs: Vec<(&str, String)> = vec![
             ("class", "tabs__panel".to_string()),
             ("role", "tabpanel".to_string()),
-            ("data-panel", index.to_string()),
+            // 旧版属性；新代码认 `data-mdpp-panel`。
+            ("data-panel", value.clone()),
             // 屏幕上这一面是藏着的，名字已经写在标签上了；打印时全展开，
             // 就得靠这个字段给每一节起名字（见 `mdpp-cli/assets/mdpp.css` 的
             // `@media print` 那一节）。缺了它，打印出来就是几段没有标题的正文。
             ("data-label", (*label).to_string()),
         ];
-        if index != 0 {
-            attrs.push(("hidden", "hidden".to_string()));
-        }
+        attrs.extend(group.panel_attrs(&value));
         fmt.open("div", &attrs);
         fmt.cr();
+        // 这一节里产生的 ::css / ::js 绑到 tabs 组的下标上，切换时才挂载。
+        let _scope = group.enter(&value);
         fmt.contents(&content.children);
         fmt.cr();
         fmt.close("div");
@@ -119,13 +133,12 @@ pub(super) fn render_tabs(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
 ///
 /// ## ::css / ::js / ::html js 的选择性注入
 ///
-/// `::theme` 节里嵌套的 `::css`、`::js`、`::html js` 不会直接写进 `<style>`/`<script>`，
-/// 而是被放进带 `data-theme` 的 `.theme-asset` 占位容器里，由页面脚本按当前主题
-/// 选择性地真正注入到文档中（创建 `<style>` / `<script>` 标签）。这样浅色节的
-/// 脚本不会在深色下执行，反之亦然。
+/// `::theme` 节里嵌套的 `::css`、`::js`、`::html js` 会绑定到这个主题组的
+/// `light` / `dark` 选项上，由页面脚本按当前主题选择性挂载。这样浅色节的脚本
+/// 不会在深色下执行，反之亦然。
 ///
-/// 页面加载时自动注入；系统 `prefers-color-scheme` 切换时自动重新注入；下游库若
-/// 重写了 `<html data-mdpp-theme>`，可调用 `window.mdppThemeInject()` 手动触发重注入。
+/// 页面加载时自动挂载；系统 `prefers-color-scheme` 切换时自动跟随；下游库若
+/// 重写了 `<html data-mdpp-theme>`，可调用 `window.mdppVariants.refresh()` 手动刷新。
 pub(super) fn render_theme(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     let sections = sections(node);
     if sections.is_empty() {
@@ -137,7 +150,7 @@ pub(super) fn render_theme(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     let mut parts: Vec<(&str, &Node)> = Vec::new();
     for (label, content) in &sections {
         let slot = match label.to_lowercase().as_str() {
-            "" | "both" | "all" => "",
+            "" | "both" | "all" => ALWAYS,
             "light" => "light",
             "dark" => "dark",
             _ => {
@@ -152,17 +165,22 @@ pub(super) fn render_theme(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         parts.push((slot, content));
     }
 
+    let group = Group::new("theme", Control::Theme)
+        .option("light", "light")
+        .option("dark", "dark");
+
+    let mut container = vec![("class", "theme".to_string())];
+    container.extend(group.container_attrs());
     fmt.cr();
-    fmt.open("div", &[("class", "theme".to_string())]);
+    fmt.open("div", &container);
     for (slot, content) in parts {
         let class = match slot {
             "light" => "theme__part theme__part--light",
             "dark" => "theme__part theme__part--dark",
             _ => "theme__part",
         };
-        // 进入 theme slot：::css / ::js / ::html js 会检测到这个标记，
-        // 输出带 data-theme 的占位容器，不直接写 <style>/<script>。
-        let _guard = enter_theme_slot(slot);
+        // 这一节里产生的资源绑到 theme 组对应的选项上；`*` 表示两边都挂。
+        let _guard = group.enter(slot);
         fmt.cr();
         fmt.open("div", &[("class", class.to_string())]);
         fmt.cr();
@@ -274,6 +292,10 @@ mod tests {
         let both = render("::theme\n  两种主题都显示\n  [dark]\n  只有深色\n");
         assert!(both.contains("class=\"theme__part\""), "{both}");
 
+        // 前缀里的资源用 `*`，两边都挂载
+        let both_css = render("::theme\n  ::css\n    .both { }\n  [dark]\n  只有深色\n");
+        assert!(both_css.contains("data-mdpp-value=\"*\""), "{both_css}");
+
         let bad = render("::theme\n  [blue]\n  没有这个主题\n");
         assert!(bad.contains("template--problem"), "{bad}");
     }
@@ -342,15 +364,17 @@ mod tests {
         assert!(html.contains(">API</button>"), "{html}");
     }
 
-    /// `::theme` 里的 `::css` 不直接写 `<style>`，而是输出 theme-asset 占位容器
+    /// `::theme` 里的 `::css` 不直接写 `<style>`，而是输出通用惰性占位符
     #[test]
-    fn theme_css_becomes_asset_container() {
+    fn theme_css_becomes_a_deferred_asset() {
         let html = render(
             "::theme\n  [light]\n  ::css\n    .a { color: red; }\n  [dark]\n  ::css\n    .a { color: blue; }\n",
         );
-        assert!(html.contains("theme-asset theme-css"), "{html}");
-        assert!(html.contains("data-theme=\"light\""), "{html}");
-        assert!(html.contains("data-theme=\"dark\""), "{html}");
+        assert!(html.contains("data-mdpp-asset=\"css\""), "{html}");
+        assert!(html.contains("data-mdpp-group=\"theme-1\""), "{html}");
+        assert!(html.contains("data-mdpp-value=\"light\""), "{html}");
+        assert!(html.contains("data-mdpp-value=\"dark\""), "{html}");
+        assert!(html.contains("data-mdpp-version=\"0.1.0\""), "{html}");
         assert!(
             !html.contains("<style>"),
             "theme 内部不该直接输出 <style>：{html}"
@@ -359,13 +383,14 @@ mod tests {
         assert!(html.contains(".a { color: blue; }"), "{html}");
     }
 
-    /// `::theme` 里的 `::js` 不直接写 `<script>`，而是输出 theme-asset 占位容器
+    /// `::theme` 里的 `::js` 同样变成惰性资源，并保留组/选项
     #[test]
-    fn theme_js_becomes_asset_container() {
+    fn theme_js_becomes_a_deferred_asset() {
         let html = render(
             "::theme\n  [light]\n  ::js\n    console.log('light');\n  [dark]\n  ::js\n    console.log('dark');\n",
         );
-        assert!(html.contains("theme-asset theme-js"), "{html}");
+        assert!(html.contains("data-mdpp-asset=\"js\""), "{html}");
+        assert!(html.contains("data-mdpp-group=\"theme-1\""), "{html}");
         assert!(
             !html.contains("<script>"),
             "theme 内部不该直接输出 <script>：{html}"
@@ -374,13 +399,13 @@ mod tests {
         assert!(html.contains("console.log('dark');"), "{html}");
     }
 
-    /// `::theme` 里的 `::html js` 提取脚本到 theme-js 容器，其余 HTML 正常输出
+    /// `::theme` 里的 `::html js` 提取脚本到惰性资源，其余 HTML 正常输出
     #[test]
     fn theme_html_js_extracts_script() {
         let html = render(
             "::theme\n  [light]\n  ::html js\n    <script>alert('light')</script>\n  [dark]\n  ::html js\n    <script>alert('dark')</script>\n",
         );
-        assert!(html.contains("theme-asset theme-js"), "{html}");
+        assert!(html.contains("data-mdpp-asset=\"js\""), "{html}");
         assert!(html.contains("alert('light')"), "{html}");
         assert!(html.contains("alert('dark')"), "{html}");
         assert!(
@@ -389,20 +414,20 @@ mod tests {
         );
     }
 
-    /// `::theme` 外面的 `::css` 仍然正常输出 `<style>`，不受 theme slot 影响
+    /// `::theme` 外面的 `::css` 仍然正常输出 `<style>`，不受变体作用域影响
     #[test]
     fn css_outside_theme_still_outputs_style() {
         let html = render("::css\n  .a { color: red; }\n");
         assert!(html.contains("<style>"), "{html}");
         assert!(
-            !html.contains("theme-asset"),
-            "theme 外不该输出 theme-asset：{html}"
+            !html.contains("data-mdpp-asset"),
+            "theme 外不该输出惰性资源：{html}"
         );
     }
 
-    /// `::theme` 内部的资源不进入站点资源清单 —— 它们由主题脚本动态注入
+    /// 站点模式下 theme 的资源也进清单，只是页面里先给静态链接占位符
     #[test]
-    fn theme_assets_are_not_collected() {
+    fn theme_assets_are_collected_as_static_files() {
         use crate::{Mdpp, RenderContext};
 
         let rendered = Mdpp::new().render_with_assets(
@@ -410,14 +435,41 @@ mod tests {
             &RenderContext::new(),
             "assets",
         );
+        assert_eq!(rendered.assets.len(), 3, "{:?}", rendered.assets);
         assert!(
-            rendered.assets.is_empty(),
-            "theme 内部资源不该进清单：{:?}",
-            rendered.assets
+            rendered.html.contains("data-mdpp-asset=\"css\""),
+            "{}",
+            rendered.html
         );
-        assert!(rendered.html.contains("theme-asset"), "{}", rendered.html);
-        // 没有外链（不生成 `<link>` / `<script src>`）
+        assert!(
+            rendered.html.contains("data-mdpp-href=\"assets/mdpp-"),
+            "{}",
+            rendered.html
+        );
+        // 占位符不是已经挂上的标签
         assert!(!rendered.html.contains("<link"), "{}", rendered.html);
         assert!(!rendered.html.contains("<script src="), "{}", rendered.html);
+    }
+
+    /// `::tabs` 里的资源也按面板选项绑定，未选中的不会直接执行
+    #[test]
+    fn tabs_defer_their_assets() {
+        let html = render(
+            "::tabs\n  [北岸]\n  ::css\n    .north { color: red; }\n  ::js\n    console.log('north');\n  [南岸]\n  ::css\n    .south { color: blue; }\n",
+        );
+        assert!(html.contains("data-mdpp-group=\"tabs-1\""), "{html}");
+        assert!(html.contains("data-mdpp-value=\"0\""), "{html}");
+        assert!(html.contains("data-mdpp-value=\"1\""), "{html}");
+        assert!(html.contains("data-mdpp-asset=\"css\""), "{html}");
+        assert!(html.contains("data-mdpp-asset=\"js\""), "{html}");
+        assert!(!html.contains("<style>"), "{html}");
+        assert!(!html.contains("<script>"), "{html}");
+    }
+
+    /// `::js once` 把一次性策略写进占位符
+    #[test]
+    fn tabs_can_mark_a_script_once() {
+        let html = render("::tabs\n  [一]\n  ::js once\n    console.log(1);\n");
+        assert!(html.contains("data-mdpp-once=\"once\""), "{html}");
     }
 }

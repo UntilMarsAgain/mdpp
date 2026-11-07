@@ -60,7 +60,11 @@ pub(super) fn turn_dir(turn: usize) -> String {
 ///
 /// 找不到 `</body>` 就补在末尾 —— 那说明模板被换过了，而**照样要能用**才是要紧的
 fn inject(site_dir: &Path) {
-    let tag = format!("<script>{}</script>\n", http::LIVE_RELOAD);
+    let tag = format!(
+        "<script data-mdpp-version=\"{}\" data-mdpp-mode=\"inline\" data-mdpp-runtime=\"live-reload\">{}</script>\n",
+        mdpp::VERSION,
+        http::LIVE_RELOAD
+    );
     for file in pages_of(site_dir) {
         let Ok(html) = std::fs::read_to_string(&file) else {
             continue;

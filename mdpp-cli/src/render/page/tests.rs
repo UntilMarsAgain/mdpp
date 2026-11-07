@@ -60,6 +60,25 @@ fn the_script_binds_the_navbox_toggle_too() {
     assert!(js.contains("data-label-hide"), "{js}");
 }
 
+/// 公开的变体运行时：页面脚本可以读环境、跑/标记资源、监听切换
+#[test]
+fn the_script_exposes_the_variant_runtime() {
+    let js = default_js();
+    for needle in [
+        "window.mdppEnv",
+        "window.mdppVariants",
+        "hasRun",
+        "runCount",
+        "markRun",
+        "mdpp:variantchange",
+        "mdpp:variantmount",
+        "data-mdpp-asset",
+        "data-mdpp-once",
+    ] {
+        assert!(js.contains(needle), "脚本里少了 {needle}");
+    }
+}
+
 /// **按钮上的字要跟着状态换。** 少了这一步，按钮会一直停在「显示」上，
 /// 而内容已经展开了 —— 页面看着正常，而那个字在说谎。
 #[test]
@@ -184,7 +203,7 @@ fn linked_assets_point_at_the_copied_files() {
         "{html}"
     );
     assert!(
-        html.contains(r#"<script src="assets/mdpp.js"></script>"#),
+        html.contains(r#"<script src="assets/mdpp.js" data-mdpp-version="0.1.0" data-mdpp-mode="linked" data-mdpp-runtime="mdpp"></script>"#),
         "{html}"
     );
     // 内联的那些一份都不该在（`<noscript>` 里还有一小块降级 CSS，不算正文样式）
@@ -759,6 +778,32 @@ fn the_script_is_embedded_and_does_the_minimum() {
         !js.contains("localStorage"),
         "记住上次那栏不该由官方工具来定"
     );
+}
+
+/// 页面里的每一个 `<script>` 都带生成器环境：版本与挂载方式。
+/// 单文件、站点外链、CDN、用户附带脚本都算。
+#[test]
+fn every_generated_script_carries_the_generator_environment() {
+    let html = document(&Page {
+        body: "<pre class=\"mermaid\">graph TD; A-->B;</pre><div class=\"math\" data-tex=\"x\"></div><pre class=\"language-rust\">fn main() {}</pre>",
+        extra_js: &["// 我自己的".to_string()],
+        ..page("x", Assets::Inline)
+    });
+    for segment in html.split("<script ").skip(1) {
+        let head = &segment[..segment.find('>').expect("script 有开标签")];
+        assert!(
+            head.contains("data-mdpp-version=\"0.1.0\""),
+            "脚本少了版本：{head}"
+        );
+        assert!(head.contains("data-mdpp-mode="), "脚本少了模式：{head}");
+        assert!(
+            head.contains("data-mdpp-runtime="),
+            "脚本少了运行时：{head}"
+        );
+    }
+    assert!(html.contains("data-mdpp-runtime=\"mermaid\""), "{html}");
+    assert!(html.contains("data-mdpp-runtime=\"katex\""), "{html}");
+    assert!(html.contains("data-mdpp-runtime=\"highlight\""), "{html}");
 }
 
 /// 附带的那些接在默认的**后面** —— 同优先级时后者胜出，

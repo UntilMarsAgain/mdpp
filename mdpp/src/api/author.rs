@@ -5,13 +5,17 @@
 //! - 填空：`{{param}}` / `{{body}}`；
 //! - 分节：把 `[标签]` 切出来的 `Section` 收成 `(标签, 节点)`；
 //! - 净化：HTML 白名单、CSS 收窄、`</style>` / `</script>` 防护；
-//! - 资源：把自定义 CSS / JS 交给页面（单页内联、站点外链）；
+//! - 资源：把自定义 CSS / JS 交给页面（单页内联、站点外链）；在变体作用域里
+//!   自动变成 `DeferredAsset`，由页面脚本在选项激活时挂载；
+//! - 变体组：[`Group`](crate::variants::Group) 列出一组选项，`::tabs` / `::theme`
+//!   以及将来的模板都可以复用同一套 `data-mdpp-*` 协议；
 //! - 诊断：名字不认识/参数用错时那两个框。
 //!
 //! 具体块的 DOM（`.tabs`、`.callout`、`<figure>` …）**不在这里** —— 那是
 //! [`crate::block::stdlib`] 的呈现选择，不是扩展契约。要复用分节数据、自己摆
-//! DOM，就拿 [`sections`]；要让现成的交互脚本认领，就照 `.tabs` 那套
-//! `class` / `data-tab` / `role="tab"` 契约写（见 README 的浏览器钩子表）。
+//! DOM，就拿 [`sections`]；要让现成的交互脚本认领，就把
+//! [`Group::container_attrs`](crate::variants::Group::container_attrs) /
+//! `option_attrs` / `panel_attrs` 挂到自己的元素上。
 //!
 //! ```
 //! use mdpp::author::{render_problem, sections};
@@ -40,7 +44,9 @@
 //! assert!(html.contains(r#"class="mine""#), "{html}");
 //! ```
 
-pub use crate::assets::{AssetKind, AssetUse, use_asset};
+pub use crate::assets::{
+    AssetKind, AssetPolicy, AssetUse, DeferredAsset, use_asset, use_asset_once, use_asset_with,
+};
 pub use crate::block::Section;
 pub use crate::block::dispatch::{render_problem, render_unknown, sections};
 pub use crate::block::fill::{
@@ -51,3 +57,5 @@ pub use crate::block::html::sanitize;
 pub use crate::engine::render_nested;
 pub use crate::registry::{Block, BlockRegistry, BlockSpec, ContentMode};
 pub use crate::substitute_placeholders;
+pub use crate::variants;
+pub use crate::variants::{ALWAYS, Control, Group, Variant};

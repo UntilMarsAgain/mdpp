@@ -10,15 +10,21 @@ use crate::registry::BlockRegistry;
 use crate::telemetry::{Size, debug, trace};
 
 /// 装上这一趟的渲染状态：上下文、注册表、资源收集器、嵌套入口，以及从外层
-/// 继承的层数与主题槽。
+/// 继承的层数与变体作用域。
 fn enter_render_state(
     parser: &Arc<MarkdownIt>,
     registry: &BlockRegistry,
     context: &RenderContext,
     mode: AssetMode,
 ) -> crate::state::Guard {
-    let (depth, theme_slot) =
-        crate::state::with(|state| (state.depth, state.theme_slot.clone())).unwrap_or((0, None));
+    let (depth, variant, variant_seq) = crate::state::with(|state| {
+        (
+            state.depth,
+            state.variant.clone(),
+            Arc::clone(&state.variant_seq),
+        )
+    })
+    .unwrap_or_else(|| (0, None, crate::variants::sequence()));
     let state = crate::state::RenderState {
         context: Some(context.clone()),
         registry: Some(Arc::new(registry.clone())),
@@ -34,7 +40,8 @@ fn enter_render_state(
             let mode = mode.clone();
             move |more: &str| render_parts(&parser, &registry, &context, more, mode.clone()).0
         })),
-        theme_slot,
+        variant,
+        variant_seq,
         depth,
     };
     crate::state::enter(state)
