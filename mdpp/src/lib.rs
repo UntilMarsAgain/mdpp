@@ -75,6 +75,7 @@ pub struct ReadmeSnippets;
 mod state;
 
 pub mod assets;
+pub mod author;
 pub mod block;
 pub mod context;
 pub mod engine;
@@ -90,7 +91,7 @@ pub mod telemetry;
 /// 使用方不必自己往 `Cargo.toml` 里加一条 `markdown-it` 就能对上版本。
 pub use markdown_it;
 
-pub use assets::{Asset, AssetKind, AssetMode};
+pub use assets::{Asset, AssetKind, AssetMode, AssetUse, use_asset};
 pub use block::fill::substitute_placeholders;
 pub use block::template::{TemplatePage, TemplateSource};
 pub use context::RenderContext;

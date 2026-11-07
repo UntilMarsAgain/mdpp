@@ -148,6 +148,66 @@ impl Mdpp {
         );
         Rendered { html, assets }
     }
+
+    /// 解析成 markdown-it 的 AST，**不渲染**。
+    ///
+    /// 返回的是 [`crate::markdown_it::Node`]（本库重导出了 `markdown_it`），
+    /// 可以用它的 `children` / `attrs` / `walk` 做二次加工，再交给
+    /// [`Self::render_node`]。注意：AST 里的 `::` 块要到渲染时才查注册表，
+    /// 所以「解析用哪个 `Mdpp`」与「渲染用哪个 `Mdpp`」应当一致。
+    ///
+    /// 这是给「不止填空」的扩展用的：例如从当前子树生成目录、按标题重排、
+    /// 把一段正文塞进自定义结构。普通渲染不需要它。
+    pub fn parse(&self, source: &str) -> Node {
+        self.parse_with(source, &RenderContext::new())
+    }
+
+    /// 带上下文解析成 AST。链接解析器与模板页来源在解析阶段就会被用到
+    /// （`[[…]]` 的节点、`::模板` 的展开）。
+    pub fn parse_with(&self, source: &str, context: &RenderContext) -> Node {
+        let state = crate::state::RenderState {
+            context: Some(context.clone()),
+            registry: Some(Arc::clone(&self.registry)),
+            // 解析阶段不收集资源；只有渲染才会碰到 ::css / ::js
+            assets: None,
+            nested: None,
+            theme_slot: None,
+            depth: 0,
+        };
+        let _guard = crate::state::enter(state);
+        parse_markdown(&self.parser, source)
+    }
+
+    /// 渲染一棵已经解析好的 AST（单页模式，资源内联）。
+    pub fn render_node(&self, node: &Node, context: &RenderContext) -> String {
+        render_node_parts(
+            &self.parser,
+            &self.registry,
+            node,
+            context,
+            AssetMode::Inline,
+        )
+        .0
+    }
+
+    /// 渲染一棵已经解析好的 AST（站点模式，资源按 `asset_prefix` 外链）。
+    pub fn render_node_with_assets(
+        &self,
+        node: &Node,
+        context: &RenderContext,
+        asset_prefix: &str,
+    ) -> Rendered {
+        let (html, assets) = render_node_parts(
+            &self.parser,
+            &self.registry,
+            node,
+            context,
+            AssetMode::Linked {
+                prefix: asset_prefix.to_string(),
+            },
+        );
+        Rendered { html, assets }
+    }
 }
 
 /// 一次渲染的产物：HTML 与收集到的资源。
@@ -215,6 +275,49 @@ fn render_parts(
     );
 
     // 嵌套渲染不取资源：留在收集器里，守卫出栈时合并回外层
+    let assets = if nested {
+        Vec::new()
+    } else {
+        assets::take_assets()
+    };
+    drop(guard);
+    (html, assets)
+}
+
+/// 渲染一棵已经解析好的 AST：装上渲染状态，再让 markdown-it 走树。
+///
+/// 与 [`render_parts`] 的区别只在于「不解析」—— 嵌套渲染仍然走 `render_parts`，
+/// 所以 `<markdown>` 这类在渲染途中再解析的块照常工作。
+fn render_node_parts(
+    parser: &Arc<MarkdownIt>,
+    registry: &BlockRegistry,
+    node: &Node,
+    context: &RenderContext,
+    mode: AssetMode,
+) -> (String, Vec<Asset>) {
+    let (depth, theme_slot) =
+        crate::state::with(|state| (state.depth, state.theme_slot.clone())).unwrap_or((0, None));
+    let state = crate::state::RenderState {
+        context: Some(context.clone()),
+        registry: Some(Arc::new(registry.clone())),
+        assets: Some(crate::assets::Sink {
+            mode: mode.clone(),
+            assets: Vec::new(),
+            hashes: std::collections::HashSet::new(),
+        }),
+        nested: Some(Box::new({
+            let parser = Arc::clone(parser);
+            let registry = registry.clone();
+            let context = context.clone();
+            let mode = mode.clone();
+            move |more: &str| render_parts(&parser, &registry, &context, more, mode.clone()).0
+        })),
+        theme_slot,
+        depth,
+    };
+    let guard = crate::state::enter(state);
+    let nested = guard.nested();
+    let html = node.render();
     let assets = if nested {
         Vec::new()
     } else {
@@ -534,6 +637,26 @@ mod tests {
         assert_send_sync::<Mdpp>();
     }
 
+    /// `parse` 交出的 AST 可以再交给 `render_node`：块也照常查注册表
+    #[test]
+    fn parse_then_render_round_trips() {
+        let mdpp = Mdpp::new();
+        let root = mdpp.parse("::note\n  **粗**\n");
+        let html = mdpp.render_node(&root, &crate::context::RenderContext::new());
+        assert!(html.contains("callout--note"), "{html}");
+        assert!(html.contains("<strong>粗</strong>"), "{html}");
+    }
+
+    /// 拿到 AST 之后可以改属性再渲染 —— 这是「不只填空」的那条路
+    #[test]
+    fn a_parsed_ast_can_be_modified_before_rendering() {
+        let mdpp = Mdpp::new();
+        let mut root = mdpp.parse("# 标题\n");
+        root.children[0].attrs.push(("class", "mine".to_string()));
+        let html = mdpp.render_node(&root, &crate::context::RenderContext::new());
+        assert!(html.contains(r#"class="mine""#), "{html}");
+    }
+
     /// 兜底：标题、强调这些最基本的记号还认得 —— 开关加了这么多，先看这里
     #[test]
     fn commonmark_is_there() {
@@ -745,6 +868,39 @@ mod tests {
         let html = mdpp.render("::原样\n  *星号* 与 $a_1$\n");
         assert!(html.contains("*星号* 与 $a_1$"), "{html}");
         assert!(!html.contains("<em>"), "{html}");
+    }
+
+    /// 同一个块可以按实例选内容模式：`raw=1` 时不解析，否则照 markdown 解析
+    #[test]
+    fn a_block_can_choose_its_content_mode_per_instance() {
+        let mut registry = BlockRegistry::new();
+        let spec = crate::registry::BlockSpec::new(
+            "切换",
+            ContentMode::Markdown,
+            |block: &crate::registry::Block, node: &Node, fmt: &mut dyn Renderer| {
+                if block.has("raw") {
+                    fmt.text(&block.body);
+                } else {
+                    fmt.contents(&node.children);
+                }
+            },
+        )
+        .with_mode_fn(|block| {
+            if block.has("raw") {
+                ContentMode::Raw
+            } else {
+                ContentMode::Markdown
+            }
+        });
+        registry.register(spec);
+        let mdpp = Mdpp::builder().registry(registry).build();
+
+        let markdown = mdpp.render("::切换\n  **粗**\n");
+        assert!(markdown.contains("<strong>粗</strong>"), "{markdown}");
+
+        let raw = mdpp.render("::切换 raw=1\n  **粗**\n");
+        assert!(raw.contains("**粗**"), "{raw}");
+        assert!(!raw.contains("<strong>"), "{raw}");
     }
 
     /// 两个 `Mdpp` 各带各的注册表，互不干扰 —— 注册表是**每解析器一份**，

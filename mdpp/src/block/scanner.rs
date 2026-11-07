@@ -90,8 +90,9 @@ impl BlockRule for BlockScanner {
             return Some((Node::new(BlockNode(block)), line - start));
         };
 
-        let mode = spec.mode();
-        let mut node = Node::new(BlockNode(Block { name, params, body }));
+        let block = Block { name, params, body };
+        let mode = spec.mode_for(&block);
+        let mut node = Node::new(BlockNode(block));
 
         match mode {
             // 原始档：**不解析**，正文就在 `block.body` 里，一个字不动
