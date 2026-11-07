@@ -42,6 +42,14 @@ toml = "1.1.8"
 serde = { version = "1.0.229", features = ["derive"] }
 include_dir = "0.7.4"
 
+# 本地预览的 HTTP 层。请求行、chunked、range、HEAD、MIME、目录索引这些
+# 交给成熟的库；手写那一版在请求边界和超时上踩过太多次。
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs"] }
+futures-util = "0.3"
+
 [dev-dependencies]
 # 只有这个包的测试用它造临时目录。库那边一个都不用 —— 它跟着使用者走。
 tempfile = "3"
