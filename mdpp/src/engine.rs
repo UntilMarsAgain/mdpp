@@ -7,15 +7,12 @@
 //!
 //! ## 并发
 //!
-//! **`Mdpp` 既不是 `Send` 也不是 `Sync`。** markdown-it 的 `ext` 集合是 `RefCell`，
-//! 而 `parse` 期间真的读写它（围栏代码块的语言前缀、标题的 slug 函数都从那里取），
-//! 所以两个线程共用一个解析器是**数据竞争**，不是「慢一点」。
+//! **`Mdpp` 是 `Send + Sync`**：解析器与注册表都在 [`Arc`] 里，构建完之后只读；
+//! 渲染状态（链接解析器、模板页、资源收集器那一趟）是每线程一份，见
+//! [`crate::state`]。一个 `Mdpp` 可以被多个线程共享，每页各渲各的。
 //!
-//! 定成**一个线程建一个**：建一次是微秒级的事，比外面套一把锁划算，也比给一个
-//! `!Sync` 的东西硬加 `unsafe impl Sync` 划算。
-//!
-//! **渲染状态**（链接解析器、模板页、注册表那一趟）是线程局部的，各线程各渲各的
-//! 互不干扰 —— 由 [`crate::context`] 与 [`crate::syntax::wikilink`] 的测试钉着。
+//! 这不是靠 `unsafe impl` 换来的：markdown-it 的 `MarkdownIt`、本库的
+//! `BlockRegistry` 与 `RenderContext` 都满足 `Send + Sync`，编译器会替我们验。
 //!
 //! ## 默认值：几处刻意的关掉
 //!
@@ -32,9 +29,7 @@
 //!   分别是下标与下划线，另有 `^…^` 上标（[`crate::syntax::baseline`]）；
 //!   星号那对原封不动，还是 CommonMark 的全部活性。
 
-use std::cell::RefCell;
 use std::collections::HashSet;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use markdown_it::generics::inline::emph_pair::EmphPairScanner;
@@ -48,66 +43,40 @@ use markdown_it::{MarkdownIt, Node};
 
 use crate::assets::{self, Asset, AssetMode};
 use crate::block;
-use crate::context::{self, RenderContext};
+use crate::context::RenderContext;
 use crate::registry::BlockRegistry;
 use crate::slug;
 use crate::syntax;
 use crate::telemetry::{Size, debug, trace};
-
-/// 「在渲染途中再渲染一段 markdown」的能力，即 `::html` 里的 `<markdown>`。
-///
-/// 走线程局部里的闭包而不是一个全局解析器：一个进程里可以有多个 [`Mdpp`]，而嵌套
-/// 渲染要用的是**当次那一个**。「用哪个」在 [`Mdpp::render_with`] 入口处记下来，
-/// 出栈时还原。
-type Nested = Box<dyn Fn(&str) -> String>;
-
-thread_local! {
-    /// 当次渲染的「再渲染一段」能力
-    static NESTED: RefCell<Option<Nested>> = const { RefCell::new(None) };
-}
 
 /// 当次渲染里再渲染一段 markdown —— **沿用同一份上下文与注册表**。
 ///
 /// 不在渲染中时返回空串（而不是 panic）：净化器可以被单独调用，那一次没有
 /// 「当前渲染」可言。
 pub fn render_nested(source: &str) -> String {
-    // 取出来再调，不能拿着 `borrow()` 调：里面那次渲染会重新装上自己的，
-    // 而那一步要 `borrow_mut()`。
-    let taken = NESTED.with(|cell| cell.borrow_mut().take());
+    // 取出来再调：里面那次渲染会重新装一份自己的状态，不能占着借用
+    let taken = crate::state::with(|state| state.nested.take()).flatten();
     let out = match &taken {
         Some(run) => run(source),
         None => String::new(),
     };
     if let Some(run) = taken {
-        NESTED.with(|cell| *cell.borrow_mut() = Some(run));
+        crate::state::with(|state| state.nested = Some(run));
     }
     out
-}
-
-/// 装上「再渲染一段」的能力，返回出栈时还原的守卫。
-struct NestedGuard {
-    previous: Option<Nested>,
-}
-
-impl Drop for NestedGuard {
-    fn drop(&mut self) {
-        let previous = self.previous.take();
-        NESTED.with(|cell| *cell.borrow_mut() = previous);
-    }
 }
 
 /// 一个构建好的 mdpp 解析器。
 ///
 /// 建它要花一点工夫（十几条规则），渲染是廉价的。
 ///
-/// **既不是 `Send` 也不是 `Sync`** —— 一个线程一个，见模块头。
+/// **`Send + Sync`**：解析器与注册表都在 [`Arc`] 里，渲染状态每线程一份，
+/// 所以一个 `Mdpp` 可以被多个线程共享。
 #[derive(Debug)]
 pub struct Mdpp {
-    /// 用 `Rc` 而不是直接持有：嵌套渲染要把「用哪个解析器」记进线程局部，而那个闭包
-    /// 必须是 `'static` 的 —— 抓住 `&self` 编译不过。
-    ///
-    /// [`Rc`] 而不是 [`Arc`] 的理由与「不是 `Sync`」是同一条。
-    parser: Rc<MarkdownIt>,
+    /// 用 `Arc` 而不是直接持有：嵌套渲染要把「用哪个解析器」记进线程局部，而那个闭包
+    /// 必须是 `'static` 的 —— 抓住 `&self` 编译不过；`Arc` 也让 `Mdpp` 能跨线程共享。
+    parser: Arc<MarkdownIt>,
     registry: Arc<BlockRegistry>,
 }
 
@@ -196,37 +165,43 @@ pub struct Rendered {
 /// 真正干活的那一趟。四样东西各自装上、各自还原，全在同一次调用里成对出现。
 ///
 /// 拆成自由函数（而不是留在 `&self` 的方法里）是因为嵌套渲染要在线程局部里存一个
-/// `'static` 闭包，而闭包得抓住解析器与上下文的**所有权**（`Rc` / `Arc` 的克隆）。
+/// `'static` 闭包，而闭包得抓住解析器与上下文的**所有权**（`Arc` 的克隆）。
 ///
 /// 返回值里的资源只在**最外层**有意义；嵌套渲染的资源由 [`assets::Guard`] 合并回
 /// 外层，不会丢。
 fn render_parts(
-    parser: &Rc<MarkdownIt>,
+    parser: &Arc<MarkdownIt>,
     registry: &BlockRegistry,
     context: &RenderContext,
     source: &str,
     mode: AssetMode,
 ) -> (String, Vec<Asset>) {
-    // 顺序无所谓，四个都是各自独立的槽位
-    let _registry_guard = crate::registry::enter(Arc::new(registry.clone()));
-    let _context_guard = context::enter(context.clone());
-    let (assets_guard, nested) = assets::enter(mode.clone());
     // 「再渲染一段」用的是**当次这一趟**的上下文与注册表，而不是新的空的一份
+    let (depth, theme_slot) =
+        crate::state::with(|state| (state.depth, state.theme_slot.clone())).unwrap_or((0, None));
+    let state = crate::state::RenderState {
+        context: Some(context.clone()),
+        registry: Some(Arc::new(registry.clone())),
+        assets: Some(crate::assets::Sink {
+            mode: mode.clone(),
+            assets: Vec::new(),
+        }),
+        nested: Some(Box::new({
+            let parser = Arc::clone(parser);
+            let registry = registry.clone();
+            let context = context.clone();
+            let mode = mode.clone();
+            move |more: &str| render_parts(&parser, &registry, &context, more, mode.clone()).0
+        })),
+        theme_slot,
+        depth,
+    };
+    let guard = crate::state::enter(state);
+    let nested = guard.nested();
     trace!(
         depth = crate::context::depth(),
         "嵌套渲染：装上再渲染一段的能力"
     );
-    let _nested_guard = NestedGuard {
-        previous: NESTED.with(|cell| {
-            cell.borrow_mut().replace(Box::new({
-                let parser = Rc::clone(parser);
-                let registry = registry.clone();
-                let context = context.clone();
-                let mode = mode.clone();
-                move |more: &str| render_parts(&parser, &registry, &context, more, mode.clone()).0
-            }))
-        }),
-    };
 
     let started = std::time::Instant::now();
     let html = parse_markdown(parser, source).render();
@@ -244,7 +219,7 @@ fn render_parts(
     } else {
         assets::take_assets()
     };
-    drop(assets_guard);
+    drop(guard);
     (html, assets)
 }
 
@@ -457,7 +432,7 @@ impl MdppBuilder {
         );
 
         Mdpp {
-            parser: Rc::new(md),
+            parser: Arc::new(md),
             registry,
         }
     }
@@ -549,6 +524,13 @@ mod tests {
 
     fn md_of(src: &str) -> String {
         Mdpp::new().render(src)
+    }
+
+    /// 解析器构建完之后只读，渲染状态每线程一份 —— 所以它该能跨线程共享
+    #[test]
+    fn mdpp_is_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<Mdpp>();
     }
 
     /// 兜底：标题、强调这些最基本的记号还认得 —— 开关加了这么多，先看这里

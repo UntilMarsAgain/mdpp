@@ -10,7 +10,6 @@
 //!
 //! [`BlockRegistry::register`] 对同名块**覆盖**，这是改掉一个内置块最短的路。
 
-use std::cell::RefCell;
 use std::sync::Arc;
 
 use markdown_it::{Node, Renderer};
@@ -328,14 +327,9 @@ impl std::fmt::Debug for BlockRegistry {
 // 进程里可以有好几个 `Mdpp`，各带各的注册表。走线程局部，理由与 `context` 相同：
 // 渲染是同步的，规则必然跑在同一个线程上。
 
-thread_local! {
-    /// 现在这一趟渲染在用的注册表
-    static CURRENT: RefCell<Option<Arc<BlockRegistry>>> = const { RefCell::new(None) };
-}
-
 /// 取当次渲染的注册表
 pub fn current() -> Option<Arc<BlockRegistry>> {
-    CURRENT.with(|cell| cell.borrow().clone())
+    crate::state::with(|state| state.registry.clone()).flatten()
 }
 
 /// 查一个块，**只**在当次渲染的注册表里查。扫描器与分发器用它。
@@ -347,19 +341,37 @@ pub fn lookup(name: &str) -> Option<BlockSpec> {
 /// 理由见 [`crate::context`] 模块头。
 pub struct Guard {
     previous: Option<Arc<BlockRegistry>>,
+    /// 进入之前根本没有渲染状态：这个守卫要负责把整份状态撤掉
+    had_state: bool,
 }
 
 impl Drop for Guard {
     fn drop(&mut self) {
-        let previous = self.previous.take();
-        CURRENT.with(|cell| *cell.borrow_mut() = previous);
+        if self.had_state {
+            let previous = self.previous.take();
+            crate::state::with(|state| state.registry = previous);
+        } else {
+            crate::state::set(None);
+        }
     }
 }
 
 /// 装上 [`BlockRegistry`]，返回用完还原的守卫。
 pub fn enter(registry: Arc<BlockRegistry>) -> Guard {
+    let mut pending = Some(registry);
+    let mut previous = None;
+    let had_state = crate::state::with(|state| {
+        previous = state.registry.replace(pending.take().expect("只取一次"));
+    })
+    .is_some();
+    if !had_state {
+        let mut state = crate::state::default_state();
+        state.registry = pending;
+        crate::state::set(Some(state));
+    }
     Guard {
-        previous: CURRENT.with(|cell| cell.borrow_mut().replace(registry)),
+        previous,
+        had_state,
     }
 }
 

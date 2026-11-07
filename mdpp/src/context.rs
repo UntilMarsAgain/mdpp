@@ -18,7 +18,6 @@
 //! [`Mdpp::render_with`](crate::engine::Mdpp::render_with)，两次调用叠在一起 ——
 //! 还原成空的话，内层一结束，外层剩下的正文就再也问不到链接解析器了。
 
-use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::sync::Arc;
 
@@ -76,59 +75,92 @@ impl RenderContext {
     }
 }
 
-thread_local! {
-    /// 现在这一趟渲染的上下文。没有就是"不在渲染中"。
-    static CURRENT: RefCell<Option<RenderContext>> = const { RefCell::new(None) };
-
-    /// 用户模板展开到第几层（转圈的保护）
-    static DEPTH: Cell<usize> = const { Cell::new(0) };
-}
-
 /// 取当次渲染的上下文副本。渲染规则在回调里用这个问「现在用的是哪个解析器」。
 pub fn current() -> Option<RenderContext> {
-    CURRENT.with(|cell| cell.borrow().clone())
+    crate::state::with(|state| state.context.clone()).flatten()
 }
 
 /// 当次渲染的链接解析器（渲染规则里的高频入口，少一层包装）
 pub fn links() -> Option<Arc<dyn LinkResolver>> {
-    CURRENT.with(|cell| cell.borrow().as_ref().and_then(|ctx| ctx.links.clone()))
+    crate::state::with(|state| {
+        state
+            .context
+            .as_ref()
+            .and_then(|context| context.links.clone())
+    })
+    .flatten()
 }
 
 /// 当次渲染的模板页来源
 pub fn templates() -> Option<TemplatePages> {
-    CURRENT.with(|cell| cell.borrow().as_ref().and_then(|ctx| ctx.templates.clone()))
+    crate::state::with(|state| {
+        state
+            .context
+            .as_ref()
+            .and_then(|context| context.templates.clone())
+    })
+    .flatten()
 }
 
 /// 现在展开到第几层
 pub fn depth() -> usize {
-    DEPTH.with(|cell| cell.get())
+    crate::state::with(|state| state.depth).unwrap_or(0)
 }
 
 /// 深一层地做一件事（用完还原）。用户模板可以嵌用户模板 —— 一个转圈的模板（甲嵌乙、
 /// 乙嵌甲）会一直展开下去，所以每展开一层记一笔，超过 [`MAX_TEMPLATE_DEPTH`] 就不展开。
 pub fn deeper<T>(run: impl FnOnce() -> T) -> T {
-    let previous = DEPTH.with(|cell| cell.replace(depth() + 1));
+    let existed = crate::state::with(|state| state.depth += 1).is_some();
+    if !existed {
+        // 渲染之外单独调用（低层用法/测试）：建一份临时状态，出去时撤掉
+        let mut state = crate::state::default_state();
+        state.depth = 1;
+        crate::state::set(Some(state));
+    }
     let out = run();
-    DEPTH.with(|cell| cell.set(previous));
+    if existed {
+        crate::state::with(|state| state.depth = state.depth.saturating_sub(1));
+    } else {
+        crate::state::set(None);
+    }
     out
 }
 
 /// 把上下文装上，返回一个用完自动还原的守卫。存的是**进入之前**的那一份，不是空。
 pub struct Guard {
     previous: Option<RenderContext>,
+    /// 进入之前根本没有渲染状态：这个守卫要负责把整份状态撤掉
+    had_state: bool,
 }
 
 impl Drop for Guard {
     fn drop(&mut self) {
-        let previous = self.previous.take();
-        CURRENT.with(|cell| *cell.borrow_mut() = previous);
+        if self.had_state {
+            let previous = self.previous.take();
+            crate::state::with(|state| state.context = previous);
+        } else {
+            crate::state::set(None);
+        }
     }
 }
 
 /// 装上 [`RenderContext`]，返回用完还原的守卫。见 [`Guard`]。
 pub fn enter(context: RenderContext) -> Guard {
+    let mut pending = Some(context);
+    let mut previous = None;
+    let had_state = crate::state::with(|state| {
+        previous = state.context.replace(pending.take().expect("只取一次"));
+    })
+    .is_some();
+    if !had_state {
+        // 渲染之外单独装上下文（低层用法/测试）：建一份只有 context 的状态
+        let mut state = crate::state::default_state();
+        state.context = pending;
+        crate::state::set(Some(state));
+    }
     Guard {
-        previous: CURRENT.with(|cell| cell.borrow_mut().replace(context)),
+        previous,
+        had_state,
     }
 }
 
