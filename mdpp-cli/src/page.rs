@@ -89,6 +89,10 @@ const MERMAID_CDN: &str = "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.
 /// KaTeX 的 CDN 地址（jsDelivr）。
 const KATEX_CDN: &str = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js";
 
+/// KaTeX 的样式表。**JS 只管把 TeX 排成 DOM，分式/根号/间距靠这份 CSS**；
+/// 只引 JS 的话，公式会出现但排不对。
+const KATEX_CSS_CDN: &str = "https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css";
+
 /// highlight.js 的 CDN 地址（jsDelivr）。
 const HLJS_CDN: &str =
     "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/highlight.min.js";
@@ -279,6 +283,15 @@ pub fn document(page: &Page) -> String {
     // 它）才算。JS 与它的主题样式同进同出，判一次，两处都用。
     let highlight_on =
         page.external_script == ExternalScript::Cdn && page.body.contains("class=\"language-");
+    // 数学公式同理：JS 排版 + KaTeX 自己的样式表，缺一不可。
+    let math_on = page.external_script == ExternalScript::Cdn && page.body.contains("class=\"math");
+    let katex_css = if math_on {
+        vec![format!(
+            "<link rel=\"stylesheet\" href=\"{KATEX_CSS_CDN}\">"
+        )]
+    } else {
+        Vec::new()
+    };
     // highlight.js 的浅深两份主题。位置与主题色那几层同一档：在默认样式之后、
     // 用户附的样式之前 —— `--css` 里自带的配色仍然是最后说话的那个。
     let hljs_themes = if highlight_on {
@@ -295,6 +308,7 @@ pub fn document(page: &Page) -> String {
     } else {
         Vec::new()
     };
+    let styles = join_blocks(styles, katex_css);
     let styles = join_blocks(styles, hljs_themes);
     // 主题色那几层覆盖摆在默认样式**之后**、用户附的样式**之前**：它要盖掉
     // `mdpp.css` 调色板里的默认值，而用户 `extra_css` 仍是最后说话的那个
@@ -313,7 +327,7 @@ pub fn document(page: &Page) -> String {
         if page.body.contains("class=\"mermaid\"") {
             diagram_scripts.push_str(&format!("<script src=\"{}\"></script>\n", MERMAID_CDN));
         }
-        if page.body.contains("class=\"math") {
+        if math_on {
             diagram_scripts.push_str(&format!("<script src=\"{}\"></script>\n", KATEX_CDN));
         }
         if highlight_on {
@@ -839,6 +853,15 @@ mod tests {
         );
     }
 
+    /// 页面外壳里要有无 JS 降级：tabs 与折叠的 navbox 由 `<noscript>` 展开
+    #[test]
+    fn the_shell_has_a_no_js_fallback() {
+        let html = document(&site_page("x"));
+        assert!(html.contains("<noscript>"), "{html}");
+        assert!(html.contains(".tabs__panel[hidden]"), "{html}");
+        assert!(html.contains(".navbox__body[hidden]"), "{html}");
+    }
+
     /// 外链那一路：页面里只有一个 `<link>` 一个 `<script src>`，资源由 `copy_assets` 拷出去
     #[test]
     fn linked_assets_point_at_the_copied_files() {
@@ -851,8 +874,8 @@ mod tests {
             html.contains(r#"<script src="assets/mdpp.js"></script>"#),
             "{html}"
         );
-        // 内联的那些一份都不该在
-        assert!(!html.contains("<style>"), "{html}");
+        // 内联的那些一份都不该在（`<noscript>` 里还有一小块降级 CSS，不算正文样式）
+        assert!(!html.contains("--mdpp-bg"), "{html}");
         assert!(html.contains("x"), "{html}");
     }
 
@@ -915,7 +938,10 @@ mod tests {
         );
         // 顶栏在正文之上
         assert!(
-            html.find("mdpp-bar").expect("有顶栏") < html.find("mdpp-content").expect("有正文")
+            html.find("mdpp-bar").expect("有顶栏")
+                < html
+                    .find(r#"<article class="mdpp-content">"#)
+                    .expect("有正文")
         );
 
         // 没有站点名就没有顶栏 —— 那句话与仓库链接都跟着一起没了
@@ -1017,7 +1043,10 @@ mod tests {
         );
         // 导航在顶栏里，正文之上
         assert!(
-            html.find("mdpp-nav").expect("有导航") < html.find("mdpp-content").expect("有正文"),
+            html.find("mdpp-nav").expect("有导航")
+                < html
+                    .find(r#"<article class="mdpp-content">"#)
+                    .expect("有正文"),
             "{html}"
         );
         // 没有导航就不渲染那一行
@@ -1445,7 +1474,8 @@ mod tests {
             extra_js: &[r#"var s = "</script>";"#.to_string()],
             ..page("x", Assets::Inline)
         });
-        assert_eq!(html.matches("</style>").count(), 2, "{html}");
+        // 默认样式、附带样式，外加 `<noscript>` 里那小块降级样式
+        assert_eq!(html.matches("</style>").count(), 3, "{html}");
         // 用户那半个闭合标签被去掉了，剩下的字留在样式块里当无害的 CSS 文本
         assert!(
             !html.contains("a{}</style>"),
@@ -1521,6 +1551,11 @@ mod tests {
         let html = document(&page);
         assert!(
             html.contains("cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"),
+            "{html}"
+        );
+        // 只有 JS 没有 CSS 的话，分式/根号/间距排不对
+        assert!(
+            html.contains("cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css"),
             "{html}"
         );
         assert!(!html.contains("mermaid"), "{html}");
