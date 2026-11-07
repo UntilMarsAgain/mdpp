@@ -11,13 +11,15 @@
 //! [`BlockRegistry::register`] 对同名块**覆盖**，这是改掉一个内置块最短的路。
 
 mod block;
+mod scope;
 mod spec;
-mod table;
+pub(crate) mod table;
 mod tokenize;
 
 pub use block::{Block, ContentMode};
+pub use scope::{Guard, current, enter, lookup};
 pub use spec::{BlockRenderer, BlockRendererFn, BlockSpec, ContentModeFn};
-pub use table::{BlockRegistry, Guard, current, enter, lookup};
+pub use table::BlockRegistry;
 pub use tokenize::tokenize;
 
 #[cfg(test)]
