@@ -45,7 +45,9 @@
 //! `data-mdpp-group` / `value` / `key` / `run` / `version`，脚本里可以用
 //! `document.currentScript.dataset` 读到自己的环境。
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
+
+use crate::env::VariantScope;
 
 /// 无条件生效的选项值。
 pub const ALWAYS: &str = "*";
@@ -88,13 +90,6 @@ impl Control {
 pub struct Scope {
     previous: Option<VariantScope>,
     had_state: bool,
-}
-
-/// 内部用的当前作用域快照。
-#[derive(Debug, Clone)]
-pub(crate) struct VariantScope {
-    pub(crate) group: String,
-    pub(crate) value: String,
 }
 
 /// 一组选项。
@@ -220,8 +215,8 @@ impl Group {
             value: value.to_string(),
         };
         let mut previous = None;
-        let had_state = crate::state::with(|state| {
-            previous = state.variant.replace(next);
+        let had_state = crate::env::with(|env| {
+            previous = env.variant.replace(next);
         })
         .is_some();
         Scope {
@@ -241,26 +236,21 @@ impl Drop for Scope {
     fn drop(&mut self) {
         if self.had_state {
             let previous = self.previous.take();
-            crate::state::with(|state| state.variant = previous);
+            crate::env::with(|env| env.variant = previous);
         }
     }
 }
 
 /// 当前正在渲染哪个组、哪个选项。不在任何选项里时是 `None`。
 pub(crate) fn current() -> Option<VariantScope> {
-    crate::state::with(|state| state.variant.clone()).flatten()
+    crate::env::with(|env| env.variant.clone()).flatten()
 }
 
 /// 页内自增的组 ID 计数器。嵌套渲染共享同一个计数，避免两个 `tabs-1` 撞车。
 fn next_id(prefix: &str) -> String {
-    let number = crate::state::with(|state| state.variant_seq.fetch_add(1, Ordering::Relaxed) + 1)
-        .unwrap_or(1);
+    let number =
+        crate::env::with(|env| env.variant_seq.fetch_add(1, Ordering::Relaxed) + 1).unwrap_or(1);
     format!("{prefix}-{number}")
-}
-
-/// 新建一份计数器的值（`RenderState` 的默认值用）。
-pub(crate) fn sequence() -> std::sync::Arc<AtomicUsize> {
-    std::sync::Arc::new(AtomicUsize::new(0))
 }
 
 #[cfg(test)]
@@ -270,7 +260,7 @@ mod tests {
     /// 组 ID 自动递增，且带上前缀
     #[test]
     fn ids_are_unique_and_prefixed() {
-        let _guard = crate::state::enter(crate::state::RenderState::default());
+        let _guard = crate::env::enter(crate::env::RenderEnv::default());
         let first = Group::new("tabs", Control::Choice);
         let second = Group::new("tabs", Control::Choice);
         assert!(first.id().starts_with("tabs-"), "{}", first.id());
@@ -304,7 +294,7 @@ mod tests {
     /// 进入作用域时资源收集看得到组与选项，退出后恢复外层
     #[test]
     fn entering_restores_the_outer_scope() {
-        let _guard = crate::state::enter(crate::state::RenderState::default());
+        let _guard = crate::env::enter(crate::env::RenderEnv::default());
         let group = Group::new("x", Control::Choice).option("a", "甲");
         let outer = group.enter("a");
         assert_eq!(

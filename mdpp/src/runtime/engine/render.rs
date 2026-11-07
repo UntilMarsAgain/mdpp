@@ -11,28 +11,23 @@ use crate::telemetry::{Size, debug, trace};
 
 /// 装上这一趟的渲染状态：上下文、注册表、资源收集器、嵌套入口，以及从外层
 /// 继承的层数与变体作用域。
-fn enter_render_state(
+fn enter_render_env(
     parser: &Arc<MarkdownIt>,
     registry: &BlockRegistry,
     context: &RenderContext,
     mode: AssetMode,
-) -> crate::state::Guard {
-    let (depth, variant, variant_seq) = crate::state::with(|state| {
-        (
-            state.depth,
-            state.variant.clone(),
-            Arc::clone(&state.variant_seq),
-        )
-    })
-    .unwrap_or_else(|| (0, None, crate::variants::sequence()));
-    let state = crate::state::RenderState {
-        context: Some(context.clone()),
-        registry: Some(Arc::new(registry.clone())),
-        assets: Some(crate::assets::Sink {
+) -> crate::env::Guard {
+    let (depth, variant, variant_seq) =
+        crate::env::with(|env| (env.depth, env.variant.clone(), Arc::clone(&env.variant_seq)))
+            .unwrap_or_else(|| (0, None, crate::env::sequence()));
+    let env = crate::env::RenderEnv {
+        context: context.clone(),
+        registry: Arc::new(registry.clone()),
+        assets: crate::assets::Sink {
             mode: mode.clone(),
             assets: Vec::new(),
             hashes: HashSet::new(),
-        }),
+        },
         nested: Some(Box::new({
             let parser = Arc::clone(parser);
             let registry = registry.clone();
@@ -44,7 +39,7 @@ fn enter_render_state(
         variant_seq,
         depth,
     };
-    crate::state::enter(state)
+    crate::env::enter(env)
 }
 
 /// 真正干活的那一趟：装上这一趟的渲染状态，解析、渲染，退出时还原。
@@ -52,7 +47,7 @@ fn enter_render_state(
 /// 拆成自由函数（而不是留在 `&self` 的方法里）是因为嵌套渲染要在线程局部里存一个
 /// `'static` 闭包，而闭包得抓住解析器与上下文的**所有权**（`Arc` 的克隆）。
 ///
-/// 返回值里的资源只在**最外层**有意义；嵌套渲染的资源由 `state::Guard` 合并回
+/// 返回值里的资源只在**最外层**有意义；嵌套渲染的资源由 `env::Guard` 合并回
 /// 外层，不会丢。
 pub(super) fn render_parts(
     parser: &Arc<MarkdownIt>,
@@ -62,7 +57,7 @@ pub(super) fn render_parts(
     mode: AssetMode,
 ) -> (String, Vec<Asset>) {
     // 「再渲染一段」用的是**当次这一趟**的上下文与注册表，而不是新的空的一份
-    let guard = enter_render_state(parser, registry, context, mode);
+    let guard = enter_render_env(parser, registry, context, mode);
     let nested = guard.nested();
     trace!(
         depth = crate::context::depth(),
@@ -100,7 +95,7 @@ pub(super) fn render_node_parts(
     context: &RenderContext,
     mode: AssetMode,
 ) -> (String, Vec<Asset>) {
-    let guard = enter_render_state(parser, registry, context, mode);
+    let guard = enter_render_env(parser, registry, context, mode);
     let nested = guard.nested();
     let html = node.render();
     let assets = if nested {

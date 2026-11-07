@@ -287,11 +287,7 @@ fn write_css(fmt: &mut dyn Renderer, use_: AssetUse) {
 /// 进 HTML 属性值的转义。链接是我们自己拼的（前缀 + 哈希文件名），
 /// 但前缀来自调用方，转义一下更稳妥。
 fn escape_attr(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('"', "&quot;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
+    html_escape::encode_double_quoted_attribute(value).into_owned()
 }
 
 /// 从 HTML 字符串中提取所有 <script>...</script> 的内容，拼接返回。

@@ -4,6 +4,16 @@
  * 动态资源只做 DOM 挂载，不请求任何接口：单文件模式内容在 <template> 里，
  * 站点模式指向静态 assets/ 文件。
  *
+ * 目录：
+ *   1. 环境与共享状态
+ *   2. 组状态与选项切换
+ *   3. 延迟资源挂载
+ *   4. 主题跟随
+ *   5. navbox
+ *   6. mermaid / KaTeX / highlight.js
+ *   7. 公共 API
+ *   8. 启动
+ *
  * 两条不能省：
  * - **能重复跑**：同一段脚本可能被内联不止一次，所以每个容器先看有没有被打过标记；
  * - **能晚到**：内联的 <script> 跑到它那一刻，后面的选项卡还不存在，
@@ -25,6 +35,8 @@
   if (!window.mdppEnv) {
     window.mdppEnv = ENV;
   }
+
+  // ===== 1. 环境与共享状态 ============================================
 
   // 组 ID -> 容器；组 ID -> 当前选项；资源 key -> 运行记录。
   // 用无原型对象：ID 来自作者，`__proto__` 之类的键不该污染查找表。
@@ -89,6 +101,8 @@
     }));
   }
 
+  // ===== 2. 组状态与选项切换 ==========================================
+
   function setGroupState(group, value, silent) {
     var id = groupId(group);
     var previous = active[id];
@@ -152,7 +166,7 @@
     });
   }
 
-  // ---- 延迟资源 -------------------------------------------------------
+  // ===== 3. 延迟资源挂载 ==============================================
 
   function ancestorPanelsActive(asset) {
     var node = asset.parentElement;
@@ -323,7 +337,7 @@
     });
   }
 
-  // ---- 主题 -----------------------------------------------------------
+  // ===== 4. 主题跟随 ==================================================
 
   function refreshTheme() {
     var value = currentTheme();
@@ -360,7 +374,7 @@
     });
   }
 
-  // ---- navbox ---------------------------------------------------------
+  // ===== 5. navbox ====================================================
 
   function fold(navbox, toggle) {
     var wasCollapsed = toggle.getAttribute("aria-expanded") === "false";
@@ -393,7 +407,7 @@
     });
   }
 
-  // ---- mermaid / KaTeX / highlight.js ----------------------------------
+  // ===== 6. mermaid / KaTeX / highlight.js ==============================
 
   function bindDiagrams() {
     if (window.mermaid) {
@@ -412,7 +426,7 @@
     }
   }
 
-  // ---- 对外 API -------------------------------------------------------
+  // ===== 7. 公共 API ==================================================
 
   window.mdppVariants = {
     get: function (group) {
@@ -470,6 +484,8 @@
   window.mdppThemeInject = function () {
     refreshTheme();
   };
+
+  // ===== 8. 启动 ======================================================
 
   function bindAll(root) {
     root.querySelectorAll(".navbox").forEach(bindNavbox);

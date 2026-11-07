@@ -77,51 +77,40 @@ impl RenderContext {
 
 /// 取当次渲染的上下文副本。渲染规则在回调里用这个问「现在用的是哪个解析器」。
 pub fn current() -> Option<RenderContext> {
-    crate::state::with(|state| state.context.clone()).flatten()
+    crate::env::with(|env| env.context.clone())
 }
 
 /// 当次渲染的链接解析器（渲染规则里的高频入口，少一层包装）
 pub fn links() -> Option<Arc<dyn LinkResolver>> {
-    crate::state::with(|state| {
-        state
-            .context
-            .as_ref()
-            .and_then(|context| context.links.clone())
-    })
-    .flatten()
+    crate::env::with(|env| env.context.links.clone()).flatten()
 }
 
 /// 当次渲染的模板页来源
 pub fn templates() -> Option<TemplatePages> {
-    crate::state::with(|state| {
-        state
-            .context
-            .as_ref()
-            .and_then(|context| context.templates.clone())
-    })
-    .flatten()
+    crate::env::with(|env| env.context.templates.clone()).flatten()
 }
 
 /// 现在展开到第几层
 pub fn depth() -> usize {
-    crate::state::with(|state| state.depth).unwrap_or(0)
+    crate::env::with(|env| env.depth).unwrap_or(0)
 }
 
 /// 深一层地做一件事（用完还原）。用户模板可以嵌用户模板 —— 一个转圈的模板（甲嵌乙、
 /// 乙嵌甲）会一直展开下去，所以每展开一层记一笔，超过 [`MAX_TEMPLATE_DEPTH`] 就不展开。
 pub fn deeper<T>(run: impl FnOnce() -> T) -> T {
-    let existed = crate::state::with(|state| state.depth += 1).is_some();
+    let existed = crate::env::with(|env| env.depth += 1).is_some();
     if !existed {
-        // 渲染之外单独调用（低层用法/测试）：建一份临时状态，出去时撤掉
-        let mut state = crate::state::default_state();
-        state.depth = 1;
-        crate::state::set(Some(state));
+        // 渲染之外单独调用（低层用法/测试）：建一份临时环境，出去时撤掉
+        crate::env::set(Some(crate::env::RenderEnv {
+            depth: 1,
+            ..Default::default()
+        }));
     }
     let out = run();
     if existed {
-        crate::state::with(|state| state.depth = state.depth.saturating_sub(1));
+        crate::env::with(|env| env.depth = env.depth.saturating_sub(1));
     } else {
-        crate::state::set(None);
+        crate::env::set(None);
     }
     out
 }
@@ -136,10 +125,10 @@ pub struct Guard {
 impl Drop for Guard {
     fn drop(&mut self) {
         if self.had_state {
-            let previous = self.previous.take();
-            crate::state::with(|state| state.context = previous);
+            let previous = self.previous.take().unwrap_or_default();
+            crate::env::with(|env| env.context = previous);
         } else {
-            crate::state::set(None);
+            crate::env::set(None);
         }
     }
 }
@@ -148,15 +137,19 @@ impl Drop for Guard {
 pub fn enter(context: RenderContext) -> Guard {
     let mut pending = Some(context);
     let mut previous = None;
-    let had_state = crate::state::with(|state| {
-        previous = state.context.replace(pending.take().expect("只取一次"));
+    let had_state = crate::env::with(|env| {
+        previous = Some(std::mem::replace(
+            &mut env.context,
+            pending.take().expect("只取一次"),
+        ));
     })
     .is_some();
     if !had_state {
-        // 渲染之外单独装上下文（低层用法/测试）：建一份只有 context 的状态
-        let mut state = crate::state::default_state();
-        state.context = pending;
-        crate::state::set(Some(state));
+        // 渲染之外单独装上下文（低层用法/测试）：建一份只有 context 的环境
+        crate::env::set(Some(crate::env::RenderEnv {
+            context: pending.expect("只取一次"),
+            ..Default::default()
+        }));
     }
     Guard {
         previous,

@@ -95,7 +95,7 @@ pub mod link;
 pub use api::author;
 pub use block::registry;
 pub use parse::{raw, slug, syntax, targets};
-pub(crate) use runtime::state;
+pub(crate) use runtime::env;
 pub use runtime::{assets, context, engine, variants};
 pub use support::telemetry;
 

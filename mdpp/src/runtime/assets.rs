@@ -87,16 +87,19 @@ pub(crate) struct Sink {
     pub(crate) hashes: HashSet<String>,
 }
 
+impl Default for Sink {
+    fn default() -> Self {
+        Sink {
+            mode: AssetMode::Inline,
+            assets: Vec::new(),
+            hashes: HashSet::new(),
+        }
+    }
+}
+
 /// 取出当前收集到的资源（只在**最外层**渲染结束时调用）。
 pub(crate) fn take_assets() -> Vec<Asset> {
-    crate::state::with(|state| {
-        state
-            .assets
-            .as_mut()
-            .map(|sink| std::mem::take(&mut sink.assets))
-            .unwrap_or_default()
-    })
-    .unwrap_or_default()
+    crate::env::with(|env| std::mem::take(&mut env.assets.assets)).unwrap_or_default()
 }
 
 /// 自定义块登记资源时拿到的结果。
@@ -272,7 +275,7 @@ pub(crate) fn emit_with(kind: AssetKind, content: String, policy: AssetPolicy) -
     }
 
     // 不在渲染中（例如单独调用渲染器）：退化为内联，行为与旧版一致
-    if !crate::state::with(|state| state.assets.is_some()).unwrap_or(false) {
+    if crate::env::with(|_| ()).is_none() {
         return Emission::Inline(content);
     }
     let (_, link, inserted) = register(kind, &content);
@@ -291,8 +294,8 @@ pub(crate) fn emit_with(kind: AssetKind, content: String, policy: AssetPolicy) -
 /// 都需要自己的占位符。普通资源仍按「第一次出现」决定是否输出。
 fn register(kind: AssetKind, content: &str) -> (String, Option<String>, bool) {
     let hash = hash_of(content);
-    let registered = crate::state::with(|state| {
-        let sink = state.assets.as_mut()?;
+    let registered = crate::env::with(|env| {
+        let sink = &mut env.assets;
         let inserted = sink.hashes.insert(hash.clone());
         let url = match &sink.mode {
             AssetMode::Inline => None,
@@ -322,22 +325,14 @@ fn register(kind: AssetKind, content: &str) -> (String, Option<String>, bool) {
     }
 }
 
-/// 文本节点转义：`&` 与 `<`。`>` 不转义也不会被当成标签开头。
+/// 文本节点转义：交给 `html-escape`，不再自己维护实体表。
 fn escape_text(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for ch in text.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            _ => out.push(ch),
-        }
-    }
-    out
+    html_escape::encode_text(text).into_owned()
 }
 
-/// 属性值转义：文本那两样之外再管双引号。
+/// 属性值转义：双引号包值，交给 `html-escape`。
 fn escape_attribute(value: &str) -> String {
-    escape_text(value).replace('"', "&quot;")
+    html_escape::encode_double_quoted_attribute(value).into_owned()
 }
 
 /// FNV-1a 64 位：不引入额外依赖，内容相同哈希就相同。
@@ -355,15 +350,16 @@ mod tests {
     use super::*;
 
     /// 测试里装一份只有资源收集器的状态
-    fn enter(mode: AssetMode) -> (crate::state::Guard, bool) {
-        let guard = crate::state::enter(crate::state::RenderState {
-            assets: Some(Sink {
+    fn enter(mode: AssetMode) -> (crate::env::Guard, bool) {
+        let env = crate::env::RenderEnv {
+            assets: Sink {
                 mode,
                 assets: Vec::new(),
                 hashes: HashSet::new(),
-            }),
+            },
             ..Default::default()
-        });
+        };
+        let guard = crate::env::enter(env);
         let nested = guard.nested();
         (guard, nested)
     }
@@ -448,7 +444,7 @@ mod tests {
                 assert!(html.contains("data-mdpp-value=\"0\""), "{html}");
                 assert!(html.contains("data-mdpp-version=\"0.1.0\""), "{html}");
                 assert!(html.contains("data-mdpp-runtime=\"asset\""), "{html}");
-                assert!(html.contains("a &lt; b &amp;&amp; c > d"), "{html}");
+                assert!(html.contains("a &lt; b &amp;&amp; c &gt; d"), "{html}");
                 assert!(!html.contains("</template>}\""), "{html}");
             }
             _ => panic!("应当是延迟资源"),

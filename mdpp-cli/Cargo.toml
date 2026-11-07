@@ -37,6 +37,9 @@ tracing-subscriber = { version = "0.3", features = ["fmt"] }
 # 那会替使用方决定了「你也用这一套」。
 tracing = "0.1"
 
+# 页面外壳的文本/属性转义。
+html-escape = "0.2"
+
 clap = { version = "4.6.7", features = ["derive"] }
 toml = "1.1.8"
 serde = { version = "1.0.229", features = ["derive"] }
