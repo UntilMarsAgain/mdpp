@@ -206,6 +206,11 @@ fn the_reload_script_shows_up_only_under_serve() {
         served.contains("__mdpp/events"),
         "预览该连着长连接：{served}"
     );
+    assert!(
+        served.contains(r#"data-mdpp-runtime="live-reload""#),
+        "长连接脚本也该带环境信息：{served}"
+    );
+    assert!(served.contains(r#"data-mdpp-version="0.1.0""#), "{served}");
 }
 
 /// 每一页都要有 —— 深层页里的那段也得在

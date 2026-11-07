@@ -155,39 +155,6 @@ pub(crate) fn no_leading_content(sections: &[(&str, &Node)], what: &str) -> Resu
     Ok(())
 }
 
-/// 进入一个 `::theme` 节，返回守卫。守卫丢弃时恢复之前的 slot（支持嵌套 theme）。
-pub(crate) struct ThemeGuard {
-    previous: Option<String>,
-    had_state: bool,
-}
-
-impl Drop for ThemeGuard {
-    fn drop(&mut self) {
-        if self.had_state {
-            let previous = self.previous.take();
-            crate::state::with(|state| state.theme_slot = previous);
-        }
-    }
-}
-
-/// 进入 `slot` 指定的 theme 节，返回守卫。
-pub(crate) fn enter_theme_slot(slot: &str) -> ThemeGuard {
-    let mut previous = None;
-    let had_state = crate::state::with(|state| {
-        previous = state.theme_slot.replace(slot.to_string());
-    })
-    .is_some();
-    ThemeGuard {
-        previous,
-        had_state,
-    }
-}
-
-/// 取当前 theme slot。`None` 表示不在 `::theme` 内部。
-pub(crate) fn current_theme_slot() -> Option<String> {
-    crate::state::with(|state| state.theme_slot.clone()).flatten()
-}
-
 #[cfg(test)]
 mod tests {
     use crate::Mdpp;

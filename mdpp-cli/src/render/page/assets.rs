@@ -120,17 +120,29 @@ pub(super) fn link_tag(prefix: &str, name: &str) -> String {
 
 pub(super) fn script_tag(prefix: &str, name: &str) -> String {
     format!(
-        "<script src=\"{}/{}\"></script>",
+        "<script src=\"{}/{}\" data-mdpp-version=\"{}\" data-mdpp-mode=\"linked\" data-mdpp-runtime=\"mdpp\"></script>",
         escape(prefix),
-        asset_url_name(name)
+        asset_url_name(name),
+        mdpp::VERSION
     )
 }
 
-/// 用户附带的那几份各自裹一段标签。带闭合标签的那份要处理 —— 它们是任意写来的
+/// 用户附带的那几份各自裹一段标签。带闭合标签的那份要处理 —— 它们是任意写来的。
+///
+/// `script` 比 `style` 多带生成器版本与挂载方式：页面里的脚本可能来自内联资源、
+/// 站点外链或变体延迟挂载，`data-mdpp-*` 让脚本自己和诊断工具都能分清。
 pub(super) fn inline_blocks(extra: &[String], tag: &str) -> Vec<String> {
+    let attrs = if tag == "script" {
+        format!(
+            " data-mdpp-version=\"{}\" data-mdpp-mode=\"inline\" data-mdpp-runtime=\"extra\"",
+            mdpp::VERSION
+        )
+    } else {
+        String::new()
+    };
     extra
         .iter()
-        .map(|text| format!("<{tag}>\n{}\n</{tag}>", close_tag(text, tag)))
+        .map(|text| format!("<{tag}{attrs}>\n{}\n</{tag}>", close_tag(text, tag)))
         .collect()
 }
 

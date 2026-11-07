@@ -923,3 +923,78 @@ fn custom_css_and_js_are_extracted_as_shared_assets() {
     let css = std::fs::read_to_string(root.join("build/assets").join(css_name)).expect("读得动");
     assert!(css.contains(".custom { color: red; }"), "{css}");
 }
+
+/// 选项卡里的 `::css` / `::js` 在站点模式下只生成静态文件与占位符，
+/// 不请求任何接口 —— 产物仍然是一整套可以拷走的静态目录。
+#[test]
+fn deferred_tab_assets_build_as_static_files() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    std::fs::write(
+        root.join("pages/index.mdpp"),
+        "# 首页\n\n::tabs\n  [北岸]\n  ::css\n    .north-only { color: red; }\n  ::js\n    console.log(\"north\");\n  [南岸]\n  ::css\n    .south-only { color: blue; }\n",
+    )
+    .expect("写得下");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "build 失败：{}", stderr_of(&out));
+
+    let html = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(html.contains(r#"data-mdpp-group="tabs-1""#), "{html}");
+    assert!(html.contains(r#"data-mdpp-asset="css""#), "{html}");
+    assert!(html.contains(r#"data-mdpp-asset="js""#), "{html}");
+    assert!(html.contains(r#"data-mdpp-value="0""#), "{html}");
+    assert!(html.contains(r#"data-mdpp-value="1""#), "{html}");
+    assert!(html.contains(r#"data-mdpp-version="0.1.0""#), "{html}");
+    assert!(html.contains("data-mdpp-href=\"assets/mdpp-"), "{html}");
+    // 外链模式不把动态内容塞进页面
+    assert!(!html.contains(".north-only"), "{html}");
+    assert!(!html.contains(".south-only"), "{html}");
+
+    // 两份 CSS 与一份 JS 都真的写进了静态 assets/
+    let assets = root.join("build/assets");
+    let mut css = 0;
+    let mut js = 0;
+    for entry in std::fs::read_dir(&assets)
+        .expect("读得动")
+        .filter_map(Result::ok)
+    {
+        let path = entry.path();
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        if text.contains(".north-only") || text.contains(".south-only") {
+            css += 1;
+        }
+        if text.contains("console.log(\"north\")") {
+            js += 1;
+        }
+    }
+    assert_eq!(css, 2, "两份面板 CSS 都该落盘");
+    assert_eq!(js, 1, "面板脚本该落盘");
+}
+
+/// `render --full` 是单文件模式：动态资源也内联在 `<template>` 里，
+/// 不产生任何 `assets/` 依赖，双击就能打开。
+#[test]
+fn deferred_tab_assets_stay_inline_in_a_full_page() {
+    let dir = empty_dir();
+    std::fs::write(
+        dir.path().join("页.mdpp"),
+        "# 页\n\n::tabs\n  [一]\n  ::css\n    .only { color: red; }\n  ::js\n    console.log(\"one\");\n  [二]\n  ::js\n    console.log(\"two\");\n",
+    )
+    .expect("写得下");
+
+    let out = mdpp(dir.path(), &["render", "--full", "页.mdpp"]);
+    assert!(out.status.success(), "render 失败：{}", stderr_of(&out));
+    let html = stdout_of(&out);
+
+    assert!(html.contains("<!DOCTYPE html>"), "{html}");
+    assert!(html.contains(r#"data-mdpp-asset="css""#), "{html}");
+    assert!(html.contains(r#"data-mdpp-asset="js""#), "{html}");
+    assert!(html.contains(".only { color: red; }"), "{html}");
+    assert!(html.contains("console.log(\"one\");"), "{html}");
+    assert!(html.contains("console.log(\"two\");"), "{html}");
+    // 单文件：动态资源不能变成相对 assets/ 链接
+    assert!(!html.contains("data-mdpp-href="), "{html}");
+    // 运行时本身也在页面里
+    assert!(html.contains("mdppVariants"), "{html}");
+}

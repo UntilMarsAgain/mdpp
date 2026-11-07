@@ -269,7 +269,11 @@ pub fn document(page: &Page) -> String {
     let styles = join_blocks(styles, inline_blocks(page.extra_css, "style"));
 
     let scripts = match &page.assets {
-        Assets::Inline => format!("<script>\n{}\n</script>", close_tag(default_js(), "script")),
+        Assets::Inline => format!(
+            "<script data-mdpp-version=\"{}\" data-mdpp-mode=\"inline\" data-mdpp-runtime=\"mdpp\">\n{}\n</script>",
+            mdpp::VERSION,
+            close_tag(default_js(), "script")
+        ),
         Assets::Linked(prefix) => script_tag(prefix, SCRIPT_FILE),
     };
     // mermaid / math / highlight.js 前端脚本：页面里若用了对应的东西，
@@ -278,13 +282,25 @@ pub fn document(page: &Page) -> String {
     let mut diagram_scripts = String::new();
     if page.external_script == ExternalScript::Cdn {
         if page.body.contains("class=\"mermaid\"") {
-            diagram_scripts.push_str(&format!("<script src=\"{}\"></script>\n", MERMAID_CDN));
+            diagram_scripts.push_str(&format!(
+                "<script src=\"{}\" data-mdpp-version=\"{}\" data-mdpp-mode=\"cdn\" data-mdpp-runtime=\"mermaid\"></script>\n",
+                MERMAID_CDN,
+                mdpp::VERSION
+            ));
         }
         if math_on {
-            diagram_scripts.push_str(&format!("<script src=\"{}\"></script>\n", KATEX_CDN));
+            diagram_scripts.push_str(&format!(
+                "<script src=\"{}\" data-mdpp-version=\"{}\" data-mdpp-mode=\"cdn\" data-mdpp-runtime=\"katex\"></script>\n",
+                KATEX_CDN,
+                mdpp::VERSION
+            ));
         }
         if highlight_on {
-            diagram_scripts.push_str(&format!("<script src=\"{}\"></script>\n", HLJS_CDN));
+            diagram_scripts.push_str(&format!(
+                "<script src=\"{}\" data-mdpp-version=\"{}\" data-mdpp-mode=\"cdn\" data-mdpp-runtime=\"highlight\"></script>\n",
+                HLJS_CDN,
+                mdpp::VERSION
+            ));
         }
     }
     let scripts = join_blocks(scripts, vec![diagram_scripts]);

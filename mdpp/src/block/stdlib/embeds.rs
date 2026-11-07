@@ -11,9 +11,9 @@
 //!
 //! 这一组都不碰 `node.children`：块正文走 `block.body`（原文）。
 
-use super::super::dispatch::{current_theme_slot, render_problem};
+use super::super::dispatch::render_problem;
 use super::super::fill;
-use crate::assets::{self, AssetKind, Emission};
+use crate::assets::{AssetKind, AssetPolicy, AssetUse, use_asset, use_asset_with};
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
 
@@ -28,8 +28,9 @@ use markdown_it::{Node, Renderer};
 /// 单页模式下同一份脚本按内容哈希去重后内联；站点模式下输出 `<script src="…">`，
 /// 内容随 [`crate::Rendered::assets`] 返回交给调用方写盘。
 ///
-/// 在 `::theme` 内部时，不直接写 `<script>`，而是输出带 `data-theme` 的
-/// `.theme-asset` 占位容器，由页面脚本按当前主题选择性注入。
+/// 在变体作用域里（`::theme` / `::tabs` / 自定义组）时，输出通用惰性占位符，
+/// 由页面脚本在选项激活时挂载。所有脚本都带 `data-mdpp-version` 与
+/// `data-mdpp-mode`，`once` 参数可以把策略标成“只执行一次”。
 pub(super) fn render_js(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     let source = match fill::source_of(block) {
         Ok(s) => s,
@@ -39,39 +40,13 @@ pub(super) fn render_js(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
         }
     };
     let filled = fill::substitute(&source, block, &block.body);
-
-    // 在 ::theme 内部：输出占位容器，等页面脚本按主题注入
-    if let Some(slot) = current_theme_slot() {
-        fmt.cr();
-        fmt.open(
-            "div",
-            &[
-                ("class", "theme-asset theme-js".to_string()),
-                ("data-theme", slot.to_string()),
-            ],
-        );
-        fmt.text_raw(&fill::escape_script_end(&filled));
-        fmt.close("div");
-        fmt.cr();
-        return;
-    }
-
+    let pol = if fill::flag(block, "once") {
+        AssetPolicy::Once
+    } else {
+        AssetPolicy::EveryActivation
+    };
     let escaped = fill::escape_script_end(&filled);
-    match assets::emit(AssetKind::Js, escaped) {
-        Emission::Inline(content) => {
-            fmt.cr();
-            fmt.open("script", &[("class", "mdpp-js".to_string())]);
-            fmt.text_raw(&content);
-            fmt.close("script");
-            fmt.cr();
-        }
-        Emission::Linked(url) => {
-            fmt.cr();
-            fmt.text_raw(&format!("<script src=\"{}\"></script>", escape_attr(&url)));
-            fmt.cr();
-        }
-        Emission::Duplicate => {}
-    }
+    write_script(fmt, use_asset_with(AssetKind::Js, escaped, pol));
 }
 
 /// `::mermaid` —— 画一张图（[mermaid](https://mermaid.js.org) 的语法）。
@@ -181,8 +156,8 @@ pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 /// 单页模式下同一份 CSS 按内容哈希去重后内联；站点模式下输出 `<link>`，
 /// 内容随 [`crate::Rendered::assets`] 返回交给调用方写盘。
 ///
-/// 在 `::theme` 内部时，不直接写 `<style>`，而是输出带 `data-theme` 的
-/// `.theme-asset` 占位容器，由页面脚本按当前主题选择性注入。
+/// 在变体作用域里（`::theme` / `::tabs` / 自定义组）时，输出通用惰性占位符，
+/// 由页面脚本在选项激活时挂载。
 pub(super) fn render_css(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     let source = match fill::source_of(block) {
         Ok(s) => s,
@@ -194,41 +169,7 @@ pub(super) fn render_css(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     let css = fill::sanitize_css(&fill::substitute(&source, block, &block.body));
     // 收进正文：不然一条 `* { }` 就能把整个页面改掉
     let css = fill::scope_css(&css);
-
-    // 在 ::theme 内部：输出占位容器，等页面脚本按主题注入
-    if let Some(slot) = current_theme_slot() {
-        fmt.cr();
-        fmt.open(
-            "div",
-            &[
-                ("class", "theme-asset theme-css".to_string()),
-                ("data-theme", slot.to_string()),
-            ],
-        );
-        fmt.text_raw(&css);
-        fmt.close("div");
-        fmt.cr();
-        return;
-    }
-
-    match assets::emit(AssetKind::Css, css) {
-        Emission::Inline(content) => {
-            fmt.cr();
-            fmt.open("style", &[]);
-            fmt.text_raw(&content);
-            fmt.close("style");
-            fmt.cr();
-        }
-        Emission::Linked(url) => {
-            fmt.cr();
-            fmt.text_raw(&format!(
-                "<link rel=\"stylesheet\" href=\"{}\">",
-                escape_attr(&url)
-            ));
-            fmt.cr();
-        }
-        Emission::Duplicate => {}
-    }
+    write_css(fmt, use_asset(AssetKind::Css, css));
 }
 
 /// `::html` —— 把内容当**原始 HTML** 注入。
@@ -239,9 +180,8 @@ pub(super) fn render_css(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 /// 单页模式下，写了 `js` 的块里那些脚本按内容哈希去重后内联；站点模式下它们被
 /// 提取成资源、替换为 `<script src="…">`，内容随 [`crate::Rendered::assets`] 返回。
 ///
-/// 在 `::theme` 内部且写了 `js` 时，脚本内容会被放进带 `data-theme` 的
-/// `.theme-asset` 占位容器，由页面脚本按当前主题选择性注入；其余 HTML
-/// 正常输出，靠 CSS hidden 控制显隐。
+/// 在变体作用域里（`::theme` / `::tabs` / 自定义组），脚本会变成延迟资源，
+/// 由页面脚本在选项激活时挂载；其余 HTML 正常输出，显隐由外层容器控制。
 pub(super) fn render_html(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     let source = match fill::source_of(block) {
         Ok(s) => s,
@@ -252,51 +192,17 @@ pub(super) fn render_html(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     };
     let filled = fill::substitute(&source, block, &block.body);
 
-    // 在 ::theme 内部且显式写了 js：脚本内容走占位容器，其余 HTML 正常输出
-    if current_theme_slot().is_some() && fill::allows_js(block) {
-        let js_content = extract_script_contents(&filled);
-        if !js_content.is_empty() {
-            let slot = current_theme_slot().unwrap();
-            fmt.cr();
-            fmt.open(
-                "div",
-                &[
-                    ("class", "theme-asset theme-js".to_string()),
-                    ("data-theme", slot.to_string()),
-                ],
-            );
-            fmt.text_raw(&fill::escape_script_end(&js_content));
-            fmt.close("div");
-            fmt.cr();
-        }
-        let html_without_scripts = remove_script_tags(&filled);
-        if !html_without_scripts.is_empty() {
-            fmt.text_raw(&html_without_scripts);
-        }
-        fmt.cr();
-        return;
-    }
-
     // 写了 js：脚本提取成资源，其余 HTML 正常输出
     if fill::allows_js(block) {
         let js_content = extract_script_contents(&filled);
         if !js_content.is_empty() {
             let escaped = fill::escape_script_end(&js_content);
-            match assets::emit(AssetKind::Js, escaped) {
-                Emission::Inline(content) => {
-                    fmt.cr();
-                    fmt.open("script", &[("class", "mdpp-js".to_string())]);
-                    fmt.text_raw(&content);
-                    fmt.close("script");
-                    fmt.cr();
-                }
-                Emission::Linked(url) => {
-                    fmt.cr();
-                    fmt.text_raw(&format!("<script src=\"{}\"></script>", escape_attr(&url)));
-                    fmt.cr();
-                }
-                Emission::Duplicate => {}
-            }
+            let pol = if fill::flag(block, "once") {
+                AssetPolicy::Once
+            } else {
+                AssetPolicy::EveryActivation
+            };
+            write_script(fmt, use_asset_with(AssetKind::Js, escaped, pol));
         }
         let html_without_scripts = remove_script_tags(&filled);
         if !html_without_scripts.is_empty() {
@@ -310,6 +216,72 @@ pub(super) fn render_html(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     fmt.cr();
     fmt.text_raw(&html);
     fmt.cr();
+}
+
+/// 把一份 JS 资源落成页面里的标签。
+///
+/// 所有脚本都带 `data-mdpp-version`，让页面脚本/诊断能知道这是哪一版生成的；
+/// 延迟资源由 [`AssetUse::Deferred`] 写成 `<template>`，等前端激活。
+fn write_script(fmt: &mut dyn Renderer, use_: AssetUse) {
+    match use_ {
+        AssetUse::Inline(content) => {
+            fmt.cr();
+            fmt.open(
+                "script",
+                &[
+                    ("class", "mdpp-js".to_string()),
+                    ("data-mdpp-version", crate::VERSION.to_string()),
+                    ("data-mdpp-mode", "inline".to_string()),
+                    ("data-mdpp-runtime", "asset".to_string()),
+                ],
+            );
+            fmt.text_raw(&content);
+            fmt.close("script");
+            fmt.cr();
+        }
+        AssetUse::Linked(url) => {
+            fmt.cr();
+            fmt.text_raw(&format!(
+                "<script src=\"{}\" class=\"mdpp-js\" data-mdpp-version=\"{}\" data-mdpp-mode=\"linked\" data-mdpp-runtime=\"asset\"></script>",
+                escape_attr(&url),
+                escape_attr(crate::VERSION)
+            ));
+            fmt.cr();
+        }
+        AssetUse::Deferred(asset) => {
+            fmt.cr();
+            fmt.text_raw(&asset.html());
+            fmt.cr();
+        }
+        AssetUse::Duplicate => {}
+    }
+}
+
+/// 把一份 CSS 资源落成页面里的标签。
+fn write_css(fmt: &mut dyn Renderer, use_: AssetUse) {
+    match use_ {
+        AssetUse::Inline(content) => {
+            fmt.cr();
+            fmt.open("style", &[]);
+            fmt.text_raw(&content);
+            fmt.close("style");
+            fmt.cr();
+        }
+        AssetUse::Linked(url) => {
+            fmt.cr();
+            fmt.text_raw(&format!(
+                "<link rel=\"stylesheet\" href=\"{}\">",
+                escape_attr(&url)
+            ));
+            fmt.cr();
+        }
+        AssetUse::Deferred(asset) => {
+            fmt.cr();
+            fmt.text_raw(&asset.html());
+            fmt.cr();
+        }
+        AssetUse::Duplicate => {}
+    }
 }
 
 /// 进 HTML 属性值的转义。链接是我们自己拼的（前缀 + 哈希文件名），
@@ -446,6 +418,18 @@ mod tests {
         assert_eq!(html.matches("<style>").count(), 1, "{html}");
     }
 
+    /// 所有由本库生成的脚本都带生成器版本与挂载方式
+    #[test]
+    fn scripts_carry_generator_environment() {
+        let html = render("::js\n  console.log(1)\n");
+        assert!(html.contains(r#"data-mdpp-version="0.1.0""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-mode="inline""#), "{html}");
+
+        let html = render("::html js\n  <script>alert(1)</script>\n");
+        assert!(html.contains(r#"data-mdpp-version="0.1.0""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-mode="inline""#), "{html}");
+    }
+
     /// 单页模式：重复的 `::js` 只内联一次
     #[test]
     fn duplicate_js_is_inlined_once() {
@@ -479,6 +463,11 @@ mod tests {
         );
         assert!(
             rendered.html.contains("<script src=\"assets/mdpp-"),
+            "{}",
+            rendered.html
+        );
+        assert!(
+            rendered.html.contains("data-mdpp-version=\"0.1.0\""),
             "{}",
             rendered.html
         );

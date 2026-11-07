@@ -168,7 +168,8 @@ impl Mdpp {
             // 解析阶段不收集资源；只有渲染才会碰到 ::css / ::js
             assets: None,
             nested: None,
-            theme_slot: None,
+            variant: None,
+            variant_seq: crate::variants::sequence(),
             depth: 0,
         };
         let _guard = crate::state::enter(state);

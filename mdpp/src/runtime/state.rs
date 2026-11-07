@@ -1,7 +1,7 @@
 //! 一次渲染的**全部**跨切面状态，装在一个槽里。
 //!
-//! 之前是五份独立的线程局部：上下文、注册表、资源收集器、嵌套渲染能力、
-//! `::theme` 当前节。它们必须在同一时刻装上、同一时刻还原，分开之后很容易
+//! 之前是几份独立的线程局部：上下文、注册表、资源收集器、嵌套渲染能力、
+//! 当前变体作用域。它们必须在同一时刻装上、同一时刻还原，分开之后很容易
 //! 出现「上下文装了、注册表还是上一趟的」这类半截状态。
 //!
 //! 现在只有一份 [`RenderState`]：进入时存下外层（可能没有），退出时把内层资源
@@ -11,16 +11,17 @@
 
 use std::cell::RefCell;
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 
 use crate::assets::Sink;
 use crate::context::RenderContext;
 use crate::registry::BlockRegistry;
+use crate::variants::VariantScope;
 
 /// 「在渲染途中再渲染一段 markdown」的能力。
 pub(crate) type Nested = Box<dyn Fn(&str) -> String>;
 
 /// 一趟渲染的环境。
-#[derive(Default)]
 pub(crate) struct RenderState {
     /// 链接解析器与模板页来源
     pub(crate) context: Option<RenderContext>,
@@ -30,10 +31,26 @@ pub(crate) struct RenderState {
     pub(crate) assets: Option<Sink>,
     /// 嵌套渲染入口；只有 `render_parts` 装得上
     pub(crate) nested: Option<Nested>,
-    /// 当前 `::theme` 节
-    pub(crate) theme_slot: Option<String>,
+    /// 当前变体组作用域（`::tabs` / `::theme` / 自定义组）
+    pub(crate) variant: Option<VariantScope>,
+    /// 页内变体组 ID 计数器。嵌套渲染共享同一份。
+    pub(crate) variant_seq: Arc<AtomicUsize>,
     /// 模板展开层数
     pub(crate) depth: usize,
+}
+
+impl Default for RenderState {
+    fn default() -> Self {
+        RenderState {
+            context: None,
+            registry: None,
+            assets: None,
+            nested: None,
+            variant: None,
+            variant_seq: crate::variants::sequence(),
+            depth: 0,
+        }
+    }
 }
 
 thread_local! {
