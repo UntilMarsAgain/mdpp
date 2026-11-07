@@ -42,6 +42,13 @@ pub fn run(options: &Serve) -> Result<(), String> {
     let listener = TcpListener::bind((options.host.as_str(), options.port))
         .map_err(|error| format!("{}:{} 上起不来：{error}", options.host, options.port))?;
     let address = http::address_of(&listener);
+    if !matches!(options.host.as_str(), "127.0.0.1" | "localhost" | "::1") {
+        eprintln!(
+            "警告：serve 是本地预览服务器，没有认证与访问控制；\
+             绑在 {} 上会让同一网络里的人读到整个站点",
+            options.host
+        );
+    }
 
     // 缓存目录：每一遍出在**自己的子目录**里（`第 N 遍`），出齐了才把指针挪过去。
     // 于是「清空产物目录」删的永远是没人读的那个 —— 改到一半刷新也不会撞见半截的

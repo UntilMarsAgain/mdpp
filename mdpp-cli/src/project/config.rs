@@ -315,6 +315,15 @@ impl Config {
                 }
             }
         }
+        // 目录页的键也会变成产物路径；在这里先说，不要等到 build 到一半
+        if let Some(toc) = self
+            .toc
+            .as_deref()
+            .map(str::trim)
+            .filter(|toc| !toc.is_empty())
+        {
+            crate::project::site::check_key(toc)?;
+        }
         Ok(())
     }
 }

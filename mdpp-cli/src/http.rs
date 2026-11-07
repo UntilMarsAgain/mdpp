@@ -67,6 +67,10 @@ impl Root {
 /// 那条长连接。页面脚本连的是它，服务器靠它通知「重出好了」
 pub const EVENTS_PATH: &str = "/__mdpp/events";
 
+/// 请求行最多这么长。预览服务器只接本机的一条 GET，正常浏览器远用不到 8 KiB；
+/// 设上限是为了不让一个不换行的连接把内存吃光。
+const MAX_REQUEST_LINE: usize = 8 * 1024;
+
 /// 塞进每个页面里的那一小段。**只在 `serve` 出的页面里有**
 ///
 /// 挂的是 `message` 而不是 `reload` —— 服务器发的是 `data: reload`，
@@ -104,6 +108,9 @@ pub fn serve(listener: TcpListener, root: Root, generation: Generation) {
         let root = root.clone();
         let generation = Arc::clone(&generation);
         std::thread::spawn(move || {
+            // 预览服务器只服务本机的一条请求：读/写都不该无限等下去
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(15)));
+            let _ = stream.set_write_timeout(Some(Duration::from_secs(15)));
             if let Err(error) = handle(stream, &root, &generation) {
                 debug!(%error, "这个连接断了");
             }
@@ -122,10 +129,35 @@ pub fn address_of(listener: &TcpListener) -> String {
 fn handle(mut stream: TcpStream, root: &Root, generation: &Generation) -> std::io::Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut request = String::new();
-    if reader.read_line(&mut request)? == 0 {
+    // 请求行有上限：不换行的连接不该把内存吃光
+    let read = reader
+        .by_ref()
+        .take((MAX_REQUEST_LINE + 1) as u64)
+        .read_line(&mut request)?;
+    if read == 0 {
         return Ok(());
     }
-    let target = request.split_whitespace().nth(1).unwrap_or("/");
+    if !request.ends_with('\n') || request.len() > MAX_REQUEST_LINE {
+        return respond(
+            &mut stream,
+            400,
+            "text/plain; charset=utf-8",
+            b"request line too long",
+            None,
+        );
+    }
+    let mut words = request.split_whitespace();
+    let method = words.next().unwrap_or("");
+    let target = words.next().unwrap_or("/");
+    if method != "GET" {
+        return respond(
+            &mut stream,
+            405,
+            "text/plain; charset=utf-8",
+            b"method not allowed",
+            None,
+        );
+    }
     let path = target.split('?').next().unwrap_or("/");
 
     if path == EVENTS_PATH {
@@ -159,29 +191,39 @@ enum Target {
 /// 最后那条不是多余的：从 `/x` 出发，`安装/` 会解析到 `/安装/`，而不是 `/x/安装/`，
 /// 于是页面上每个相对地址都指错一层。带斜杠的地址才是那个意思。
 fn resolve(dir: &Path, path: &str) -> Option<Target> {
+    // 先解析根目录的真实位置：`serve` 的根是临时目录里的一个子目录，而它
+    // 自己也可能是个符号链接。后面每个候选文件都要确认仍在它里面。
+    let root = std::fs::canonicalize(dir).ok()?;
     let decoded = url::decode_lossy(path);
     // 地址里不该有 `..`，而有的话它已经被解码还原了 —— 拼之前一律丢掉
     let relative: PathBuf = decoded
         .split('/')
         .filter(|part| !part.is_empty() && *part != "." && *part != "..")
         .collect();
-    let at = dir.join(&relative);
+    let at = root.join(&relative);
     if path.ends_with('/') {
         let index = at.join("index.html");
-        return index.is_file().then_some(Target::File(index));
+        return confined(&root, &index).map(Target::File);
     }
     if at.is_file() {
-        return Some(Target::File(at));
+        return confined(&root, &at).map(Target::File);
     }
     // 带斜杠的那个地址先到 —— 它才是页面该有的样子
     let index = at.join("index.html");
-    if index.is_file() {
+    if confined(&root, &index).is_some() {
         return Some(Target::Directory(format!(
             "{}/",
             url::encode_path(&decoded)
         )));
     }
     None
+}
+
+/// 只在 `root` 里面取文件：符号链接指向外面时按「没有」处理，
+/// 预览服务器不该变成一台任意文件读取器。
+fn confined(root: &Path, path: &Path) -> Option<PathBuf> {
+    let real = std::fs::canonicalize(path).ok()?;
+    real.starts_with(root).then_some(real)
 }
 
 /// 换个地址去。301 而不是 303：地址确实**永久**改写成带斜杠那个了
@@ -309,11 +351,18 @@ fn events_over_loopback(generation: &Generation) -> (String, Vec<String>) {
         let _ = events(&mut writer, &counter);
     });
 
-    // 等心跳到达（= 服务器收好 `seen` 了），再喊「重出好了」
+    // 等心跳到达（= 服务器收好 `seen` 了），再喊「重出好了」。
+    // 只喊一次会跟服务器的 300ms 轮询赛跑：如果它刚好看完计数就轮到客户端
+    // 收到心跳，这一次就会漏过去。这里持续喊到客户端读到事件为止 ——
+    // 重复的 `data: reload` 对断言没有影响（每一条都该叫 message）。
     beat_seen
         .recv_timeout(Duration::from_secs(5))
         .expect("该收到心跳 —— 服务器连上了吗");
-    bump(generation);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while std::time::Instant::now() < deadline && !client.is_finished() {
+        bump(generation);
+        std::thread::sleep(Duration::from_millis(50));
+    }
 
     let raw = client.join().expect("读得出来");
     // 断开对端：`events` 的下一次 `write_all` 会拿到错误，它就从那个死循环回来了
@@ -337,10 +386,12 @@ fn events_over_loopback(generation: &Generation) -> (String, Vec<String>) {
 }
 
 fn send_file(stream: &mut TcpStream, file: &Path) -> std::io::Result<()> {
-    let mut body = Vec::new();
-    std::fs::File::open(file)?.read_to_end(&mut body)?;
-    // 预览时一律不过缓存 —— 而 `mdpp serve` 的产物本来就在临时目录里
-    respond(stream, 200, content_type(file), &body, None)
+    // 按块拷，不把整个文件读进内存 —— 预览目录里可能有视频
+    let mut body = std::fs::File::open(file)?;
+    let length = body.metadata()?.len();
+    write_head(stream, 200, content_type(file), length, None)?;
+    std::io::copy(&mut body, stream)?;
+    stream.flush()
 }
 
 fn not_found(stream: &mut TcpStream) -> std::io::Result<()> {
@@ -363,23 +414,40 @@ fn respond(
     body: &[u8],
     location: Option<&str>,
 ) -> std::io::Result<()> {
+    write_head(stream, status, content_type, body.len() as u64, location)?;
+    stream.write_all(body)?;
+    stream.flush()
+}
+
+/// 写响应头。文件那一路先写头、再按块拷正文，所以长度要单独给。
+fn write_head(
+    stream: &mut TcpStream,
+    status: u16,
+    content_type: &str,
+    length: u64,
+    location: Option<&str>,
+) -> std::io::Result<()> {
     let reason = match status {
         200 => "OK",
         301 => "Moved Permanently",
+        400 => "Bad Request",
         404 => "Not Found",
+        405 => "Method Not Allowed",
         _ => "Unknown",
     };
-    let mut head = format!("HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\n");
+    let mut head = format!(
+        "HTTP/1.1 {status} {reason}\r\n\
+         Content-Type: {content_type}\r\n\
+         X-Content-Type-Options: nosniff\r\n"
+    );
     if let Some(location) = location {
         head.push_str(&format!("Location: {location}\r\n"));
     }
     head.push_str("Cache-Control: no-store\r\nConnection: close\r\n");
     // Content-Length 照正文的实际长度写 —— 重定向那一路（301）递的是空正文，
     // 所以它出去的是 0；文件与 404 有正文，长度就是正文的
-    head.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
-    stream.write_all(head.as_bytes())?;
-    stream.write_all(body)?;
-    stream.flush()
+    head.push_str(&format!("Content-Length: {length}\r\n\r\n"));
+    stream.write_all(head.as_bytes())
 }
 
 /// 扩展名 → `Content-Type`。认不出来的给 `application/octet-stream`
