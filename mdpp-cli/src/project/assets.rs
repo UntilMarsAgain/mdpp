@@ -256,8 +256,14 @@ fn resolve(value: &str, context: &Context) -> Result<(PathBuf, PathBuf), Skip> {
     if is_page {
         return Err(Skip::NotOurs("那是另一个页面"));
     }
-    if !source.is_file() {
-        return Err(Skip::Missing(decoded.clone()));
+    // 符号链接不拷：链接指向哪里是链接自己的事，而资源扫描只该收
+    // `pages/` 里真实存在的文件。跟过去就可能把外面的东西带进产物。
+    match std::fs::symlink_metadata(&source) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            return Err(Skip::Missing(format!("{decoded}（符号链接不拷）")));
+        }
+        Ok(meta) if meta.is_file() => {}
+        _ => return Err(Skip::Missing(decoded.clone())),
     }
     let target = context.assets_dir.join(relative);
     Ok((source, target))
@@ -411,6 +417,29 @@ mod tests {
         assert_eq!(scan.html, html, "不该动的动了");
         assert!(scan.wanted.is_empty(), "{:?}", scan.wanted);
         assert!(scan.missing.is_empty(), "{:?}", scan.missing);
+    }
+
+    /// 符号链接不拷：链接指向哪里是链接自己的事，资源扫描只收真实文件
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_asset_is_not_copied() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let pages = dir.path().join("pages");
+        let assets = dir.path().join("assets");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&pages).expect("建得出");
+        std::fs::create_dir_all(&outside).expect("建得出");
+        std::fs::write(outside.join("secret.png"), "不该被拷走").expect("写得下");
+        std::os::unix::fs::symlink(outside.join("secret.png"), pages.join("图.png"))
+            .expect("建得出符号链接");
+
+        let scan = scan(r#"<img src="图.png">"#, &context(&pages, &pages, &assets));
+        assert!(scan.wanted.is_empty(), "{:?}", scan.wanted);
+        assert!(
+            scan.missing.iter().any(|one| one.contains("符号链接")),
+            "{:?}",
+            scan.missing
+        );
     }
 
     /// 指了但文件不在那儿 —— 报告里要有一笔，作者才看得出是笔误

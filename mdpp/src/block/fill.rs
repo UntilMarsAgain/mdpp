@@ -32,7 +32,7 @@ pub fn substitute(text: &str, block: &Block, body: &str) -> String {
 /// 让作者看见自己写错了，比悄悄换成空串好。
 ///
 /// 值是**多行**的时候，除第一行外的每一行都补上占位符所在行的行首缩进
-/// （见 [`reindent`]）—— 模板里写的是
+/// （见 `reindent`）—— 模板里写的是
 ///
 /// ```text
 /// ::code lang=mdpp

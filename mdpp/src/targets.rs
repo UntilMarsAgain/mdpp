@@ -16,7 +16,7 @@ use crate::raw::raw_zones;
 ///
 /// 原始区（围栏、缩进代码、HTML 块、行内代码）由 [`raw_zones`] 给出真实字节
 /// 区间：那是一次探针解析的 `srcmap`，块引用与列表前缀也算在里面。区间内一个
-/// 字都不改，区间外才走 [`encode_line_targets`]。
+/// 字都不改，区间外才走 `encode_line_targets`。
 pub fn encode_target_spaces(markdown: &str) -> String {
     // 绝大多数正文没有链接/图片目标：省掉一次探针解析
     if !markdown.contains("](") {

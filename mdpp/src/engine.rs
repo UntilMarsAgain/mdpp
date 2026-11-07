@@ -9,7 +9,7 @@
 //!
 //! **`Mdpp` 是 `Send + Sync`**：解析器与注册表都在 [`Arc`] 里，构建完之后只读；
 //! 渲染状态（链接解析器、模板页、资源收集器那一趟）是每线程一份，见
-//! [`crate::state`]。一个 `Mdpp` 可以被多个线程共享，每页各渲各的。
+//! `state` 模块。一个 `Mdpp` 可以被多个线程共享，每页各渲各的。
 //!
 //! 这不是靠 `unsafe impl` 换来的：markdown-it 的 `MarkdownIt`、本库的
 //! `BlockRegistry` 与 `RenderContext` 都满足 `Send + Sync`，编译器会替我们验。
