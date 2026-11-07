@@ -71,7 +71,10 @@
 ### 工程
 
 - 渲染状态收拢成 `runtime/env.rs` 的 `RenderEnv`：上下文、注册表、资源收集器、
-  变体作用域与层数从散落的 `state::with` 变成一份明确的环境；其它模块只读这一份。
+  变体作用域与层数从散落的线程局部读写变成一份明确的环境；其它模块只读这一份。
+- 第二个依赖环已断开：`RenderContext` 移到纯类型模块 `runtime/render_context.rs`，
+  注册表作用域在 `block/registry/scope.rs`，资源类型在 `runtime/asset.rs`；
+  这些纯类型不再回头依赖 `RenderEnv`。只剩有意的 `engine ↔ block` 行为环。
 - `wikilink` 使用自己的 `WikiLink` 节点，解析阶段只记目标，渲染时再问
   `LinkResolver`；`parse` 不再在解析时查询链接上下文。
 - HTML 文本/属性转义改用 `html-escape`，删掉库与命令行里各自手写的实体表。
