@@ -727,7 +727,7 @@ fn templates_of(project: &Project) -> Result<Option<mdpp::block::template::Templ
     }
 }
 
-/// `--clean`：清空 `site_dir` 再出。
+/// `build` 的最终目录校验：整目录替换比 `--clean` 更不能删错地方。
 ///
 /// **`site_dir` 是配置里的一行字**，打错一个字就可能让这条命令去删整个项目 ——
 /// 甚至去删项目外面的一整个目录。所以这里不是「检查一下」，而是：
@@ -738,7 +738,7 @@ fn templates_of(project: &Project) -> Result<Option<mdpp::block::template::Templ
 /// - 比较之前先做词法归一 + 已存在部分的符号链接解析；比较的是真路径，不是字面。
 ///
 /// `allow_outside` 只给 `serve` 用（它出到系统临时目录里的预览缓存）。命令行
-/// 上的 `build --clean` 永远拿不到这个开关。
+/// 上的 `build` 永远拿不到这个开关。
 fn check_clean(project: &Project, site_dir: &Path, allow_outside: bool) -> Result<(), String> {
     let site_dir = real_path(site_dir);
     let root = real_path(&project.root);
@@ -749,7 +749,7 @@ fn check_clean(project: &Project, site_dir: &Path, allow_outside: bool) -> Resul
         if site_dir == root || !site_dir.starts_with(&root) {
             return Err(format!(
                 "site_dir（{}）必须在项目目录（{}）里面，且不能就是项目根 —— \
-                 `--clean` 会先清空它",
+                 `build` 会整目录替换它",
                 shown(&site_dir),
                 shown(&root)
             ));
@@ -757,7 +757,7 @@ fn check_clean(project: &Project, site_dir: &Path, allow_outside: bool) -> Resul
         for (what, keep) in [("正文", &pages), ("模板", &templates)] {
             if site_dir == *keep || site_dir.starts_with(keep) {
                 return Err(format!(
-                    "site_dir（{}）不能是{what}目录或它的子目录 —— 清空它会连内容一起删掉",
+                    "site_dir（{}）不能是{what}目录或它的子目录 —— 替换它会连内容一起删掉",
                     shown(&site_dir)
                 ));
             }
@@ -767,25 +767,25 @@ fn check_clean(project: &Project, site_dir: &Path, allow_outside: bool) -> Resul
     // 这几种位置，就算调用方允许「项目外」也不该清。
     if site_dir.parent().is_none() {
         return Err(format!(
-            "site_dir（{}）是根目录，拒绝清空",
+            "site_dir（{}）是根目录，拒绝替换",
             shown(&site_dir)
         ));
     }
     for (what, keep) in [("项目根", &root), ("正文", &pages), ("模板", &templates)] {
         if keep.starts_with(&site_dir) {
             return Err(format!(
-                "site_dir（{}）是{what}目录的上一层 —— 清空它会连内容一起删掉",
+                "site_dir（{}）是{what}目录的上一层 —— 替换它会连内容一起删掉",
                 shown(&site_dir)
             ));
         }
     }
     if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
         if real_path(&home) == site_dir {
-            return Err("site_dir 指向家目录，拒绝清空".to_string());
+            return Err("site_dir 指向家目录，拒绝替换".to_string());
         }
     }
     if real_path(&std::env::temp_dir()) == site_dir {
-        return Err("site_dir 指向系统临时目录本身，拒绝清空".to_string());
+        return Err("site_dir 指向系统临时目录本身，拒绝替换".to_string());
     }
     Ok(())
 }
@@ -805,7 +805,7 @@ fn clean(project: &Project, site_dir: &Path, allow_outside: bool) -> Result<(), 
 ///
 /// `a/../b` 与 `b` 要比较成同一个东西；`build` 是指向别处的符号链接时，
 /// 也要按它真正指向的地方比较。不存在的尾部按字面接回去 —— 那正是
-/// `--clean` 要建出来的目录。
+/// `build` 要建出来的目录。
 fn real_path(path: &Path) -> PathBuf {
     let absolute = if path.is_absolute() {
         path.to_path_buf()
