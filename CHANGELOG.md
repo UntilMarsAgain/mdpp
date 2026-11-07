@@ -1,0 +1,47 @@
+# 变更记录
+
+## 0.1.0（未发布）
+
+这一版把 demo 形状收成了可部署的形状，公开 API 仍按 0.1 处理，版本号不变。
+
+### 安全与数据完整性
+
+- 页面键统一校验：拒绝 `.` / `..` / 反斜杠 / 控制字符 / Windows 保留名；页面扫描
+  不再跟随符号链接。`pages/a\..\..\x.mdpp` 这类文件名不能再把产物写到站点目录外。
+- `build_dir` 必须在项目目录之内；`--clean` 在删除任何东西之前先验路径，不能清到
+  项目外、项目根、正文/模板目录或它们的上一层。
+- `::html` 的 `<markdown>` 槽位不再受 `raw_html` 影响，始终再净化一遍。
+- `srcset` 逐个候选地址校验协议；`target="_blank"` 自动补
+  `rel="noopener noreferrer"`；媒体 `src` 的协议判定会先去掉空白与控制字符。
+- 单份输入上限 32 MiB；预览服务器限制请求行长度、加读写超时、不跟随符号链接。
+
+### 正确性
+
+- 链接目标空格编码与 `[标签]` 分节改成**探针解析 + `srcmap`**：块引用/列表里
+  的围栏不再被误改，列表项里紧跟列表记号开的围栏也不会吞掉下一个标签。
+- 嵌套块（`::note` 等）里的链接目标同样会编码空格。
+- 标题 `id` 按整棵树唯一化：同页同名标题得到 `安装` / `安装-1`；删除
+  `DropDuplicateHeadingIds` 补丁。
+
+### 构建与并发
+
+- `build` 改为整目录替换：先出到临时目录，全部成功才换名；失败时旧站点不动。
+- `--jobs N` 并行出页，产物与单线程逐字节一致。
+- `Mdpp` 改为 `Send + Sync`，一个解析器可被多线程共享。
+- 渲染状态收拢成一份 `RenderState`，嵌套渲染的层数与主题槽会正确继承。
+- 资源去重从线性扫描改成哈希集合。
+
+### 扩展 API
+
+- `Mdpp::parse` / `parse_with` 与 `render_node` / `render_node_with_assets`：可以把
+  文档解析成 markdown-it AST，改完再渲染。
+- `BlockSpec::with_mode_fn`：同一个自定义块可以按实例选择
+  `Markdown` / `Sections` / `Raw`。
+- `mdpp::author`：写自定义块/模板时用的稳定工具面（填空、分节、净化、诊断框）。
+- `use_asset` / `AssetUse`：自定义块可以登记自己的 CSS / JS。
+- `mdpp/examples/bench.rs`：单线程与多线程渲染的轻量基准。
+
+### 工程
+
+- `cargo fmt`、`cargo clippy -D warnings` 全绿；两个 crate 都 `forbid(unsafe_code)`。
+- README 的配置名与块数量修正，补充 `--jobs`、原子构建、AST 与扩展 API 说明。

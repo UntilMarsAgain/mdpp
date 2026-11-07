@@ -10,6 +10,8 @@ edition = "2024"
 rust-version = "1.85"
 license = "MIT"
 description = "把 Markdown++ 渲染成 HTML 的命令行工具"
+repository = "https://github.com/UntilMarsAgain/mdpp"
+homepage = "https://github.com/UntilMarsAgain/mdpp"
 keywords = ["markdown", "html", "cmark", "cli"]
 categories = ["command-line-utilities", "text-processing"]
 # 不发布：这个包只有跟着库走才有意义，它 `path` 依赖库、同时声明了 `version`，

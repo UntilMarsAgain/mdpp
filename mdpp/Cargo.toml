@@ -11,6 +11,8 @@ edition = "2024"
 rust-version = "1.85"
 license = "MIT"
 description = "Markdown++ —— markdown-it 之上的可扩展块级语法与链接解析库"
+repository = "https://github.com/UntilMarsAgain/mdpp"
+homepage = "https://github.com/UntilMarsAgain/mdpp"
 keywords = ["markdown", "html", "markdown-it", "parser"]
 categories = ["text-processing", "template-engine"]
 
