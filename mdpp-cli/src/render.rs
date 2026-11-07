@@ -8,7 +8,7 @@ use crate::options::Render;
 use crate::page;
 use crate::page::ExternalScript;
 
-use std::io::{Read, Write};
+use std::io::Write;
 
 use mdpp::{Mdpp, RenderContext};
 use tracing::{debug, info};
@@ -134,17 +134,12 @@ fn build_context(options: &Render) -> Result<RenderContext, String> {
 /// 本来就要整篇拼成一个文档。
 fn read_sources(options: &Render) -> Result<Vec<(String, String)>, String> {
     if options.inputs.is_empty() {
-        let mut text = String::new();
-        std::io::stdin()
-            .read_to_string(&mut text)
-            .map_err(|error| format!("读标准输入失败：{error}"))?;
-        return Ok(vec![(options.title_or(), text)]);
+        return Ok(vec![(options.title_or(), crate::limits::read_stdin()?)]);
     }
 
     let mut sources = Vec::with_capacity(options.inputs.len());
     for path in &options.inputs {
-        let text = std::fs::read_to_string(path)
-            .map_err(|error| format!("读不了 {}：{error}", path.display()))?;
+        let text = crate::limits::read_text(path)?;
         let name = path
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
@@ -158,10 +153,7 @@ fn read_sources(options: &Render) -> Result<Vec<(String, String)>, String> {
 fn read_all(paths: &[std::path::PathBuf]) -> Result<Vec<String>, String> {
     paths
         .iter()
-        .map(|path| {
-            std::fs::read_to_string(path)
-                .map_err(|error| format!("读不了 {}：{error}", path.display()))
-        })
+        .map(|path| crate::limits::read_text(path))
         .collect()
 }
 
