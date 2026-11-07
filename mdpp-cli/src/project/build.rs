@@ -91,7 +91,9 @@ impl Built {
 
 pub fn run(options: &Build) -> Result<(), String> {
     let project = Project::open()?;
-    let site_dir = project.site_dir();
+    // 用真实路径做换名：`build/` 若是指向别处的符号链接，临时目录要放在同一个
+    // 文件系统上，`rename` 才是原子的。
+    let site_dir = real_path(&project.site_dir());
 
     // 先验最终目录：它要能安全地成为站点根。**验完不删** —— 这一版先出到
     // 同级的临时目录，全部成功了才换名；失败时旧站点一个字都不动。
@@ -494,7 +496,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
         copy_override(override_dir, &project.root, site_dir)?;
     }
 
-    let links: Vec<String> = missing
+    let mut links: Vec<String> = missing
         .lock()
         .map(|list| {
             list.iter()
@@ -502,6 +504,8 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
                 .collect()
         })
         .unwrap_or_default();
+    // 并行渲染时 `missing` 的入账顺序取决于线程；报告要可复现就按字符串排
+    links.sort();
     info!(
         pages = site.pages().len(),
         links = links.len(),
