@@ -75,11 +75,18 @@ impl Drop for Guard {
         let inner = take();
         if let Some(mut previous) = self.previous.take() {
             if let Some(inner) = inner {
-                if let (Some(inner_sink), Some(outer)) = (inner.assets, previous.assets.as_mut()) {
-                    for asset in inner_sink.assets {
-                        if outer.hashes.insert(asset.hash.clone()) {
-                            outer.assets.push(asset);
+                if let Some(inner_sink) = inner.assets {
+                    match previous.assets.as_mut() {
+                        Some(outer) => {
+                            for asset in inner_sink.assets {
+                                if outer.hashes.insert(asset.hash.clone()) {
+                                    outer.assets.push(asset);
+                                }
+                            }
                         }
+                        // 外层只是装了上下文/注册表（低层用法）：把资源收进来，
+                        // 不让内层那一趟的 ::css / ::js 凭空消失
+                        None => previous.assets = Some(inner_sink),
                     }
                 }
             }
