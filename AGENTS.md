@@ -34,6 +34,7 @@ stdout 只放产物，日志和错误走 stderr。CLI 参数测试在 `mdpp-cli/
 |---|---|
 | 库的公开 API | `mdpp/src/lib.rs` |
 | 解析与渲染 | `mdpp/src/runtime/engine/` |
+| 渲染环境与跨切面状态 | `mdpp/src/runtime/env.rs` |
 | 变体组与延迟资源 | `mdpp/src/runtime/variants.rs`、`runtime/assets.rs` |
 | 块语法、分发、内置块 | `mdpp/src/block/` |
 | 命令行子命令 | `mdpp-cli/src/cli/options/` |
