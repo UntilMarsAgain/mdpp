@@ -175,7 +175,13 @@ pub fn escape_script_end(code: &str) -> String {
 ///
 /// 白名单净化在那边；这里只保证「想要 HTML 的人不用知道它住在另一个文件」。
 pub fn sanitize_html(html: &str) -> String {
-    crate::block::html::sanitize(html, &crate::engine::render_nested)
+    // `<markdown>` 里的那一段也要净化。不能直接把它交给当前解析器：`raw_html`
+    // 打开时，嵌套 markdown 会把 `<script>` 原样透传，净化器就再也看不到它了。
+    // 这里把槽位输出**再净化一遍**，于是 `::html` 的「安全」不依赖于外层开关。
+    crate::block::html::sanitize(html, &|body| {
+        let rendered = crate::engine::render_nested(body);
+        sanitize_html(&rendered)
+    })
 }
 
 /// 收进正文时用的**范围前缀**（见 [`scope_css`]）。
@@ -550,5 +556,14 @@ mod tests {
             assert!(!allows_js(&item), "js={spelling:?} 不该算打开");
         }
         assert!(!allows_js(&block("x", &[], "")));
+    }
+
+    /// `::html` 的 `<markdown>` 槽位不能借 `raw_html` 绕过净化 ——
+    /// `-u` 是给正文作者开的，不该把「安全块」也一起打开。
+    #[test]
+    fn markdown_inside_html_stays_sanitized_even_with_raw_html() {
+        let mdpp = crate::engine::Mdpp::builder().raw_html(true).build();
+        let html = mdpp.render("::html\n  <markdown>\n  <script>alert(1)</script>\n  </markdown>\n");
+        assert!(!html.contains("<script"), "{html}");
     }
 }

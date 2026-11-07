@@ -136,10 +136,18 @@ fn checked_source(block: &Block, fmt: &mut dyn Renderer, missing: &str) -> Optio
         render_problem(block, fmt, &format!("缺少 src=…：{missing}"));
         return None;
     };
-    let lowered = source.to_lowercase();
+    let source = source.trim();
+    // 浏览器在解析地址时会去掉协议段里的空白与控制字符，所以
+    // `java\nscript:` 与 ` javascript:` 都会被它当成 `javascript:`。
+    // 这里按同样的规矩先把那一段收干净，再判前缀。
+    let probe: String = source
+        .to_lowercase()
+        .chars()
+        .filter(|ch| !ch.is_whitespace() && !ch.is_control())
+        .collect();
     if ["javascript:", "data:", "vbscript:"]
         .iter()
-        .any(|bad| lowered.starts_with(bad))
+        .any(|bad| probe.starts_with(bad))
     {
         render_problem(
             block,
