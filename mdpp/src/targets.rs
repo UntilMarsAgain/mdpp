@@ -18,6 +18,10 @@ use crate::raw::raw_zones;
 /// 区间：那是一次探针解析的 `srcmap`，块引用与列表前缀也算在里面。区间内一个
 /// 字都不改，区间外才走 [`encode_line_targets`]。
 pub fn encode_target_spaces(markdown: &str) -> String {
+    // 绝大多数正文没有链接/图片目标：省掉一次探针解析
+    if !markdown.contains("](") {
+        return markdown.to_string();
+    }
     let zones = raw_zones(markdown);
     let mut out = String::with_capacity(markdown.len());
     let mut cursor = 0usize;
