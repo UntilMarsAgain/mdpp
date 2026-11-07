@@ -11,8 +11,11 @@
 //! 两处共用一个状态机，是因为**各写一份判定的话，两套规则迟早会对不上** —— 而
 //! 「对不上」的表现是静悄悄的：代码里的一句 `[x]` 忽然变成了一个选项卡。
 //!
-//! 判定照 CommonMark 的两条：连续三个以上算一道围栏；**闭合的那道不短于开启的那道**，
-//! 短的那一行只是围栏里的内容。
+//! 现在 `targets` / `scanner` 以 [`raw_zones`] 为准：先用一个**独立的、不带 `::`
+//! 方言的** markdown-it 探针解析一遍，从 `srcmap` 取代码块、HTML 块与行内代码的
+//! 真实字节区间。这样块引用、列表、嵌套容器的前缀都由解析器自己处理，不再靠行首
+//! 字符猜。下面的 [`Fences`] / [`Raw`] 保留为**不依赖解析器**的低层工具，公开 API
+//! 与测试仍可用。
 //!
 //! ## HTML 块只认到「空行为止」
 //!
@@ -156,6 +159,72 @@ fn starts_html_block(line: &str) -> bool {
         rest[name_len..].chars().next(),
         None | Some(' ') | Some('\t') | Some('>') | Some('/')
     )
+}
+
+// ---------------------------------------------------------------- 探针解析
+
+use std::ops::Range;
+use std::sync::LazyLock;
+
+use markdown_it::plugins::cmark::block::code::CodeBlock;
+use markdown_it::plugins::cmark::block::fence::CodeFence;
+use markdown_it::plugins::cmark::inline::backticks::CodeInline;
+use markdown_it::plugins::html::html_block::HtmlBlock;
+use markdown_it::plugins::html::html_inline::HtmlInline;
+use markdown_it::{MarkdownIt, Node};
+
+/// 探针解析器：只装 CommonMark + HTML 块，**不装** `::` 方言。
+///
+/// 装 `::` 的话，探针自己会去展开模板页、再解析块内容，既慢又可能递归。
+/// 这里要的只是「这一行在不在代码/HTML 原始区里」，CommonMark 的判定就够了。
+fn probe() -> &'static MarkdownIt {
+    static PROBE: LazyLock<MarkdownIt> = LazyLock::new(|| {
+        let mut md = MarkdownIt::new();
+        markdown_it::plugins::cmark::add(&mut md);
+        markdown_it::plugins::html::add(&mut md);
+        md
+    });
+    &PROBE
+}
+
+/// 源码里**不能当 markdown 记号看**的字节区间：围栏/缩进代码、HTML 块、行内代码。
+///
+/// 区间来自一次真实解析的 `srcmap`，所以块引用/列表的前缀、嵌套层级都由
+/// markdown-it 自己算好；调用方只要按区间把源码切开，区间内原样搬走即可。
+pub fn raw_zones(source: &str) -> Vec<Range<usize>> {
+    let root = probe().parse(source);
+    let mut found = Vec::new();
+    collect_zones(&root, &mut found);
+    found.sort_by_key(|zone| zone.start);
+
+    let mut merged: Vec<Range<usize>> = Vec::new();
+    for zone in found {
+        match merged.last_mut() {
+            // srcmap 是块级的：相邻/重叠的区间合成一段，切分时少几次边界判断
+            Some(last) if zone.start <= last.end => last.end = last.end.max(zone.end),
+            _ => merged.push(zone),
+        }
+    }
+    merged
+}
+
+fn collect_zones(node: &Node, out: &mut Vec<Range<usize>>) {
+    let raw = node.is::<CodeBlock>()
+        || node.is::<CodeFence>()
+        || node.is::<HtmlBlock>()
+        || node.is::<HtmlInline>()
+        || node.is::<CodeInline>();
+    if raw {
+        if let Some(map) = node.srcmap {
+            let (start, end) = map.get_byte_offsets();
+            out.push(start..end);
+        }
+        // 原始区里不会再嵌套 markdown 节点；不再往下走，省掉一次遍历
+        return;
+    }
+    for child in &node.children {
+        collect_zones(child, out);
+    }
 }
 
 #[cfg(test)]

@@ -14,7 +14,7 @@ use markdown_it::parser::block::{BlockRule, BlockState};
 
 use crate::block::dispatch::BlockNode;
 use crate::block::{Section, expand};
-use crate::raw::Raw;
+use crate::raw::raw_zones;
 use crate::registry::{self as reg, Block, ContentMode};
 
 /// 块级规则：由 [`crate::block::add`] 挂到解析器上，排在段落规则之前。
@@ -101,7 +101,7 @@ impl BlockRule for BlockScanner {
             ContentMode::Sections => {
                 for (label, text) in split_sections(&source) {
                     let mut section = Node::new(Section { label });
-                    let mut parsed = state.md.parse(&text);
+                    let mut parsed = crate::engine::parse_markdown(state.md, &text);
                     section.children = std::mem::take(&mut parsed.children);
                     node.children.push(section);
                 }
@@ -117,7 +117,7 @@ impl BlockRule for BlockScanner {
                 // 只挡住症状，挡住之后内容就少了。
                 //
                 // `Node` 带 Drop，字段不能直接搬出来，所以用 `mem::take` 换走它的 children。
-                let mut parsed = state.md.parse(&source);
+                let mut parsed = crate::engine::parse_markdown(state.md, &source);
                 node.children = std::mem::take(&mut parsed.children);
             }
         }
@@ -166,29 +166,38 @@ fn rebuild_body(lines: &[(usize, &str)]) -> String {
 /// `- 甲` 紧接 `[读法二]` 这么连着写的，跟着 markdown 走会把第二个标签吃掉。
 /// 要在列表里放一个 `[x]`，**空一行再写**就行 —— 与块里嵌块那条规矩一样。
 fn split_sections(source: &str) -> Vec<(String, String)> {
+    let zones = raw_zones(source);
     let mut out: Vec<(String, String)> = Vec::new();
-    let mut raw = Raw::default();
-    for line in source.lines() {
-        if !raw.feed(line)
-            && let Some(label) = section_label(line)
-        {
+    let mut at = 0usize;
+    for line in source.split_inclusive('\n') {
+        let text = line.strip_suffix('\n').unwrap_or(line);
+        let text = text.strip_suffix('\r').unwrap_or(text);
+        // 这一行的起点落在原始区里：它是例子里的字，不是节的开始。
+        // 探针给的区间从围栏/HTML 块的第一个非空字符开始，所以行首的
+        // 块引用/列表前缀可能还在区间外面；只要这一行包含区间起点，就算原始区。
+        let in_raw = zones.iter().any(|zone| zone.start <= at && at < zone.end);
+        if !in_raw && let Some(label) = section_label(text) {
             out.push((label, String::new()));
+            at += line.len();
             continue;
         }
         if out.is_empty() {
             // 还没有任何标签：空白丢掉，有字就先开一节（空标签）
-            if line.trim().is_empty() {
+            if text.trim().is_empty() {
+                at += line.len();
                 continue;
             }
             out.push((String::new(), String::new()));
         }
         let section = out.last_mut().expect("上面保证过至少开了一节");
         // 节首的空行不留（那是标签与正文之间的空档）；节内的空行留着，正文要用它分段
-        if line.trim().is_empty() && section.1.trim().is_empty() {
+        if text.trim().is_empty() && section.1.trim().is_empty() {
+            at += line.len();
             continue;
         }
-        section.1.push_str(line);
+        section.1.push_str(text);
         section.1.push('\n');
+        at += line.len();
     }
     out
 }
@@ -338,6 +347,20 @@ mod tests {
             1,
             "只有一节：{html}"
         );
+    }
+
+    /// 列表项里**紧跟在列表记号后面**开的围栏：`- ```text` 这一行不是以围栏
+    /// 记号开头，旧的行首状态机会把它漏掉，然后把闭合那道当成开启，吞掉下一个标签。
+    #[test]
+    fn a_fence_opened_after_a_list_marker_does_not_swallow_the_next_label() {
+        let html = render("::tabs\n  [甲]\n  - ```text\n    例子\n    ```\n  [丙]\n  丙内容\n");
+        assert_eq!(
+            html.matches("class=\"tabs__tab").count(),
+            2,
+            "该有两节：{html}"
+        );
+        assert!(!html.contains("[丙]"), "不该把标签当正文：{html}");
+        assert!(html.contains("丙内容"), "{html}");
     }
 
     /// 波浪围栏同样要认 —— 只数反引号会漏掉它

@@ -10,21 +10,44 @@
 //! 认不出的写法原样留着（返回 `None`）：尖括号写法本来就对、跨行的目标不碰、带引号的
 //! 多半还挂着标题 —— 那几种交给标准解析器。
 
-use crate::raw::{FenceLine, Fences};
+use crate::raw::raw_zones;
 
 /// 把一段 markdown 里链接目标中的空格补成 `%20`。
+///
+/// 原始区（围栏、缩进代码、HTML 块、行内代码）由 [`raw_zones`] 给出真实字节
+/// 区间：那是一次探针解析的 `srcmap`，块引用与列表前缀也算在里面。区间内一个
+/// 字都不改，区间外才走 [`encode_line_targets`]。
 pub fn encode_target_spaces(markdown: &str) -> String {
+    let zones = raw_zones(markdown);
     let mut out = String::with_capacity(markdown.len());
-    // 围栏代码块里的东西一个字都不改：那是给人看的例子。判定走 [`crate::raw`]，
-    // 与分节那一步共用一个状态机 —— 两处各写一份的话迟早会对不上
-    let mut fences = Fences::default();
+    let mut cursor = 0usize;
 
-    for line in markdown.split_inclusive('\n') {
-        match fences.feed(line) {
-            // 围栏里（含分隔行本身）：照搬
-            FenceLine::Delimiter | FenceLine::Inside => out.push_str(line),
-            FenceLine::Outside => out.push_str(&encode_line_targets(line)),
+    for zone in zones {
+        let start = zone.start.min(markdown.len());
+        let end = zone.end.min(markdown.len());
+        if start < cursor {
+            continue;
         }
+        if start > cursor {
+            out.push_str(&encode_span(&markdown[cursor..start]));
+        }
+        if end > start {
+            out.push_str(&markdown[start..end]);
+        }
+        cursor = end;
+    }
+    if cursor < markdown.len() {
+        out.push_str(&encode_span(&markdown[cursor..]));
+    }
+    out
+}
+
+/// 区间外那段：按行处理。探针给的区间可能落在行中间（行内代码），
+/// 所以不能假设切出来的段一定从行首开始。
+fn encode_span(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        out.push_str(&encode_line_targets(line));
     }
     out
 }
@@ -160,5 +183,24 @@ mod tests {
     fn tilde_fences_are_skipped_too() {
         let src = "~~~\n![a](b c.png)\n~~~\n";
         assert_eq!(encode_target_spaces(src), src);
+    }
+
+    /// 块引用/列表里的围栏也是原始区 —— 只看行首三个反引号会把 `> ` 前缀漏掉
+    #[test]
+    fn fences_inside_container_blocks_are_skipped_too() {
+        let quote = "> ```\n> ![a](b c.png)\n> ```\n";
+        assert_eq!(encode_target_spaces(quote), quote);
+
+        let list = "- 项\n  ```\n  ![a](b c.png)\n  ```\n";
+        assert_eq!(encode_target_spaces(list), list);
+    }
+
+    /// 围栏外面的目标照常编码 —— 不能因为容器里有围栏就整段不动
+    #[test]
+    fn targets_outside_the_fence_are_still_encoded() {
+        let src = "> ![a](b c.png)\n>\n> ```\n> ![a](b c.png)\n> ```\n";
+        let out = encode_target_spaces(src);
+        assert!(out.contains("> ![a](b%20c.png)"), "{out}");
+        assert!(out.contains("> ![a](b c.png)"), "{out}");
     }
 }
