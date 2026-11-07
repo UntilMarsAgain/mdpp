@@ -10,7 +10,7 @@
 use crate::block::template::{self, TemplatePage};
 use crate::registry::Block;
 
-/// 把 `{{名字}}` 换成参数值，`{{body}}` 换成块内容。
+/// 把 `{{name}}` 换成参数值，`{{body}}` 换成块内容。
 ///
 /// 认不出的名字**原样留着**，没有闭合的 `{{` 也原样留着 —— 让作者看见自己写错了，
 /// 比悄悄换成空串好。
@@ -64,7 +64,7 @@ pub fn substitute_placeholders(text: &str, lookup: impl Fn(&str) -> Option<Strin
                 out.push_str(&reindent(&value, line_indent(text, at)));
             }
             None => {
-                // 原样留回 `{{…}}`（含键名本身，保留作者写的空白）
+                // 原样留回 `{{...}}`（含键名本身，保留作者写的空白）
                 out.push_str(&rest[start..start + 2 + end + 2]);
             }
         }
@@ -385,12 +385,12 @@ mod tests {
         }
     }
 
-    /// 正路一条：`{{参数}}` 换成值、`{{body}}` 换成块内容 —— 这一步错了，模板整页都是没填的空
+    /// 正路一条：`{{param}}` 换成值、`{{body}}` 换成块内容 —— 这一步错了，模板整页都是没填的空
     #[test]
     fn substitutes_params_and_body() {
-        let item = block("x", &[("颜色", "红")], "块内容");
+        let item = block("x", &[("color", "红")], "块内容");
         assert_eq!(
-            substitute("a {{颜色}} b {{body}} c", &item, "块内容"),
+            substitute("a {{color}} b {{body}} c", &item, "块内容"),
             "a 红 b 块内容 c"
         );
     }
@@ -435,8 +435,8 @@ mod tests {
     #[test]
     fn unknown_or_unclosed_placeholders_stay_visible() {
         let item = block("x", &[], "");
-        assert_eq!(substitute("{{没有这个}}", &item, ""), "{{没有这个}}");
-        assert_eq!(substitute("{{没闭合", &item, ""), "{{没闭合");
+        assert_eq!(substitute("{{unknown}}", &item, ""), "{{unknown}}");
+        assert_eq!(substitute("{{unclosed", &item, ""), "{{unclosed");
     }
 
     /// 没写 `src=` 时，正文就是块自己带的那段 —— 枢纽的这条默认岔路先得走对

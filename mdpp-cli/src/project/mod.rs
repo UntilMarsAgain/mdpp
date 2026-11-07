@@ -114,7 +114,7 @@ pub fn under(root: &Path, path: &Path) -> PathBuf {
 /// 把骨架里那几处的 [`SITE_NAME_TOKEN`] 换成给定的站点名
 ///
 /// **只动 [`SITE_NAME_FILES`] 里那几个**：其余文件里的双花括号是块填空用的
-/// （模板页的 `{{标题}}` / `{{body}}`，渲染时才填），换了那一页就废了。
+/// （模板页的 `{{title}}` / `{{body}}`，渲染时才填），换了那一页就废了。
 ///
 /// 配置里那一处要**转义**（占位符是写在引号里的），正文那一处原样换。
 pub fn substitute_site_name(root: &Path, name: &str) -> Result<(), String> {

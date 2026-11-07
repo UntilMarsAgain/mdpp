@@ -8,7 +8,7 @@ API，这边演示写出来的东西长什么样。
 |---|---|
 | [`tour.mdpp`](tour.mdpp) | 本版每一个块各来一次，当语法速查表用 |
 | [`links.mdpp`](links.mdpp) | 内部链接 `[[…]]` 的写法与红链 |
-| [`templates/`](templates/) | 模板页：`::卡片` 与 `::面板` 的正文 |
+| [`templates/`](templates/) | 模板页：`::card` 与 `::panel` 的正文 |
 
 ## 跑
 

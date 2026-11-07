@@ -5,7 +5,7 @@
 //!
 //! | 文件 | 是什么 |
 //! |---|---|
-//! | `site.html` | 页面**模板**：带 `{{占位符}}`，是这个二进制的页面骨架 |
+//! | `site.html` | 页面**模板**：带 `{{placeholder}}`，是这个二进制的页面骨架 |
 //! | `mdpp.css` | **正文唯一的样式表**：配色变量、通用排版、每个块的样子、打印规则 |
 //! | `mdpp.js` | **最简**的默认行为：点一下就切选项卡 |
 //! | `site.css` | **只在站点里**的那一层外壳：顶栏、那一列的限宽与卡片、页首页尾 |
@@ -658,7 +658,7 @@ pub fn escape(value: &str) -> String {
 /// **一趟**是刻意的：先填标题再填正文的话，正文里写着 `{{title}}` 会被当成占位符改掉。
 /// 认不出的名字与没写全的 `{{` 都原样留着 —— 让作者看见自己写错了，比悄悄吞掉好。
 ///
-/// 扫描核心在库那边（[`mdpp::substitute_placeholders`]）—— 用户块的 `{{参数}}` 填空
+/// 扫描核心在库那边（[`mdpp::substitute_placeholders`]）—— 用户块的 `{{param}}` 填空
 /// 走的是同一条路，两份各写一份的话，认不出的名字怎么处理迟早会对不上，而那是静悄悄的。
 fn fill(template: &str, values: &[(&str, &str)]) -> String {
     mdpp::substitute_placeholders(template, |key| {
@@ -1457,15 +1457,15 @@ mod tests {
     /// 占位符填**一趟**：正文里写着 `{{title}}` 也不能被改掉
     #[test]
     fn the_body_is_filled_last_so_placeholders_in_it_survive() {
-        let html = document(&page("<p>{{title}} 与 {{没有这个}}</p>", Assets::Inline));
-        assert!(html.contains("<p>{{title}} 与 {{没有这个}}</p>"), "{html}");
+        let html = document(&page("<p>{{title}} 与 {{unknown}}</p>", Assets::Inline));
+        assert!(html.contains("<p>{{title}} 与 {{unknown}}</p>"), "{html}");
     }
 
     /// 认不出的占位符原样留着 —— 模板写错一个字要看得见，而不是悄悄吞掉
     #[test]
     fn an_unknown_placeholder_stays_visible() {
-        let out = fill("a {{what}} b {{没闭合", &[("known", "1")]);
-        assert_eq!(out, "a {{what}} b {{没闭合");
+        let out = fill("a {{what}} b {{unclosed", &[("known", "1")]);
+        assert_eq!(out, "a {{what}} b {{unclosed");
         assert_eq!(fill("{{known}}", &[("known", "1")]), "1");
     }
 

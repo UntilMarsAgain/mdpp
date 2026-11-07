@@ -50,11 +50,11 @@ pub fn run(options: &Serve) -> Result<(), String> {
         );
     }
 
-    // 缓存目录：每一遍出在**自己的子目录**里（`第 N 遍`），出齐了才把指针挪过去。
+    // 缓存目录：每一遍出在**自己的子目录**里（`turn-N`），出齐了才把指针挪过去。
     // 于是「清空产物目录」删的永远是没人读的那个 —— 改到一半刷新也不会撞见半截的
     // 页面或凭空消失的 CSS
     let cache = cache_dir()?;
-    let root = http::Root::new(cache.join("第 0 遍"));
+    let root = http::Root::new(cache.join(turn_dir(0)));
     let generation = http::generation();
     let for_server = std::sync::Arc::clone(&generation);
     let for_root = root.clone();
@@ -103,7 +103,7 @@ pub fn run(options: &Serve) -> Result<(), String> {
 
 /// 出一遍，并通知浏览器
 ///
-/// **出在 `cache/第 N 遍` 里，全部写完才把服务的指针挪过去** —— 所以清理与写入都
+/// **出在 `cache/turn-N` 里，全部写完才把服务的指针挪过去** —— 所以清理与写入都
 /// 发生在没人读的地方。挪过去之后旧的那一遍还留着（可能有连接正读着它），
 /// 再下一遍才顺手清掉。
 fn rebuild(
@@ -146,10 +146,10 @@ fn rebuild(
     }
 }
 
-/// 第 `turn` 遍出在哪个子目录。名字里带中文是为了好认（那是给人看的），
-/// 而它是**我们自己拼的**路径，不经过系统那一层编码，没有上面说的那个风险
+/// 第 `turn` 遍出在哪个子目录。只用 ASCII：路径名不参与展示，
+/// 而 `std::env::temp_dir()` 在非 UTF-8 locale 下对非 ASCII 名的解释并不可靠。
 fn turn_dir(turn: usize) -> String {
-    format!("第 {turn} 遍")
+    format!("turn-{turn}")
 }
 
 /// 往每个页面里塞那段连长连接的脚本
@@ -250,7 +250,7 @@ fn preview_name() -> String {
 /// **垫这一层是为了换根** —— `http` 那边拿的是一个可以改指向的 [`http::Root`]，
 /// 而它指的是这一层里的某个子目录。一遍出完，指针挪到那个子目录上。
 fn cache_dir() -> Result<PathBuf, String> {
-    let cache = temp_dir()?.join("缓存");
+    let cache = temp_dir()?.join("cache");
     crate::project::ensure_dir(&cache)?;
     Ok(cache)
 }
@@ -550,7 +550,7 @@ mod tests {
             "build 的产物不该带那段脚本：{built}"
         );
 
-        let preview = project.root.join("预览");
+        let preview = project.root.join("preview");
         let root = http::Root::new(preview.join(turn_dir(0)));
         rebuild(
             &project,
@@ -576,7 +576,7 @@ mod tests {
         std::fs::create_dir_all(&deep).expect("建得出");
         std::fs::write(deep.join("安装.mdpp"), "# 安装\n").expect("写得下");
 
-        let preview = project.root.join("预览");
+        let preview = project.root.join("preview");
         let root = http::Root::new(preview.join(turn_dir(0)));
         rebuild(
             &project,
@@ -706,5 +706,15 @@ mod tests {
             name.ends_with(&std::process::id().to_string()),
             "名字该带进程号（两次预览互不相干）：{name}"
         );
+    }
+
+    /// 每一遍的目录名也只用 ASCII：它同样会落到文件系统上
+    #[test]
+    fn the_turn_directory_name_is_pure_ascii() {
+        for turn in [0, 1, 7, 42] {
+            let name = turn_dir(turn);
+            assert!(name.is_ascii(), "目录名不该有非 ASCII 字符：{name}");
+            assert!(name.starts_with("turn-"), "{name}");
+        }
     }
 }

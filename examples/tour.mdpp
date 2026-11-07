@@ -271,15 +271,15 @@
 
 # 用户块
 
-`::卡片` 与 `::面板` 不在注册表里，它们是**模板页**：
+`::card` 与 `::panel` 不在注册表里，它们是**模板页**：
 
-    examples/templates/卡片.mdpp
-    examples/templates/面板.mdpp
+    examples/templates/card.mdpp
+    examples/templates/panel.mdpp
 
 带上模板目录才渲染得出来（见开头那条命令）。
 
-::卡片 标题="一个模板页" 额外="（认不出来的参数原样留着）"
+::card title="一个模板页" extra="（认不出来的参数原样留着）"
   块正文会填进模板页的 {{body}}。
 
-::面板 标题="另一个模板页"
+::panel title="另一个模板页"
   模板页也可以分节 —— 它里面写的就是一个 `::tabs` 块。

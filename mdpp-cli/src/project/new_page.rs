@@ -12,12 +12,12 @@ use crate::project::{Project, shown, write_file};
 
 use tracing::info;
 
-/// 新页的骨架。`{{标题}}` 与 `{{回首页}}` 由 [`create`] 换掉
+/// 新页的骨架。`{{title}}` 与 `{{home}}` 由 [`create`] 换掉
 const SKELETON: &str = "\
-# {{标题}}
+# {{title}}
 
 这一页是 `mdpp new` 建的，写点东西吧。
-{{回首页}}";
+{{home}}";
 
 pub fn run(options: &New) -> Result<(), String> {
     let project = Project::open()?;
@@ -58,8 +58,8 @@ fn create(project: &Project, options: &New) -> Result<(), String> {
     write_file(
         &path,
         &SKELETON
-            .replace("{{标题}}", &title)
-            .replace("{{回首页}}", home),
+            .replace("{{title}}", &title)
+            .replace("{{home}}", home),
     )?;
 
     info!(page = %key, "新页");
