@@ -224,9 +224,7 @@ fn render_parts(
                 let registry = registry.clone();
                 let context = context.clone();
                 let mode = mode.clone();
-                move |more: &str| {
-                    render_parts(&parser, &registry, &context, more, mode.clone()).0
-                }
+                move |more: &str| render_parts(&parser, &registry, &context, more, mode.clone()).0
             }))
         }),
     };
@@ -437,8 +435,7 @@ impl MdppBuilder {
         // 下标，`^…^` 补上标（那把「贴字」的尺与代价见 syntax::baseline 的模块
         // 头）。摘的是下划线那一个扫描器 —— 一条规则管着两个长度的配对，星号
         // 的机器不受牵动。
-        md.inline
-            .remove_rule::<EmphPairScanner<{'_'}, false>>();
+        md.inline.remove_rule::<EmphPairScanner<'_', false>>();
         syntax::baseline::add(&mut md);
 
         // `::` 块。挂载位置是刻意的：必须排在段落规则**之前**，否则 `::名字`
@@ -573,12 +570,9 @@ mod tests {
     /// 三种链接节点（普通链接、尖括号自动链接、裸地址）都认，站内与邮件不认
     #[test]
     fn every_kind_of_external_link_is_marked() {
-        let html = md_of("[外](https://example.com/x) <https://example.com/y> https://example.com/z\n");
-        assert_eq!(
-            html.matches(r#"class="external""#).count(),
-            3,
-            "{html}"
-        );
+        let html =
+            md_of("[外](https://example.com/x) <https://example.com/y> https://example.com/z\n");
+        assert_eq!(html.matches(r#"class="external""#).count(), 3, "{html}");
         // 相对地址、内部链接、邮件都不该带这个类
         let html = md_of("[内](../指南/) [[某页]] [信](mailto:a@b.c)\n");
         assert!(!html.contains("external"), "{html}");
@@ -588,11 +582,7 @@ mod tests {
     #[test]
     fn nested_blocks_do_not_duplicate_the_external_class() {
         let html = md_of("::note\n  [外](https://example.com/x)\n");
-        assert_eq!(
-            html.matches(r#"class="external""#).count(),
-            1,
-            "{html}"
-        );
+        assert_eq!(html.matches(r#"class="external""#).count(), 1, "{html}");
     }
 
     /// 围栏上的语言名要带进 `class="language-…"` —— 高亮与样式都认这个类

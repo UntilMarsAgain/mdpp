@@ -38,8 +38,8 @@ use callouts::{render_danger, render_error, render_note, render_tip, render_warn
 use class::render_class;
 use demo::render_demo;
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
-use fold::render_fold;
 use flatlist::render_flatlist;
+use fold::render_fold;
 use indent::render_indent;
 use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;

@@ -171,17 +171,9 @@ fn update_raw(state: &mut Raw, chunk: &str) {
         };
         match (name, closing) {
             (Some("script"), false) => *state = Raw::Script,
-            (Some("script"), true) => {
-                if *state == Raw::Script {
-                    *state = Raw::None;
-                }
-            }
+            (Some("script"), true) if *state == Raw::Script => *state = Raw::None,
             (Some("style"), false) => *state = Raw::Style,
-            (Some("style"), true) => {
-                if *state == Raw::Style {
-                    *state = Raw::None;
-                }
-            }
+            (Some("style"), true) if *state == Raw::Style => *state = Raw::None,
             _ => {}
         }
         at = start + 1;
@@ -201,9 +193,10 @@ fn tag_name(after: &str) -> Option<&'static str> {
     if name.is_empty() {
         return None;
     }
-    let boundary_ok = tail.chars().next().is_none_or(|ch| {
-        matches!(ch, ' ' | '\t' | '\n' | '\r' | '>' | '/')
-    });
+    let boundary_ok = tail
+        .chars()
+        .next()
+        .is_none_or(|ch| matches!(ch, ' ' | '\t' | '\n' | '\r' | '>' | '/'));
     if !boundary_ok {
         return None;
     }

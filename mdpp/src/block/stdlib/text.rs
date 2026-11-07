@@ -487,7 +487,10 @@ mod tests {
     #[test]
     fn aside_center_is_inline_block() {
         let html = render("::aside title=中心 align=center\n  居中信息框\n");
-        assert!(html.contains(r#"<aside class="aside aside--center">"#), "{html}");
+        assert!(
+            html.contains(r#"<aside class="aside aside--center">"#),
+            "{html}"
+        );
         assert!(html.contains("居中信息框"), "{html}");
     }
 
@@ -495,7 +498,10 @@ mod tests {
     #[test]
     fn aside_left_floats_left() {
         let html = render("::aside title=左边 align=left\n  左侧信息框\n");
-        assert!(html.contains(r#"<aside class="aside aside--left">"#), "{html}");
+        assert!(
+            html.contains(r#"<aside class="aside aside--left">"#),
+            "{html}"
+        );
     }
 
     /// `::aside align=` 认不出的值报错
@@ -522,10 +528,7 @@ mod tests {
     #[test]
     fn banner_mini_off_is_normal() {
         let html = render("::banner mini=off\n  普通横条\n");
-        assert!(
-            html.contains(r#"<p class="banner">普通横条</p>"#),
-            "{html}"
-        );
+        assert!(html.contains(r#"<p class="banner">普通横条</p>"#), "{html}");
         assert!(!html.contains("banner--mini"), "{html}");
     }
 
@@ -541,10 +544,7 @@ mod tests {
     #[test]
     fn small_wraps_content_in_div_with_small_class() {
         let html = render("::small\n  这里是小字\n");
-        assert!(
-            html.contains(r#"<div class="small">"#),
-            "{html}"
-        );
+        assert!(html.contains(r#"<div class="small">"#), "{html}");
         assert!(html.contains("这里是小字"), "{html}");
         assert!(html.contains("</div>"), "{html}");
     }
@@ -561,10 +561,7 @@ mod tests {
     #[test]
     fn small_with_extra_class() {
         let html = render("::small class=注释\n  带额外类名的小字\n");
-        assert!(
-            html.contains(r#"<div class="small 注释">"#),
-            "{html}"
-        );
+        assert!(html.contains(r#"<div class="small 注释">"#), "{html}");
         assert!(html.contains("带额外类名的小字"), "{html}");
     }
 

@@ -88,7 +88,10 @@ mod tests {
     fn fold_renders_title_and_body() {
         let html = render("::fold title=草稿\n  这是折起来的内容\n");
         assert!(html.contains(r#"<details class="fold">"#), "{html}");
-        assert!(html.contains(r#"<summary class="fold--custom">草稿</summary>"#), "{html}");
+        assert!(
+            html.contains(r#"<summary class="fold--custom">草稿</summary>"#),
+            "{html}"
+        );
         assert!(html.contains("这是折起来的内容"), "{html}");
     }
 
@@ -96,7 +99,10 @@ mod tests {
     #[test]
     fn fold_default_title() {
         let html = render("::fold\n  没写标题\n");
-        assert!(html.contains(r#"<summary class="fold--custom">更多</summary>"#), "{html}");
+        assert!(
+            html.contains(r#"<summary class="fold--custom">更多</summary>"#),
+            "{html}"
+        );
     }
 
     /// `open=` 默认展开：认 open / true / on / 1 —— 渲染出 `open=""` 这种 HTML 空值写法
@@ -141,7 +147,9 @@ mod tests {
         let colored = render("::fold color=#0055a4 title=深蓝\n  正文\n");
         // color 写在 summary 的 style 上
         assert!(
-            colored.contains(r#"<summary class="fold--custom" style="background: #0055a4; color: #f5f5f5;">"#),
+            colored.contains(
+                r#"<summary class="fold--custom" style="background: #0055a4; color: #f5f5f5;">"#
+            ),
             "{colored}"
         );
         assert!(colored.contains("fold--custom"), "{colored}");
@@ -160,13 +168,21 @@ mod tests {
         let html = render("::fold color=#0055a4 title=标题\n  这里是正文内容\n");
         // summary 上有背景色
         assert!(
-            html.contains(r#"<summary class="fold--custom" style="background: #0055a4; color: #f5f5f5;">"#),
+            html.contains(
+                r#"<summary class="fold--custom" style="background: #0055a4; color: #f5f5f5;">"#
+            ),
             "标题栏应有背景色和字色：{html}"
         );
         // 内容区在 </summary> 之后，不应有 inline style
         let after_summary = &html[html.find("</summary>").expect("summary 应该关闭")..];
-        assert!(!after_summary.contains("style="), "内容区不应有 inline style：{after_summary}");
+        assert!(
+            !after_summary.contains("style="),
+            "内容区不应有 inline style：{after_summary}"
+        );
         // 内容本身正常
-        assert!(after_summary.contains("这里是正文内容"), "内容应正常显示：{after_summary}");
+        assert!(
+            after_summary.contains("这里是正文内容"),
+            "内容应正常显示：{after_summary}"
+        );
     }
 }

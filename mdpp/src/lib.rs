@@ -61,6 +61,7 @@
 //! ```
 
 #![deny(missing_docs)]
+#![forbid(unsafe_code)]
 
 /// 把仓库根的 README 里的 ```rust 段当 doctest 跑一遍。
 ///

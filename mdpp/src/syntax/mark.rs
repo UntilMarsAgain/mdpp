@@ -101,7 +101,10 @@ mod tests {
     #[test]
     fn inner_content_is_parsed_inline() {
         let html = render("==**加粗**的重点==\n");
-        assert!(html.contains("<mark><strong>加粗</strong>的重点</mark>"), "{html}");
+        assert!(
+            html.contains("<mark><strong>加粗</strong>的重点</mark>"),
+            "{html}"
+        );
     }
 
     /// `[[内部链接]]` 也走得进去 —— 这一段没有任何解析器递进来，落红链，

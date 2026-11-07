@@ -191,8 +191,6 @@ fn default_theme_color() -> String {
     "#2f6fd0".to_string()
 }
 
-
-
 /// `theme` 认的三个取值，与 `render --theme` 同一套。
 /// `system` 不是一种配色，是「跟着系统走」
 pub const THEMES: [&str; 3] = ["system", "light", "dark"];
@@ -372,10 +370,22 @@ mod tests {
     #[test]
     fn required_fields_refuse_empty_strings() {
         for (field, text) in [
-            ("site_name", "site_name = \"\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n"),
-            ("pages_dir", "site_name = \"甲\"\npages_dir = \"\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n"),
-            ("templates_dir", "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"\"\nbuild_dir = \"b\"\n"),
-            ("build_dir", "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"\"\n"),
+            (
+                "site_name",
+                "site_name = \"\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n",
+            ),
+            (
+                "pages_dir",
+                "site_name = \"甲\"\npages_dir = \"\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n",
+            ),
+            (
+                "templates_dir",
+                "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"\"\nbuild_dir = \"b\"\n",
+            ),
+            (
+                "build_dir",
+                "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"\"\n",
+            ),
         ] {
             let mut config: Config = toml::from_str(text).expect("结构上能解析");
             config.normalize();

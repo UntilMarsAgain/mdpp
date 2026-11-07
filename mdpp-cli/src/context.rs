@@ -187,7 +187,10 @@ mod tests {
         let context =
             RenderContext::new().with_templates(template_pages(dir.path()).expect("读得动"));
         let mdpp = Mdpp::new();
-        assert!(mdpp.render_with("::example\n", &context).contains("卡片来了"));
+        assert!(
+            mdpp.render_with("::example\n", &context)
+                .contains("卡片来了")
+        );
         let absent = mdpp.render_with("::别的\n", &context);
         assert!(
             absent.contains("template--unknown"),
