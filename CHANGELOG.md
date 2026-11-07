@@ -45,4 +45,7 @@
 ### 工程
 
 - `cargo fmt`、`cargo clippy -D warnings` 全绿；两个 crate 都 `forbid(unsafe_code)`。
+- 默认生成的文件/目录名与模板占位符只用 ASCII（`cache/turn-N`、`.mdpp-tmp-*`、
+  `toc = "contents"`、`{{title}}` / `{{home}}` 等）；中文内容仍原样支持，
+  但不再作为默认路径名或参数键。
 - README 的配置名与块数量修正，补充 `--jobs`、原子构建、AST 与扩展 API 说明。
