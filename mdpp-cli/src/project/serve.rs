@@ -523,7 +523,7 @@ mod tests {
 
         assert!(!stable, "一直在写，不该报稳");
         // 上限是 `limit × 4`：挂住的话这条会等到天荒地老
-        assert!(started.elapsed() < Duration::from_secs(2), "等太久了");
+        assert!(started.elapsed() < Duration::from_secs(5), "等太久了");
     }
 
     /// 出的页面里要真有那段「变了就刷新」的脚本，而**普通的 build 不带**

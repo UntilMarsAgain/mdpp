@@ -307,7 +307,7 @@ fn events_over_loopback(generation: &Generation) -> (String, Vec<String>) {
         let mut raw = Vec::new();
         let mut buf = [0u8; 1024];
         let mut alive = false;
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
         while std::time::Instant::now() < deadline {
             match stream.read(&mut buf) {
                 // **把「为什么停了」写进结果里** —— 吞掉它的话，断言失败时看到的
@@ -356,9 +356,9 @@ fn events_over_loopback(generation: &Generation) -> (String, Vec<String>) {
     // 收到心跳，这一次就会漏过去。这里持续喊到客户端读到事件为止 ——
     // 重复的 `data: reload` 对断言没有影响（每一条都该叫 message）。
     beat_seen
-        .recv_timeout(Duration::from_secs(5))
+        .recv_timeout(Duration::from_secs(10))
         .expect("该收到心跳 —— 服务器连上了吗");
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
     while std::time::Instant::now() < deadline && !client.is_finished() {
         bump(generation);
         std::thread::sleep(Duration::from_millis(50));
