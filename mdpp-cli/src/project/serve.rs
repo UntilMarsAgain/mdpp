@@ -69,6 +69,7 @@ pub fn run(options: &Serve) -> Result<(), String> {
         clean: true,
         strict: false,
         external_script: String::from("cdn"),
+        jobs: 0,
         // 预览出到系统临时目录，不在项目里 —— 这个开关只在这里为真
         allow_outside: true,
     };
@@ -383,6 +384,7 @@ mod tests {
             clean: true,
             strict: false,
             external_script: String::from("cdn"),
+            jobs: 0,
             allow_outside: true,
         }
     }
@@ -535,6 +537,7 @@ mod tests {
                 clean: true,
                 strict: false,
                 external_script: String::from("cdn"),
+                jobs: 0,
                 allow_outside: false,
             },
             &project.site_dir(),

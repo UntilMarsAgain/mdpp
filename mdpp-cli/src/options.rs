@@ -273,6 +273,10 @@ pub struct Serve {
     override_usage = "mdpp build [选项]"
 )]
 pub struct Build {
+    /// 并行渲染的线程数；0 = 按 CPU 核数，1 = 单线程
+    #[arg(long, value_name = "N", default_value_t = 0)]
+    pub jobs: usize,
+
     /// 保留兼容：`build` 现在总是整目录替换（失败时不动旧站点），这个开关不再改变行为
     #[arg(long)]
     pub clean: bool,

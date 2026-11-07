@@ -102,6 +102,7 @@ pub fn run(options: &Build) -> Result<(), String> {
         clean: true,
         strict: options.strict,
         external_script: options.external_script.clone(),
+        jobs: options.jobs,
         allow_outside: options.allow_outside,
     };
     let mut built = match build_into(&project, &staging_options, &staging) {
@@ -199,103 +200,86 @@ fn remove_any(path: &Path) {
     }
 }
 
-/// 逐页渲染时**跨页共用**的那几样：解析器、站点，以及三本账。
-///
-/// 打成一个包，「一页的正文是怎么来的」才抽得出去 —— 不打的话那个函数要带十几个参数，
-/// 而参数表一长，哪一份是只读的、哪一份是在记账的，就看不出来了
-struct Pass<'a> {
-    project: &'a Project,
-    /// 产物目录：资源拷进去、页面也写进去
-    site_dir: &'a Path,
-    /// 正文目录：资源都得在它底下，跑出去的一律不收（见 [`assets`]）
-    pages_dir: &'a Path,
-    parser: &'a Mdpp,
-    /// 模板页（配置里那个目录），没配就是 `None`
-    templates: Option<mdpp::block::template::TemplatePages>,
-    /// 红链与缺资源的账，记在**全站一份**上 —— `Links` 拿的是它的克隆，两边记的是同一本
-    missing: Arc<Mutex<Vec<Missing>>>,
-    /// 站点本身（`Links::for_page` 要它）。这一份是克隆的 `Arc`，与外面那份是同一个
-    site: Arc<Site>,
-    /// 正文引了却不在 `pages/` 里的文件（只为最后那句报告）
+/// 一页渲染完的产物（还没套外壳、还没落盘）。
+struct PageBody {
+    title: String,
+    html: String,
+    assets: Vec<mdpp::Asset>,
+    wanted: Vec<assets::Wanted>,
     absent: Vec<String>,
-    /// 拷过的资源：几十页引同一张图也只拷一回
-    copied: Vec<PathBuf>,
-    /// 被引用而进了 `assets/` 的那些（相对 `pages/`），同样只为最后那句报告
-    taken: Vec<String>,
-    /// 出问题的页的账
-    broken: Broken,
 }
 
-impl Pass<'_> {
-    /// 读一页正文 → 渲染 → 扫地址 → 拷缺的资源 → 记账，交出**标题与正文**。
-    ///
-    /// 记账与渲染同手发生，是因为**事后从产物里反推不回来**：这时出的 HTML 还没套外壳、
-    /// 地址还没按各自深度改写，红链在哪儿、缺了哪个文件只有这一刻知道
-    fn source_body(
-        &mut self,
-        page: &Page,
-        assets_prefix: &str,
-    ) -> Result<(String, String), String> {
-        let source = crate::limits::read_text(&page.source)?;
-
-        let mut context = RenderContext::new().with_links(Arc::new(Links::for_page(
-            self.site.clone(),
-            page,
-            self.missing.clone(),
-        )));
-        if let Some(templates) = &self.templates {
-            context = context.with_templates(templates.clone());
-        }
-
-        // 站点模式：::css / ::js / ::html js 输出链接，资源随 rendered.assets 返回
-        let rendered = self
-            .parser
-            .render_with_assets(&source, &context, assets_prefix);
-
-        // 资源落盘：`assets/mdpp-<hash>.css|js`，已存在则跳过（多页共享同一份）
-        if !rendered.assets.is_empty() {
-            let assets_dir = self.site_dir.join(page::ASSET_DIR);
-            std::fs::create_dir_all(&assets_dir)
-                .map_err(|error| format!("建不了 {}：{error}", assets_dir.display()))?;
-            for asset in &rendered.assets {
-                let path = assets_dir.join(asset.file_name());
-                if !path.exists() {
-                    std::fs::write(&path, &asset.content)
-                        .map_err(|error| format!("写不了 {}：{error}", path.display()))?;
-                }
-            }
-        }
-
-        let scan = assets::scan(
-            &rendered.html,
-            &assets::Context {
-                page_dir: page.source.parent().unwrap_or(self.pages_dir),
-                pages_dir: self.pages_dir,
-                assets_dir: &self.site_dir.join(page::ASSET_DIR),
-                assets_prefix,
-            },
-        );
-        for value in &scan.missing {
-            self.absent.push(format!("{} → {value}", page.key));
-        }
-        assets::copy(&scan.wanted, &mut self.copied)
-            .map_err(|error| format!("拷不了资源：{error}"))?;
-        for one in &scan.wanted {
-            let relative = one
-                .from
-                .strip_prefix(self.pages_dir)
-                .expect("资源都在正文目录里")
-                .to_string_lossy()
-                .replace('\\', "/");
-            if !self.taken.contains(&relative) {
-                self.taken.push(relative);
-            }
-        }
-
-        let html = scan.html;
-        self.broken.add(page, &html);
-        Ok((document_title(self.project, &source, page.stem()), html))
+/// 读一页正文 → 渲染 → 扫地址，**不写盘**。
+///
+/// 写盘与记账留在外面串行做：这样多线程只碰解析器与只读数据，资源文件不会
+/// 被两页同时写。`Mdpp` 现在是 `Send + Sync`，一个解析器可以被所有工作线程共享。
+#[allow(clippy::too_many_arguments)]
+fn render_page(
+    project: &Project,
+    site: &Arc<Site>,
+    pages_dir: &Path,
+    site_dir: &Path,
+    parser: &Mdpp,
+    templates: &Option<mdpp::block::template::TemplatePages>,
+    missing: &Arc<Mutex<Vec<Missing>>>,
+    page: &Page,
+    assets_prefix: &str,
+) -> Result<PageBody, String> {
+    let source = crate::limits::read_text(&page.source)?;
+    let mut context = RenderContext::new().with_links(Arc::new(Links::for_page(
+        site.clone(),
+        page,
+        missing.clone(),
+    )));
+    if let Some(templates) = templates {
+        context = context.with_templates(templates.clone());
     }
+
+    // 站点模式：::css / ::js / ::html js 输出链接，资源随 rendered.assets 返回
+    let rendered = parser.render_with_assets(&source, &context, assets_prefix);
+    let scan = assets::scan(
+        &rendered.html,
+        &assets::Context {
+            page_dir: page.source.parent().unwrap_or(pages_dir),
+            pages_dir,
+            assets_dir: &site_dir.join(page::ASSET_DIR),
+            assets_prefix,
+        },
+    );
+    Ok(PageBody {
+        title: document_title(project, &source, page.stem()),
+        html: scan.html,
+        assets: rendered.assets,
+        wanted: scan.wanted,
+        absent: scan
+            .missing
+            .iter()
+            .map(|value| format!("{} → {value}", page.key))
+            .collect(),
+    })
+}
+
+/// 目录页的正文是现成生成的，不读文件
+fn generated_body(project: &Project, site: &Site, page: &Page) -> PageBody {
+    PageBody {
+        title: document_title(project, "", page.stem()),
+        html: toc_body(site, &project.config.site_name, &page.key),
+        assets: Vec::new(),
+        wanted: Vec::new(),
+        absent: Vec::new(),
+    }
+}
+
+/// 实际用几个线程：`0` = 按 CPU 核数，且不超过页数
+fn effective_jobs(requested: usize, pages: usize) -> usize {
+    let requested = if requested == 0 {
+        std::thread::available_parallelism()
+            .map(|count| count.get())
+            .unwrap_or(1)
+    } else {
+        requested
+    };
+    requested.min(pages).max(1)
 }
 
 /// 出一遍站点到**给定的那个目录**。
@@ -373,35 +357,107 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
     // 404，而且没有任何报错。别的静态托管不认这个文件，多这一个字节无害。
     project::write_file(&site_dir.join(NOJEKYLL), "")?;
 
-    // 逐页那一半的账（缺资源、已拷、没人引、块出错）都在 `pass` 里记 —— 三本账从头
-    // 到尾一份，最后倒出来进报告，不在循环里现攒
-    let mut pass = Pass {
-        project,
-        site_dir,
-        pages_dir: &pages_dir,
-        parser: &parser,
-        templates,
-        missing: missing.clone(),
-        site: site.clone(),
-        absent: Vec::new(),
-        copied: Vec::new(),
-        taken: Vec::new(),
-        broken: Broken::default(),
-    };
+    // 先把每一页的正文并出来（可以并行），再串行落盘。
+    //
+    // 并行只做「读 → 解析 → 扫地址」：这一段是 CPU 大头，而且只碰只读数据；
+    // 写文件、拷资源、记账留在下面串行，避免两页同时写同一个 `assets/` 文件。
+    let pages = site.pages();
+    let jobs = effective_jobs(options.jobs, pages.len());
+    let mut bodies: Vec<Option<Result<PageBody, String>>> =
+        (0..pages.len()).map(|_| None).collect();
 
-    for page in site.pages() {
+    if jobs <= 1 {
+        for (index, page) in pages.iter().enumerate() {
+            let body = if page.source.as_os_str().is_empty() {
+                Ok(generated_body(project, &site, page))
+            } else {
+                render_page(
+                    project,
+                    &site,
+                    &pages_dir,
+                    site_dir,
+                    &parser,
+                    &templates,
+                    &missing,
+                    page,
+                    &assets_href(&page.key),
+                )
+            };
+            bodies[index] = Some(body);
+        }
+    } else {
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        let slots = Mutex::new(&mut bodies);
+        std::thread::scope(|scope| {
+            for _ in 0..jobs {
+                scope.spawn(|| {
+                    loop {
+                        let index = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some(page) = pages.get(index) else {
+                            break;
+                        };
+                        let body = if page.source.as_os_str().is_empty() {
+                            Ok(generated_body(project, &site, page))
+                        } else {
+                            render_page(
+                                project,
+                                &site,
+                                &pages_dir,
+                                site_dir,
+                                &parser,
+                                &templates,
+                                &missing,
+                                page,
+                                &assets_href(&page.key),
+                            )
+                        };
+                        slots.lock().expect("工作线程的锁不该中毒")[index] = Some(body);
+                    }
+                });
+            }
+        });
+    }
+
+    let mut absent: Vec<String> = Vec::new();
+    let mut copied: Vec<PathBuf> = Vec::new();
+    let mut taken: Vec<String> = Vec::new();
+    let mut broken = Broken::default();
+
+    for (index, page) in pages.iter().enumerate() {
+        let body = bodies[index].take().expect("每一页都该有一个结果")?;
+
+        // 资源落盘：`assets/mdpp-<hash>.css|js`，已存在则跳过（多页共享同一份）
+        let assets_dir = site_dir.join(page::ASSET_DIR);
+        if !body.assets.is_empty() {
+            std::fs::create_dir_all(&assets_dir)
+                .map_err(|error| format!("建不了 {}：{error}", assets_dir.display()))?;
+            for asset in &body.assets {
+                let path = assets_dir.join(asset.file_name());
+                if !path.exists() {
+                    std::fs::write(&path, &asset.content)
+                        .map_err(|error| format!("写不了 {}：{error}", path.display()))?;
+                }
+            }
+        }
+
+        assets::copy(&body.wanted, &mut copied).map_err(|error| format!("拷不了资源：{error}"))?;
+        for one in &body.wanted {
+            let relative = one
+                .from
+                .strip_prefix(&pages_dir)
+                .expect("资源都在正文目录里")
+                .to_string_lossy()
+                .replace('\\', "/");
+            if !taken.contains(&relative) {
+                taken.push(relative);
+            }
+        }
+        absent.extend(body.absent);
+        broken.add(page, &body.html);
+
         let assets_prefix = assets_href(&page.key);
-        // 两种页：目录页的正文是现成生成的，其余的读文件、渲染、顺手把账记了
-        let (title, body) = if page.source.as_os_str().is_empty() {
-            // 目录页：不是从 pages/ 里来的，正文是生成的页面清单
-            (
-                document_title(project, "", page.stem()),
-                toc_body(&site, &project.config.site_name, &page.key),
-            )
-        } else {
-            pass.source_body(page, &assets_prefix)?
-        };
-
+        let title = body.title;
+        let body_html = body.html;
         let nav = nav_for(&nav, &page.key);
         // 顶栏那个图标也是同一套地址：按这一页的深度加前缀（`../../assets/…`）
         let logo = logo
@@ -423,7 +479,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
                 .as_deref()
                 .map(|name| format!("{assets_prefix}/{name}"))
                 .as_deref(),
-            body: &body,
+            body: &body_html,
             extra_css: &extra_css,
             extra_js: &extra_js,
             assets: page::Assets::Linked(assets_prefix.clone()),
@@ -432,15 +488,6 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
         project::write_file(&site_dir.join(&page.output), &document)?;
         debug!(page = %page.key, out = %page.output.display(), "一页");
     }
-
-    // 账倒出来：循环之后只读不写，拆开比继续透过 `pass` 拿清楚
-    let Pass {
-        absent,
-        copied,
-        taken,
-        broken,
-        ..
-    } = pass;
 
     // 覆盖层：把 `override/` 里的东西原样拷到产物里，重复就覆盖
     if let Some(override_dir) = &project.config.override_dir {
