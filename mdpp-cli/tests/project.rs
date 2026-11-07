@@ -723,6 +723,50 @@ fn init_builds_into_the_workdir_rather_than_the_process_dir() {
     assert!(!elsewhere.join("子站").exists(), "不该长在进程当前目录下");
 }
 
+/// `--jobs` 只是并行度，不该改变产物：同一份项目用 1 和 4 个线程出，逐字节一致
+#[test]
+fn jobs_do_not_change_the_output() {
+    use std::collections::BTreeMap;
+
+    fn snapshot(dir: &Path) -> BTreeMap<String, Vec<u8>> {
+        let mut out = BTreeMap::new();
+        let mut queue = vec![dir.to_path_buf()];
+        while let Some(path) = queue.pop() {
+            for entry in std::fs::read_dir(&path).expect("读得动目录") {
+                let entry = entry.expect("读得动条目");
+                let path = entry.path();
+                if path.is_dir() {
+                    queue.push(path);
+                } else {
+                    let key = path
+                        .strip_prefix(dir)
+                        .expect("在产物里")
+                        .to_string_lossy()
+                        .into_owned();
+                    out.insert(key, std::fs::read(&path).expect("读得动文件"));
+                }
+            }
+        }
+        out
+    }
+
+    let dir = empty_dir();
+    let root = init(dir.path());
+    for index in 0..8 {
+        std::fs::write(
+            root.join(format!("pages/页{index}.mdpp")),
+            format!("# 页 {index}\n\n::note\n  第 {index} 页的正文。\n\n::css\n  .p{index} {{ color: red; }}\n"),
+        )
+        .expect("写得下");
+    }
+
+    assert!(mdpp(&root, &["build", "--jobs", "1"]).status.success());
+    let one = snapshot(&root.join("build"));
+    assert!(mdpp(&root, &["build", "--jobs", "4"]).status.success());
+    let four = snapshot(&root.join("build"));
+    assert_eq!(one, four, "并行与单线程的产物该完全一致");
+}
+
 /// `--clean` 不能删到项目外面：`build_dir = "../victim"` 必须在删除任何东西之前报错
 #[test]
 fn clean_refuses_a_build_dir_outside_the_project() {
