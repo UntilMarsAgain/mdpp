@@ -9,6 +9,7 @@
 mod color;
 mod context;
 mod http;
+mod limits;
 mod options;
 mod page;
 mod project;

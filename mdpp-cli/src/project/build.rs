@@ -236,8 +236,7 @@ impl Pass<'_> {
         page: &Page,
         assets_prefix: &str,
     ) -> Result<(String, String), String> {
-        let source = std::fs::read_to_string(&page.source)
-            .map_err(|error| format!("读不了 {}：{error}", shown(&page.source)))?;
+        let source = crate::limits::read_text(&page.source)?;
 
         let mut context = RenderContext::new().with_links(Arc::new(Links::for_page(
             self.site.clone(),
@@ -799,8 +798,7 @@ fn read_all(paths: &[PathBuf], root: &Path) -> Result<Vec<String>, String> {
         .iter()
         .map(|path| {
             let full = project::under(root, path);
-            std::fs::read_to_string(&full)
-                .map_err(|error| format!("读不了 {}：{error}", shown(&full)))
+            crate::limits::read_text(&full)
         })
         .collect()
 }
