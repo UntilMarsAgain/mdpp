@@ -8,21 +8,22 @@
 //! 没有「用户数据」参数，规则只能从这里取当前环境。但**只有本模块直接碰线程局部**，
 //! 其它模块通过 [`with`] 读一个明确的 [`RenderEnv`]，不再各自维护字段。
 //!
-//! ## 关于依赖环
+//! ## 依赖方向
 //!
-//! `env` 持有 `RenderContext` / `BlockRegistry` / `Sink` 等类型，而这些模块又通过
-//! `env` 读当前环境，看起来是一个模块级环。它是**类型归属环**，不是行为环：
-//! 运行时环境本来就是这些类型的交汇点。要彻底消掉它，需要把环境显式传给所有
-//! 渲染回调，而 markdown-it 的 `NodeValue::render` 没有这个参数。另一个
-//! `engine ↔ block` 的环是 `::` 语法本身需要的，属于有意设计。
+//! `env` 只依赖**纯类型**模块：`render_context`、`registry::table`、`asset`。
+//! `context` 的取当前值函数、`registry::scope`、`assets` 的登记函数反过来依赖
+//! `env`，但 `env` 不再回头依赖它们，第二个模块环已经消掉。
+//!
+//! 剩下的 `engine ↔ block` 环是 `::` 语法本身需要的：解析器要装块规则，块里的
+//! 内容又要回到渲染器再解析。它是行为/递归环，属于有意设计。
 
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 
-use crate::assets::Sink;
-use crate::context::RenderContext;
-use crate::registry::BlockRegistry;
+use super::render_context::RenderContext;
+use crate::block::registry::table::BlockRegistry;
+use crate::runtime::asset::Sink;
 
 /// 「在渲染途中再渲染一段 markdown」的能力。
 pub(crate) type Nested = Box<dyn Fn(&str) -> String>;

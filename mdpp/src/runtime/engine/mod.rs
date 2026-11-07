@@ -166,7 +166,7 @@ impl Mdpp {
             context: context.clone(),
             registry: Arc::clone(&self.registry),
             // 解析阶段不收集资源；只有渲染才会碰到 ::css / ::js
-            assets: crate::assets::Sink::default(),
+            assets: crate::runtime::asset::Sink::default(),
             nested: None,
             variant: None,
             variant_seq: crate::env::sequence(),

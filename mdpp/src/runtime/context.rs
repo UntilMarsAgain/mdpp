@@ -18,62 +18,16 @@
 //! [`Mdpp::render_with`](crate::engine::Mdpp::render_with)，两次调用叠在一起 ——
 //! 还原成空的话，内层一结束，外层剩下的正文就再也问不到链接解析器了。
 
-use std::fmt;
 use std::sync::Arc;
 
 use crate::block::template::TemplatePages;
 use crate::link::LinkResolver;
 
+pub use super::render_context::RenderContext;
+
 /// 用户模板最多套这么多层（再多就当是转圈了）。超限时给的是一句说明而不是硬展开
 /// —— 见 [`crate::block::expand`]。
 pub const MAX_TEMPLATE_DEPTH: usize = 12;
-
-/// 一次渲染里、解析器外面那几样东西。
-///
-/// 克隆是廉价的：里面只有两个 [`Arc`]。
-#[derive(Clone, Default)]
-pub struct RenderContext {
-    links: Option<Arc<dyn LinkResolver>>,
-    templates: Option<TemplatePages>,
-}
-
-impl fmt::Debug for RenderContext {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RenderContext")
-            .field("links", &self.links.is_some())
-            .field("templates", &self.templates.is_some())
-            .finish()
-    }
-}
-
-impl RenderContext {
-    /// 空上下文：所有内部链接都落成红链，所有非内置的 `::名字` 都按未知块处理。
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// 递进一个内部链接解析器。
-    pub fn with_links(mut self, links: Arc<dyn LinkResolver>) -> Self {
-        self.links = Some(links);
-        self
-    }
-
-    /// 递进一份模板页来源（非内置的 `::名字` 去那里找同名页）。
-    pub fn with_templates(mut self, templates: TemplatePages) -> Self {
-        self.templates = Some(templates);
-        self
-    }
-
-    /// 当次渲染的链接解析器（没有就是没有 —— 不猜）
-    pub fn links(&self) -> Option<&Arc<dyn LinkResolver>> {
-        self.links.as_ref()
-    }
-
-    /// 当次渲染的模板页来源
-    pub fn templates(&self) -> Option<&TemplatePages> {
-        self.templates.as_ref()
-    }
-}
 
 /// 取当次渲染的上下文副本。渲染规则在回调里用这个问「现在用的是哪个解析器」。
 pub fn current() -> Option<RenderContext> {
@@ -82,12 +36,12 @@ pub fn current() -> Option<RenderContext> {
 
 /// 当次渲染的链接解析器（渲染规则里的高频入口，少一层包装）
 pub fn links() -> Option<Arc<dyn LinkResolver>> {
-    crate::env::with(|env| env.context.links.clone()).flatten()
+    crate::env::with(|env| env.context.links().cloned()).flatten()
 }
 
 /// 当次渲染的模板页来源
 pub fn templates() -> Option<TemplatePages> {
-    crate::env::with(|env| env.context.templates.clone()).flatten()
+    crate::env::with(|env| env.context.templates().cloned()).flatten()
 }
 
 /// 现在展开到第几层

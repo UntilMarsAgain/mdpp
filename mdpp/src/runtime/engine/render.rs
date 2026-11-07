@@ -23,7 +23,7 @@ fn enter_render_env(
     let env = crate::env::RenderEnv {
         context: context.clone(),
         registry: Arc::new(registry.clone()),
-        assets: crate::assets::Sink {
+        assets: crate::runtime::asset::Sink {
             mode: mode.clone(),
             assets: Vec::new(),
             hashes: HashSet::new(),
