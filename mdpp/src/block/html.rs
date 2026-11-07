@@ -232,12 +232,20 @@ fn walk_node(node: &Handle, render: &dyn Fn(&str) -> String, slots: &[String], o
             };
             let open = format!("<{tag}");
             out.push_str(&open);
+            let mut kept_attrs: Vec<(String, String)> = Vec::new();
             for attr in attrs.borrow().iter() {
                 let attr_name: String = attr.name.local.to_string();
                 let attr_name = attr_name.to_ascii_lowercase();
                 let Some(kept) = keep_attribute(&attr_name, rules, &attr.value) else {
                     continue;
                 };
+                kept_attrs.push((attr_name, kept));
+            }
+            // `target="_blank"` 的新窗口要带上 `noopener`，否则被打开的页面
+            // 能通过 `window.opener` 反向操作这一页。现代浏览器默认有，
+            // 但产物不该把这件事交给浏览器版本。
+            finish_a_attrs(&tag, &mut kept_attrs);
+            for (attr_name, kept) in kept_attrs {
                 // 布尔属性只写名字：`<details open>` 不是 `<details open="">`，
                 // 而输出是我们自己拼的，就拼成作者写下的样子
                 if BOOLEAN.contains(&attr_name.as_str()) {
@@ -545,7 +553,8 @@ fn keep_attribute(name: &str, rules: &[&str], value: &str) -> Option<String> {
         return None;
     }
     match name {
-        "href" | "src" | "srcset" | "cite" | "poster" | "download" => {
+        "srcset" => safe_srcset(value).then(|| value.to_string()),
+        "href" | "src" | "cite" | "poster" | "download" => {
             safe_url(value).then(|| value.to_string())
         }
         // `_top` 与框架名能把人带走，而这里没有框架
@@ -553,6 +562,46 @@ fn keep_attribute(name: &str, rules: &[&str], value: &str) -> Option<String> {
         "rel" => Some(value.to_string()),
         _ => Some(value.to_string()),
     }
+}
+
+/// `target="_blank"` 的 `a` 补上 `rel="noopener noreferrer"`；已有的 `rel`
+/// 保留原词，只补缺的那两个。
+fn finish_a_attrs(tag: &str, attrs: &mut Vec<(String, String)>) {
+    if tag != "a" {
+        return;
+    }
+    let blank = attrs
+        .iter()
+        .any(|(name, value)| name == "target" && value == "_blank");
+    if !blank {
+        return;
+    }
+    match attrs.iter_mut().find(|(name, _)| name == "rel") {
+        Some((_, rel)) => {
+            let mut tokens: Vec<&str> = rel.split_whitespace().collect();
+            for wanted in ["noopener", "noreferrer"] {
+                if !tokens.iter().any(|token| token.eq_ignore_ascii_case(wanted)) {
+                    tokens.push(wanted);
+                }
+            }
+            *rel = tokens.join(" ");
+        }
+        None => attrs.push(("rel".to_string(), "noopener noreferrer".to_string())),
+    }
+}
+
+/// `srcset` 是**一组**候选地址，不是一个地址：`https://x 1x, javascript:... 2x`
+/// 里第一个协议合法，不代表整条都合法。逐个候选验，有一个不过就整条丢掉。
+fn safe_srcset(value: &str) -> bool {
+    value.split(',').all(|candidate| {
+        let url = candidate
+            .trim()
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .trim();
+        !url.is_empty() && safe_url(url)
+    })
 }
 
 /// 这个地址能不能放行。
@@ -910,5 +959,32 @@ mod tests {
         let html = via_block(r#"<b>粗</b><script>alert(1)</script>"#);
         assert!(html.contains("<b>粗</b>"), "{html}");
         assert!(!html.contains("<script"), "{html}");
+    }
+
+    /// `srcset` 是一组地址：第一个合法不代表整条合法
+    #[test]
+    fn every_srcset_candidate_is_checked() {
+        let html = clean(
+            r#"<picture><source srcset="https://x/1.png 1x, javascript:alert(1) 2x"></picture>"#,
+        );
+        assert!(!html.contains("javascript"), "{html}");
+
+        let ok = clean(r#"<picture><source srcset="a.png 1x, b.png 2x"></picture>"#);
+        assert!(ok.contains(r#"srcset="a.png 1x, b.png 2x""#), "{ok}");
+    }
+
+    /// 新窗口要带 `noopener`：被打开的页面不能通过 `window.opener` 反过来操作这一页
+    #[test]
+    fn target_blank_gets_noopener() {
+        let html = clean(r#"<a href="https://example.com" target="_blank">外</a>"#);
+        assert!(html.contains("noopener"), "{html}");
+        assert!(html.contains("noreferrer"), "{html}");
+
+        // 已有的 rel 不丢，只补缺的那两个
+        let with_rel = clean(
+            r#"<a href="https://example.com" target="_blank" rel="nofollow">外</a>"#,
+        );
+        assert!(with_rel.contains("nofollow"), "{with_rel}");
+        assert!(with_rel.contains("noopener"), "{with_rel}");
     }
 }
