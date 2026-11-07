@@ -6,6 +6,11 @@
 //! 这一层只负责**认**出链接、把目标递给 [`crate::link::LinkResolver`]，然后按递回来的
 //! 东西渲染：
 //!
+//! 它有自己的 [`WikiLink`] 节点，**不复用** markdown-it 的普通链接节点：目标怎么解析、
+//! 红链长什么样、显示文字怎么排都由这里决定。解析阶段只记下原样的目标，真正的
+//! 解析器查询放到渲染时；因此 `Mdpp::parse` 不依赖链接上下文，`render_node` 拿到
+//! 什么上下文就按什么渲染。
+//!
 //! | 情形 | 渲染成 |
 //! |---|---|
 //! | [`ResolvedLink::Link`] | `<a href=… class="wikilink">` |
@@ -25,28 +30,46 @@ use markdown_it::parser::inline::{InlineRule, InlineState, Text};
 use markdown_it::{MarkdownIt, Node, NodeValue, Renderer};
 
 /// 一个 `[[…]]` 链接。
+///
+/// 它有自己的节点类型，**不是**把 `[[…]]` 改写成 markdown-it 的普通链接：
+/// 目标怎么解析、红链长什么样、显示文字怎么排，都由这里决定。解析阶段只记下
+/// 原样的目标；真正的 [`crate::link::LinkResolver`] 查询放到渲染时，这样
+/// `Mdpp::parse` 不必依赖链接上下文，`render_node` 拿到什么上下文就按什么渲染。
 #[derive(Debug)]
 pub struct WikiLink {
     /// 笔记里原样写的目标（`|显示文字` 之前那一半），便于排障与回退
     pub doc: String,
-    /// 当次渲染递进来的解析器给的结果
-    pub resolved: Option<ResolvedLink>,
 }
 
 impl NodeValue for WikiLink {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
+        let resolver = context::links();
+        let resolved = resolver
+            .as_ref()
+            .and_then(|resolver| resolver.resolve(&self.doc));
+
+        // 红链的分两档，因为它们要查的东西不是一件：
+        // - `debug`：**压根没递解析器** —— 那一篇里每一个链接都会红，那多半是没配好；
+        // - `trace`：递了解析器而它说没有 —— 一篇正文里几百个是常事（写到还没写的页面）。
+        if resolved.is_none() {
+            match resolver {
+                Some(_) => trace!(doc = %self.doc, "解析器说没有这个目标，红链"),
+                None => debug!(doc = %self.doc, "没有链接解析器，这个链接按红链渲染"),
+            }
+        }
+
         // 认得出来、且给的是**函数**：整个节点归它写。
         //
         // 注意这里不走下面那条路径 —— 那种情况是「自己画一个 `<a>`」，
         // 这一种是「连 `<a>` 都由它决定」（可能根本不是 `<a>`）。
-        if let Some(ResolvedLink::Node(renderer)) = &self.resolved {
+        if let Some(ResolvedLink::Node(renderer)) = &resolved {
             renderer.render(node, fmt);
             return;
         }
 
         // 认不出来 —— 解析器说没有，或压根没有解析器。两种情形渲染成同一样东西，
         // 理由在模块头。
-        let Some(ResolvedLink::Link(target)) = &self.resolved else {
+        let Some(ResolvedLink::Link(target)) = &resolved else {
             fmt.open(
                 "a",
                 &[
@@ -94,22 +117,10 @@ pub fn add(md: &mut MarkdownIt) {
 ///
 /// 扫描器与**直接写链接**的地方（模板页读不出来时那个提示框，见
 /// [`crate::block::expand`]）共用这一份：判定与写法都在这里定死，散开写两份
-/// 迟早会对不上。
+/// 迟早会对不上。解析阶段不查链接上下文，`doc` 原样留着，渲染时再问。
 pub fn link_node(doc: &str, text: &str) -> Node {
-    // 与扫描器同口径：有当次渲染递进来的解析器才判得出目标在不在
-    let resolved = context::links().and_then(|resolver| resolver.resolve(doc));
-    // 红链的分两档，因为它们要查的东西不是一件：
-    // - `debug`：**压根没递解析器** —— 那一篇里每一个链接都会红，那多半是没配好；
-    // - `trace`：递了解析器而它说没有 —— 一篇正文里几百个是常事（写到还没写的页面）。
-    if resolved.is_none() {
-        match context::links() {
-            Some(_) => trace!(doc, "解析器说没有这个目标，红链"),
-            None => debug!(doc, "没有链接解析器，这个链接按红链渲染"),
-        }
-    }
     let mut node = Node::new(WikiLink {
         doc: doc.to_owned(),
-        resolved,
     });
     node.children.push(Node::new(Text {
         content: text.to_owned(),
@@ -155,6 +166,18 @@ mod tests {
 
     fn render(src: &str) -> String {
         Mdpp::new().render(src)
+    }
+
+    /// 解析阶段不查链接；渲染时拿什么上下文就按什么上下文解析
+    #[test]
+    fn links_resolve_at_render_time_not_parse_time() {
+        let mdpp = Mdpp::new();
+        let root = mdpp.parse("[[甲]]\n");
+        let html = mdpp.render_node(
+            &root,
+            &RenderContext::new().with_links(Arc::new(Targets(vec!["甲".to_string()]))),
+        );
+        assert!(html.contains(r#"href="/page/甲""#), "{html}");
     }
 
     /// 认得出来的目标就是这些，其余一律认不出来

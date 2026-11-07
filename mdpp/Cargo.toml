@@ -27,6 +27,9 @@ path = "src/lib.rs"
 # 订阅器由使用方装。
 tracing = "0.1"
 
+# HTML 文本/属性转义。不要自己写实体表。
+html-escape = "0.2"
+
 # 正文解析。关掉默认 features：里面带 `syntect`，它把代码高亮配色以内联 style
 # 写死，跟随不了主题。
 markdown-it = { version = "0.6", default-features = false, features = ["linkify"] }

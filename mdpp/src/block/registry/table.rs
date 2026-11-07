@@ -105,7 +105,7 @@ impl std::fmt::Debug for BlockRegistry {
 
 /// 取当次渲染的注册表
 pub fn current() -> Option<Arc<BlockRegistry>> {
-    crate::state::with(|state| state.registry.clone()).flatten()
+    crate::env::with(|env| Arc::clone(&env.registry))
 }
 
 /// 查一个块，**只**在当次渲染的注册表里查。扫描器与分发器用它。
@@ -124,10 +124,10 @@ pub struct Guard {
 impl Drop for Guard {
     fn drop(&mut self) {
         if self.had_state {
-            let previous = self.previous.take();
-            crate::state::with(|state| state.registry = previous);
+            let previous = self.previous.take().unwrap_or_default();
+            crate::env::with(|env| env.registry = previous);
         } else {
-            crate::state::set(None);
+            crate::env::set(None);
         }
     }
 }
@@ -136,14 +136,18 @@ impl Drop for Guard {
 pub fn enter(registry: Arc<BlockRegistry>) -> Guard {
     let mut pending = Some(registry);
     let mut previous = None;
-    let had_state = crate::state::with(|state| {
-        previous = state.registry.replace(pending.take().expect("只取一次"));
+    let had_state = crate::env::with(|env| {
+        previous = Some(std::mem::replace(
+            &mut env.registry,
+            pending.take().expect("只取一次"),
+        ));
     })
     .is_some();
     if !had_state {
-        let mut state = crate::state::default_state();
-        state.registry = pending;
-        crate::state::set(Some(state));
+        crate::env::set(Some(crate::env::RenderEnv {
+            registry: pending.expect("只取一次"),
+            ..Default::default()
+        }));
     }
     Guard {
         previous,

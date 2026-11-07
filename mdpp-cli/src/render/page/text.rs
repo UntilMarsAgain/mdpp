@@ -1,17 +1,6 @@
-/// 进 HTML 属性或元素文字的转义。多转义 `&` 与引号没什么坏处
+/// 进 HTML 属性或元素文字的转义。统一交给 `html-escape`，不再自己维护实体表。
 pub fn escape(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for ch in value.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(ch),
-        }
-    }
-    out
+    html_escape::encode_quoted_attribute(value).into_owned()
 }
 
 /// 一趟扫过去替换占位符。

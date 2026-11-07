@@ -9,7 +9,7 @@
 //!
 //! **`Mdpp` 是 `Send + Sync`**：解析器与注册表都在 [`Arc`] 里，构建完之后只读；
 //! 渲染状态（链接解析器、模板页、资源收集器那一趟）是每线程一份，见
-//! `state` 模块。一个 `Mdpp` 可以被多个线程共享，每页各渲各的。
+//! `env` 模块。一个 `Mdpp` 可以被多个线程共享，每页各渲各的。
 //!
 //! 这不是靠 `unsafe impl` 换来的：markdown-it 的 `MarkdownIt`、本库的
 //! `BlockRegistry` 与 `RenderContext` 都满足 `Send + Sync`，编译器会替我们验。
@@ -52,13 +52,13 @@ use self::render::{render_node_parts, render_parts};
 /// 「当前渲染」可言。
 pub fn render_nested(source: &str) -> String {
     // 取出来再调：里面那次渲染会重新装一份自己的状态，不能占着借用
-    let taken = crate::state::with(|state| state.nested.take()).flatten();
+    let taken = crate::env::with(|env| env.nested.take()).flatten();
     let out = match &taken {
         Some(run) => run(source),
         None => String::new(),
     };
     if let Some(run) = taken {
-        crate::state::with(|state| state.nested = Some(run));
+        crate::env::with(|env| env.nested = Some(run));
     }
     out
 }
@@ -162,17 +162,17 @@ impl Mdpp {
     /// 带上下文解析成 AST。链接解析器与模板页来源在解析阶段就会被用到
     /// （`[[…]]` 的节点、`::模板` 的展开）。
     pub fn parse_with(&self, source: &str, context: &RenderContext) -> Node {
-        let state = crate::state::RenderState {
-            context: Some(context.clone()),
-            registry: Some(Arc::clone(&self.registry)),
+        let env = crate::env::RenderEnv {
+            context: context.clone(),
+            registry: Arc::clone(&self.registry),
             // 解析阶段不收集资源；只有渲染才会碰到 ::css / ::js
-            assets: None,
+            assets: crate::assets::Sink::default(),
             nested: None,
             variant: None,
-            variant_seq: crate::variants::sequence(),
+            variant_seq: crate::env::sequence(),
             depth: 0,
         };
-        let _guard = crate::state::enter(state);
+        let _guard = crate::env::enter(env);
         parse_markdown(&self.parser, source)
     }
 
