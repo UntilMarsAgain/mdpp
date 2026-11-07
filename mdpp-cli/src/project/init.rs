@@ -53,7 +53,7 @@ pub fn run(options: &Init) -> Result<(), String> {
     info!(dir = shown(&root), site = %name, "站点骨架");
     eprintln!("建了 {}", shown(&root));
     eprintln!("站点名：{name}");
-    eprintln!("下一步：cd 到那里，`mdpp new 甲`，然后 `mdpp build`");
+    eprintln!("下一步：cd 到那里，`mdpp new page`，然后 `mdpp build`");
     Ok(())
 }
 

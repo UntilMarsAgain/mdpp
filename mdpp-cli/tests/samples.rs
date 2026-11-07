@@ -140,8 +140,8 @@ fn the_tour_visits_every_builtin_block() {
         // 认的是**填进去的那个参数值**，不是渲染出来的标签：模板页展开后落成
         // `::banner` / `::tabs`，而那两个内置块在巡览别处也有，认标签就分不出
         // 「是模板页来的」还是「是内置块来的」。
-        ("卡片", "<strong>一个模板页</strong>"),
-        ("面板", "<p>另一个模板页</p>"),
+        ("card", "<strong>一个模板页</strong>"),
+        ("panel", "<p>另一个模板页</p>"),
     ];
 
     let missing: Vec<&str> = marks

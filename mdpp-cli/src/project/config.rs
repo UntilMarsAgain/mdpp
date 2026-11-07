@@ -357,7 +357,7 @@ mod tests {
         // 骨架里显式给了这几项
         assert_eq!(config.lang.as_deref(), Some("zh-Hans"));
         assert_eq!(config.footer.as_deref(), Some("底栏显示在这里"));
-        assert_eq!(config.toc.as_deref(), Some("目录"));
+        assert_eq!(config.toc.as_deref(), Some("contents"));
     }
 
     /// 空文件不再是合法配置：四个必填项缺失，解析时就该说

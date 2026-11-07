@@ -141,14 +141,9 @@ fn staging_dir(site_dir: &Path) -> Result<PathBuf, String> {
     let parent = site_dir
         .parent()
         .ok_or_else(|| format!("site_dir（{}）没有上一级目录", shown(site_dir)))?;
-    let name = site_dir
-        .file_name()
-        .ok_or_else(|| format!("site_dir（{}）不像一个目录名", shown(site_dir)))?;
-    Ok(parent.join(format!(
-        ".{}.mdpp-tmp-{}",
-        name.to_string_lossy(),
-        std::process::id()
-    )))
+    // 名字只用 ASCII、也不带产物目录名：`build_dir` 可以由用户写成中文，
+    // 但临时目录不参与展示，没必要跟着它一起变成非 ASCII。
+    Ok(parent.join(format!(".mdpp-tmp-{}", std::process::id())))
 }
 
 /// 把出好的临时目录换成正式目录。
@@ -162,14 +157,7 @@ fn swap_into_place(staging: &Path, site_dir: &Path) -> Result<(), String> {
     let parent = site_dir
         .parent()
         .ok_or_else(|| format!("site_dir（{}）没有上一级目录", shown(site_dir)))?;
-    let name = site_dir
-        .file_name()
-        .ok_or_else(|| format!("site_dir（{}）不像一个目录名", shown(site_dir)))?;
-    let backup = parent.join(format!(
-        ".{}.mdpp-old-{}",
-        name.to_string_lossy(),
-        std::process::id()
-    ));
+    let backup = parent.join(format!(".mdpp-old-{}", std::process::id()));
     remove_any(&backup);
 
     let had_old = site_dir.exists();
@@ -320,7 +308,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
         _ => ExternalScript::Cdn,
     };
 
-    // 目录页：配置里 `toc` 那一页（默认「目录」），生成后插进站点 ——
+    // 目录页：配置里 `toc` 那一页（骨架默认 `contents`），生成后插进站点 ——
     // 导航解析与站内链接都能指到它，报告里也数得进页数
     let toc_key = project
         .config
@@ -1004,6 +992,20 @@ mod tests {
     use super::*;
     use crate::project::site::{INDEX_KEY, output_of};
     use std::collections::BTreeMap;
+
+    /// 临时目录名不跟产物目录名走：`build_dir` 可以是中文，但临时名字只用 ASCII
+    #[test]
+    fn the_staging_name_is_ascii_even_for_a_non_ascii_build_dir() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let staging = staging_dir(&dir.path().join("构建")).expect("算得出");
+        let name = staging
+            .file_name()
+            .expect("有名字")
+            .to_string_lossy()
+            .into_owned();
+        assert!(name.starts_with(".mdpp-tmp-"), "{name}");
+        assert!(name.is_ascii(), "{name}");
+    }
 
     /// 一个小站点：首页 + 两页，`指南/入门` 与 `手册`
     fn site_of(files: &[&str]) -> (tempfile::TempDir, Site) {

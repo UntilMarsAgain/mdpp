@@ -5,7 +5,7 @@
 //!
 //! - `code` / `mermaid` / `math`：内容是**另一种语言**，里面的 `*`、`_`、`\`、`-->`、
 //!   `[]` 都是它自己的记号。
-//! - `css` / `js`：内容是**要执行的东西**，还要先过一遍 `{{参数}}` 填空与过滤
+//! - `css` / `js`：内容是**要执行的东西**，还要先过一遍 `{{param}}` 填空与过滤
 //!   （见 [`fill`](crate::block::fill)）。
 //! - `html`：内容是**要落进页面的标记**，默认过滤掉会执行脚本的东西，除非显式写了 `js`。
 //!
@@ -19,7 +19,7 @@ use markdown_it::{Node, Renderer};
 
 /// `::js` —— 把内容当**原始 JavaScript** 注入这一页，随页面加载执行。
 ///
-/// 与 `::html` 一个规矩：内容原样，`{{参数}}` 会替换。不过滤 ——
+/// 与 `::html` 一个规矩：内容原样，`{{param}}` 会替换。不过滤 ——
 /// 写下 `::js` 本身就是一次显式的决定，与 `::html js` 是同一个意思。
 ///
 /// 注入的脚本里若出现 `</script`，HTML 解析器会当场收尾，后面的字会漏到页面上，
@@ -176,7 +176,7 @@ pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 /// （`--mdpp-accent`、`--mdpp-link` …）在这里用 `var()` 直接就能取到 ——
 /// 这正是「自定义块能跟着主题走」的关键。
 ///
-/// 内容里的 `{{参数}}` 会被替换；`</style` 会被去掉，免得提前闭合样式块。
+/// 内容里的 `{{param}}` 会被替换；`</style` 会被去掉，免得提前闭合样式块。
 ///
 /// 单页模式下同一份 CSS 按内容哈希去重后内联；站点模式下输出 `<link>`，
 /// 内容随 [`crate::Rendered::assets`] 返回交给调用方写盘。
@@ -432,10 +432,10 @@ mod tests {
         assert!(html.contains("<script"), "{html}");
     }
 
-    /// `{{参数}}` 在写出去之前被填掉 —— 要执行的那几个块都得过这一遍
+    /// `{{param}}` 在写出去之前被填掉 —— 要执行的那几个块都得过这一遍
     #[test]
     fn placeholders_are_filled_from_params() {
-        let html = render("::css 颜色=red\n  .a { color: {{颜色}}; }\n");
+        let html = render("::css color=red\n  .a { color: {{color}}; }\n");
         assert!(html.contains("color: red"), "{html}");
     }
 

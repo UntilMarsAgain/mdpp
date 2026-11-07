@@ -28,4 +28,4 @@ nav = [
     { "语法" = "grammar" }
 ]
 
-toc = "所有页面"
+toc = "contents"

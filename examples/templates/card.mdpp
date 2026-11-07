@@ -1,6 +1,6 @@
 ::banner color=#0055a4
-  **{{标题}}**
+  **{{title}}**
 
   {{body}}
 
-{{额外}}
+{{extra}}
