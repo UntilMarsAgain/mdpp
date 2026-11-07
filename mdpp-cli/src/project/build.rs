@@ -874,7 +874,13 @@ fn copy_dir_all(from: &Path, to: &Path) -> std::io::Result<()> {
         let entry = entry?;
         let src = entry.path();
         let dst = to.join(entry.file_name());
-        if src.is_dir() {
+        // 覆盖层也不跟符号链接：产物根是 HTTP 服务器直接服务的目录，
+        // 一条指向外面的链接等于把外面挂进站点。
+        let meta = std::fs::symlink_metadata(&src)?;
+        if meta.file_type().is_symlink() {
+            continue;
+        }
+        if meta.is_dir() {
             copy_dir_all(&src, &dst)?;
         } else {
             std::fs::copy(&src, &dst)?;

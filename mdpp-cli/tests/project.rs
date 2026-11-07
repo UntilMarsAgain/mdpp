@@ -450,6 +450,31 @@ Disallow: /private/
     );
 }
 
+/// 覆盖层里的符号链接不跟：产物根是 HTTP 直接服务的目录
+#[cfg(unix)]
+#[test]
+fn a_symlink_in_the_override_is_not_copied() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(&config, format!("{text}\noverride_dir = \"override\"\n")).expect("改得下");
+
+    std::fs::create_dir_all(root.join("override")).expect("建得出");
+    std::fs::write(dir.path().join("secret.txt"), "不该进产物").expect("写得下");
+    std::os::unix::fs::symlink(
+        dir.path().join("secret.txt"),
+        root.join("override/leak.txt"),
+    )
+    .expect("建得出符号链接");
+
+    assert!(mdpp(&root, &["build"]).status.success());
+    assert!(
+        !root.join("build/leak.txt").exists(),
+        "覆盖层里的符号链接不该被拷进产物"
+    );
+}
+
 /// 标签页上那个小图标：`favicon = "…"` 配了就出 `<link rel="icon">`，并把那个文件
 /// 拷进 `assets/`。**二进制格式（`.png` / `.ico` / `.gif`）是这里的要紧处** ——
 /// 那正是 favicon 最常见的形态，而按文本读它会因为「不是合法 UTF-8」直接把 build
