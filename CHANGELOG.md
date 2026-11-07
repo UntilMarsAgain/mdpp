@@ -64,8 +64,7 @@
   `page` → `mod/assets/chrome/text`，`build` → `mod/clean/files/nav/page/report`，
   `site` → `mod/paths/links`，`serve` → `mod/rebuild/temp/watch`，
   `cli/options` → `mod/render/project/build/serve/help`。
-- 仓库根新增 `AGENT.md`：模块地图、公开 API 重导出规则、前端资源约束、
-  构建/预览不变量与拆分检查单。
+- 仓库根新增简明的 `AGENTS.md`：常用命令、入口索引、硬约束与提交前检查。
 - 前端 `mdpp.css` / `site.css` / `mdpp.js` 保持各自一份综合文件，便于分发。
 - `cargo fmt`、`cargo clippy -D warnings` 全绿；两个 crate 都 `forbid(unsafe_code)`。
 - 默认生成的文件/目录名与模板占位符只用 ASCII（`cache/turn-N`、`.mdpp-tmp-*`、
