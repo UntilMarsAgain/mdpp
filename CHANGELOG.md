@@ -29,7 +29,7 @@
 - `build` 改为整目录替换：先出到临时目录，全部成功才换名；失败时旧站点不动。
 - `--jobs N` 并行出页，产物与单线程逐字节一致。
 - `Mdpp` 改为 `Send + Sync`，一个解析器可被多线程共享。
-- 渲染状态收拢成一份 `RenderState`，嵌套渲染的层数与主题槽会正确继承。
+- 渲染状态收拢成一份 `RenderEnv`，嵌套渲染的层数与变体作用域会正确继承。
 - 资源去重从线性扫描改成哈希集合。
 
 ### 扩展 API
@@ -64,10 +64,17 @@
   navbox 也展开；与打印样式同一套。
 - `mdpp.js` 修复：重复包含时 `data-mdpp-bound` 空值判断失效、嵌套 tabs / navbox
   误绑到外层、主题固定判断、整页级初始化重复执行。
+- `mdpp.js` 按职责整理为环境、组状态、延迟资源、主题、navbox、图表、公共 API、
+  启动八个段落；仍然是单个分发文件。
 - 引入 KaTeX 的 CSS；此前只有 JS，公式的排版本该依赖那份样式表。
 
 ### 工程
 
+- 渲染状态收拢成 `runtime/env.rs` 的 `RenderEnv`：上下文、注册表、资源收集器、
+  变体作用域与层数从散落的 `state::with` 变成一份明确的环境；其它模块只读这一份。
+- `wikilink` 使用自己的 `WikiLink` 节点，解析阶段只记目标，渲染时再问
+  `LinkResolver`；`parse` 不再在解析时查询链接上下文。
+- HTML 文本/属性转义改用 `html-escape`，删掉库与命令行里各自手写的实体表。
 - `mdpp` 的源码按职责收进 `runtime` / `parse` / `block` / `api` / `support`，
   `mdpp-cli` 收进 `cli` / `render` / `project` / `server` / `support`；根上的
   `mdpp::engine`、`mdpp::context`、`mdpp::raw` 等公开路径通过重导出保持不变。
