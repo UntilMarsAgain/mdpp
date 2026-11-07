@@ -48,7 +48,7 @@
 </div>
 ```
 
-块一共 24 个，覆盖引用、提示框、信息栏、选项卡、深浅色主题、水平分栏、图片音视频、
+块一共 30 个，覆盖引用、提示框、信息栏、选项卡、深浅色主题、水平分栏、图片音视频、
 代码块、公式、mermaid 图、导航框、内联样式与原始 HTML。完整的巡览见
 [`examples/tour.mdpp`](examples/tour.mdpp)，块名清单见 `mdpp render --list-blocks`。
 
@@ -107,6 +107,12 @@ cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 从二进制里拷出来 —— 几十个页面共用一份，不必每页里都塞一遍。站内链接是**相对**的，
 所以整个 `build/` 拷到任何地方、挂在子路径下，链接都还对。
 
+构建是**整目录替换**：先出到同级的临时目录，全部成功才换名；中途失败时旧站点一个
+字都不动，上一次留下、这一版不再生成的文件也不会继续留在产物里。`--clean` 保留为
+兼容开关，现在不再改变行为。`--jobs N` 控制并行渲染的线程数（`0` = 按 CPU 核数，
+`1` = 单线程）；同一份项目用不同并行度出的产物逐字节一致。`build_dir` 必须位于项目
+目录之内，指向项目外会在删除/替换任何东西之前报错。
+
 内部链接 `[[目标]]` 在这里才真正有意义：`pages/` 就是全部的真相，指得到就带上地址，
 指不到就是一条**红链**（不带 `href`，一眼看得出），并在 build 结束时逐条报出来。
 `mdpp build --strict` 让红链与写坏的块变成非零退出码，好挂进 CI。
@@ -134,9 +140,9 @@ cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 site_name = "桥梁笔记"                        # 顶栏左边
 theme_color = "#2f6fd0"                      # 顶栏那块底的颜色；不写就是默认的蓝
 site_description = "十四座桥，与它们的记述"    # 顶栏右边，也进 <meta name="description">
-site_url = "https://x.github.io/repo/"        # 站点在网上的地址；配了才有 canonical
+base_url = "https://x.github.io/repo/"        # 站点在网上的地址；配了才有 canonical
 repo_url = "https://example.com/notes"        # 顶栏右端那个链接（只认 http/https）
-copyright = "© 某人"                          # 底栏那句；空的就是没有底栏
+footer = "© 某人"                             # 底栏那句；空的就是没有底栏
 favicon = "assets/icon.svg"                   # 标签页上那个小图标；相对项目根
 logo = "assets/icon.svg"                      # 顶栏里、站点名旁边那个图标；同上
 override_dir = "override"                     # 覆盖层：build 后把这里的东西原样拷到产物里
@@ -153,9 +159,10 @@ nav = ["首页", { "指南" = "指南/入门" }]        # 导航栏：顶栏下�
 会额外出一页，把全站每一页列成链接，并在导航栏末尾自动补一个按钮指过去（作者已经
 在 `nav` 里指过它就不补）。写空串（`toc = ""`）就不生成。
 
-`site_url` 只回答「你在网上是哪一个」那一个问题：配了，每一页就多一条
+`base_url` 只回答「你在网上是哪一个」那一个问题：配了，每一页就多一条
 `<link rel="canonical">`。**页内链接一律仍是相对的** —— 相对地址让整站能拷到任何
 地方、挂在任意子路径下，而 canonical 是给搜索引擎看的。本地预览不必写它。
+`footer` 会按 mdpp 语法渲染，所以底栏里可以写链接、`::note` 之类的块。
 
 正文里**引用的本地文件会被拷进 `build/assets/`**，地址改成指到那儿去 —— 产物是
 目录式的，而页面自己比源文件深了一层，正文里那个相对地址到了产物里会指错地方：
@@ -193,6 +200,44 @@ mdpp serve -p 9000    # 换端口；-p 0 让系统挑一个空闲的
 ```rust
 let html = mdpp::Mdpp::new().render("::note\n  这里可以写 **markdown**。\n");
 ```
+
+`Mdpp` 是 `Send + Sync`：构建一次，可以被多个线程共享，每页各渲各的。需要
+内部链接就实现 `LinkResolver`，需要模板页就实现 `TemplateSource`，分别交给
+`RenderContext::with_links` / `with_templates`。
+
+要**不止填空**，有三条路：
+
+```rust
+// 1. 解析成 AST，改完再渲染
+let mdpp = mdpp::Mdpp::new();
+let mut root = mdpp.parse("# 标题\n");
+root.children[0].attrs.push(("class", "mine".to_string()));
+let html = mdpp.render_node(&root, &mdpp::RenderContext::new());
+
+// 2. 自定义块按实例选内容模式（同一个块有时 raw、有时 markdown）
+let mut registry = mdpp::BlockRegistry::with_builtins();
+let spec = mdpp::BlockSpec::new("切换", mdpp::ContentMode::Markdown, |block: &mdpp::Block, node: &mdpp::markdown_it::Node, fmt: &mut dyn mdpp::markdown_it::Renderer| {
+    if block.has("raw") { fmt.text(&block.body); } else { fmt.contents(&node.children); }
+})
+.with_mode_fn(|block| {
+    if block.has("raw") { mdpp::ContentMode::Raw } else { mdpp::ContentMode::Markdown }
+});
+registry.register(spec);
+
+// 3. 自定义块登记自己的 CSS / JS
+use mdpp::{AssetKind, AssetUse, use_asset};
+match use_asset(AssetKind::Css, ".mine { color: red; }") {
+    AssetUse::Inline(css) => { /* 单页：写进 <style> */ }
+    AssetUse::Linked(url) => { /* 站点：写 <link href=url> */ }
+    AssetUse::Duplicate => {}
+}
+```
+
+写块、模板时常用的填空、分节、净化、诊断框都在 `mdpp::author` 里；具体块的
+DOM（`.tabs`、`.callout` …）不属于扩展契约，要复用分节数据就用
+`mdpp::author::sections`，要让现成交互脚本认领就照浏览器钩子表那套 `class` /
+`data-*` 写。AST 是 markdown-it 的 `Node`（本库重导出了 `markdown_it`），
+`parse` 与 `render_node` 应当用同一个 `Mdpp`。
 
 ## 许可
 
