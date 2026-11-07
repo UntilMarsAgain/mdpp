@@ -155,36 +155,37 @@ pub(crate) fn no_leading_content(sections: &[(&str, &Node)], what: &str) -> Resu
     Ok(())
 }
 
-thread_local! {
-    /// 当前正在渲染哪个 `::theme` 节（`Some("light")` / `Some("dark")` / `Some("")`），
-    /// `None` 表示不在 `::theme` 内部。由 [`enter_theme_slot`] 设置，由渲染器
-    /// (`::css` / `::js` / `::html js`) 读取，决定是直接输出 `<style>`/`<script>`，
-    /// 还是输出带 `data-theme` 的占位容器。
-    static CURRENT_THEME_SLOT: std::cell::RefCell<Option<String>> =
-        const { std::cell::RefCell::new(None) };
-}
-
 /// 进入一个 `::theme` 节，返回守卫。守卫丢弃时恢复之前的 slot（支持嵌套 theme）。
 pub(crate) struct ThemeGuard {
     previous: Option<String>,
+    had_state: bool,
 }
 
 impl Drop for ThemeGuard {
     fn drop(&mut self) {
-        CURRENT_THEME_SLOT.with(|cell| *cell.borrow_mut() = self.previous.clone());
+        if self.had_state {
+            let previous = self.previous.take();
+            crate::state::with(|state| state.theme_slot = previous);
+        }
     }
 }
 
 /// 进入 `slot` 指定的 theme 节，返回守卫。
 pub(crate) fn enter_theme_slot(slot: &str) -> ThemeGuard {
-    let previous = CURRENT_THEME_SLOT.with(|cell| cell.borrow().clone());
-    CURRENT_THEME_SLOT.with(|cell| *cell.borrow_mut() = Some(slot.to_string()));
-    ThemeGuard { previous }
+    let mut previous = None;
+    let had_state = crate::state::with(|state| {
+        previous = state.theme_slot.replace(slot.to_string());
+    })
+    .is_some();
+    ThemeGuard {
+        previous,
+        had_state,
+    }
 }
 
 /// 取当前 theme slot。`None` 表示不在 `::theme` 内部。
 pub(crate) fn current_theme_slot() -> Option<String> {
-    CURRENT_THEME_SLOT.with(|cell| cell.borrow().clone())
+    crate::state::with(|state| state.theme_slot.clone()).flatten()
 }
 
 #[cfg(test)]

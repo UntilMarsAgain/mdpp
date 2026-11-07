@@ -9,8 +9,6 @@
 //! 收集器是线程局部的，与 `context` / `registry` 同一个模式：渲染是同步的，
 //! 一次渲染一趟，嵌套渲染（`::html` 里的 `<markdown>`）会把内层资源合并回外层。
 
-use std::cell::RefCell;
-
 /// 资源类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssetKind {
@@ -62,59 +60,21 @@ pub enum AssetMode {
 }
 
 /// 当次渲染的资源收集器。
-struct Sink {
-    mode: AssetMode,
-    assets: Vec<Asset>,
-}
-
-thread_local! {
-    static CURRENT: RefCell<Option<Sink>> = const { RefCell::new(None) };
-}
-
-/// 进入一次渲染的守卫：出栈时恢复外层收集器，并把内层资源合并回去。
-pub(crate) struct Guard {
-    previous: Option<Sink>,
-}
-
-impl Drop for Guard {
-    fn drop(&mut self) {
-        CURRENT.with(|cell| {
-            let mut cell = cell.borrow_mut();
-            let inner = cell.take();
-            *cell = self.previous.take();
-            // 嵌套渲染（`::html` 里的 `<markdown>`）的资源合并回外层
-            if let (Some(inner), Some(outer)) = (inner, cell.as_mut()) {
-                for asset in inner.assets {
-                    if !outer.assets.iter().any(|one| one.hash == asset.hash) {
-                        outer.assets.push(asset);
-                    }
-                }
-            }
-        });
-    }
-}
-
-/// 进入一次渲染。返回守卫与「是不是嵌套渲染」。
-pub(crate) fn enter(mode: AssetMode) -> (Guard, bool) {
-    let previous = CURRENT.with(|cell| cell.borrow_mut().take());
-    let nested = previous.is_some();
-    CURRENT.with(|cell| {
-        *cell.borrow_mut() = Some(Sink {
-            mode,
-            assets: Vec::new(),
-        });
-    });
-    (Guard { previous }, nested)
+pub(crate) struct Sink {
+    pub(crate) mode: AssetMode,
+    pub(crate) assets: Vec<Asset>,
 }
 
 /// 取出当前收集到的资源（只在**最外层**渲染结束时调用）。
 pub(crate) fn take_assets() -> Vec<Asset> {
-    CURRENT.with(|cell| {
-        cell.borrow_mut()
+    crate::state::with(|state| {
+        state
+            .assets
             .as_mut()
             .map(|sink| std::mem::take(&mut sink.assets))
             .unwrap_or_default()
     })
+    .unwrap_or_default()
 }
 
 /// 一份资源在页面里该怎么出现。
@@ -130,12 +90,12 @@ pub(crate) enum Emission {
 /// 记录一份资源，返回它在页面里的样子。
 pub(crate) fn emit(kind: AssetKind, content: String) -> Emission {
     let hash = hash_of(&content);
-    CURRENT.with(|cell| {
-        let mut cell = cell.borrow_mut();
-        let Some(sink) = cell.as_mut() else {
-            // 不在渲染中（例如单独调用渲染器）：退化为内联，行为与旧版一致
-            return Emission::Inline(content);
-        };
+    // 不在渲染中（例如单独调用渲染器）：退化为内联，行为与旧版一致
+    if !crate::state::with(|state| state.assets.is_some()).unwrap_or(false) {
+        return Emission::Inline(content);
+    }
+    crate::state::with(|state| {
+        let sink = state.assets.as_mut().expect("上面刚查过");
         if sink.assets.iter().any(|asset| asset.hash == hash) {
             return Emission::Duplicate;
         }
@@ -162,6 +122,7 @@ pub(crate) fn emit(kind: AssetKind, content: String) -> Emission {
             None => Emission::Inline(content),
         }
     })
+    .expect("上面刚查过")
 }
 
 /// FNV-1a 64 位：不引入额外依赖，内容相同哈希就相同。
@@ -177,6 +138,19 @@ fn hash_of(content: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 测试里装一份只有资源收集器的状态
+    fn enter(mode: AssetMode) -> (crate::state::Guard, bool) {
+        let guard = crate::state::enter(crate::state::RenderState {
+            assets: Some(Sink {
+                mode,
+                assets: Vec::new(),
+            }),
+            ..Default::default()
+        });
+        let nested = guard.nested();
+        (guard, nested)
+    }
 
     /// 内容一样哈希就一样，长度固定 16 位
     #[test]

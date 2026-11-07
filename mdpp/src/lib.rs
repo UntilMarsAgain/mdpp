@@ -72,6 +72,8 @@
 #[doc = include_str!("../../README.md")]
 pub struct ReadmeSnippets;
 
+mod state;
+
 pub mod assets;
 pub mod block;
 pub mod context;
