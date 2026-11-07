@@ -9,6 +9,8 @@
 //! 收集器是线程局部的，与 `context` / `registry` 同一个模式：渲染是同步的，
 //! 一次渲染一趟，嵌套渲染（`::html` 里的 `<markdown>`）会把内层资源合并回外层。
 
+use std::collections::HashSet;
+
 /// 资源类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssetKind {
@@ -63,6 +65,8 @@ pub enum AssetMode {
 pub(crate) struct Sink {
     pub(crate) mode: AssetMode,
     pub(crate) assets: Vec<Asset>,
+    /// 已经在 `assets` 里的内容哈希 —— 去重从线性扫描改成一次哈希查找
+    pub(crate) hashes: HashSet<String>,
 }
 
 /// 取出当前收集到的资源（只在**最外层**渲染结束时调用）。
@@ -96,7 +100,7 @@ pub(crate) fn emit(kind: AssetKind, content: String) -> Emission {
     }
     crate::state::with(|state| {
         let sink = state.assets.as_mut().expect("上面刚查过");
-        if sink.assets.iter().any(|asset| asset.hash == hash) {
+        if !sink.hashes.insert(hash.clone()) {
             return Emission::Duplicate;
         }
         let link = match &sink.mode {
@@ -145,6 +149,7 @@ mod tests {
             assets: Some(Sink {
                 mode,
                 assets: Vec::new(),
+                hashes: HashSet::new(),
             }),
             ..Default::default()
         });

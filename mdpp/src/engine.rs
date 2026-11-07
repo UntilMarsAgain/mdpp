@@ -185,6 +185,7 @@ fn render_parts(
         assets: Some(crate::assets::Sink {
             mode: mode.clone(),
             assets: Vec::new(),
+            hashes: std::collections::HashSet::new(),
         }),
         nested: Some(Box::new({
             let parser = Arc::clone(parser);

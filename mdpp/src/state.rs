@@ -75,11 +75,9 @@ impl Drop for Guard {
         let inner = take();
         if let Some(mut previous) = self.previous.take() {
             if let Some(inner) = inner {
-                if let (Some(mut inner_sink), Some(outer)) =
-                    (inner.assets, previous.assets.as_mut())
-                {
-                    for asset in inner_sink.assets.drain(..) {
-                        if !outer.assets.iter().any(|one| one.hash == asset.hash) {
+                if let (Some(inner_sink), Some(outer)) = (inner.assets, previous.assets.as_mut()) {
+                    for asset in inner_sink.assets {
+                        if outer.hashes.insert(asset.hash.clone()) {
                             outer.assets.push(asset);
                         }
                     }
