@@ -128,7 +128,16 @@ pub struct BlockSpec {
     name: String,
     renderer: RendererKind,
     mode: ContentMode,
+    /// 按**这一块的实际参数/正文**再决定一次内容模式；`None` = 用固定的 `mode`
+    dynamic: Option<Arc<ContentModeFn>>,
 }
+
+/// 动态内容模式：看到块头之后决定这一块走 Markdown / Sections / Raw。
+///
+/// 扫到 `::名字 …` 时渲染函数还没被调用，所以模式必须在**解析内容之前**定下来；
+/// 固定的 [`ContentMode`] 不够用时（同一个块有时要 raw、有时要 markdown），
+/// 用 [`BlockSpec::with_mode_fn`] 挂一个这样的函数。
+pub type ContentModeFn = dyn Fn(&Block) -> ContentMode + Send + Sync;
 
 /// 渲染器的两种存法。函数指针那条路不必绕 HRTB：把 `fn(&Block, &Node, &mut dyn
 /// Renderer)` 包进闭包时，闭包的参数生命周期会按实体推断，于是报
@@ -170,6 +179,7 @@ impl BlockSpec {
             name: name.into(),
             renderer: RendererKind::Plain(renderer),
             mode,
+            dynamic: None,
         }
     }
 
@@ -179,6 +189,7 @@ impl BlockSpec {
             name: name.into(),
             renderer: RendererKind::Boxed(Arc::new(renderer.into_boxed())),
             mode,
+            dynamic: None,
         }
     }
 
@@ -187,9 +198,29 @@ impl BlockSpec {
         &self.name
     }
 
-    /// 内容怎么处理
+    /// 内容怎么处理（固定档；动态档见 [`Self::mode_for`]）
     pub fn mode(&self) -> ContentMode {
         self.mode
+    }
+
+    /// 给这一条挂一个「看块头再决定」的模式函数。
+    ///
+    /// 例如同一个 `::代码` 块：写了 `raw=1` 就按原文、否则按 markdown。
+    /// 函数在扫描阶段调用，拿到的 [`Block`] 已经有名字、参数与正文。
+    pub fn with_mode_fn(
+        mut self,
+        choose: impl Fn(&Block) -> ContentMode + Send + Sync + 'static,
+    ) -> Self {
+        self.dynamic = Some(Arc::new(choose));
+        self
+    }
+
+    /// 这一块该走哪种内容模式：有动态函数就问它，否则用固定的那一档
+    pub fn mode_for(&self, block: &Block) -> ContentMode {
+        match &self.dynamic {
+            Some(choose) => choose(block),
+            None => self.mode,
+        }
     }
 
     /// 调渲染器
@@ -209,6 +240,7 @@ impl std::fmt::Debug for BlockSpec {
         f.debug_struct("BlockSpec")
             .field("name", &self.name)
             .field("mode", &self.mode)
+            .field("dynamic", &self.dynamic.is_some())
             .finish_non_exhaustive()
     }
 }

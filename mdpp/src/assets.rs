@@ -81,6 +81,41 @@ pub(crate) fn take_assets() -> Vec<Asset> {
     .unwrap_or_default()
 }
 
+/// 自定义块登记资源时拿到的结果。
+///
+/// 用法是在渲染器里：
+///
+/// ```
+/// use mdpp::{AssetKind, AssetUse, use_asset};
+///
+/// let use_ = use_asset(AssetKind::Css, ".mine { color: red; }");
+/// match use_ {
+///     AssetUse::Inline(css) => { /* 单页模式：把 css 写进 <style> */ }
+///     AssetUse::Linked(url) => { /* 站点模式：写 <link href=url> */ }
+///     AssetUse::Duplicate => { /* 同样的内容已经有人登记过 */ }
+/// }
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AssetUse {
+    /// 第一次出现：把这段内容内联进页面（单页模式）
+    Inline(String),
+    /// 第一次出现：用这个地址（站点模式）
+    Linked(String),
+    /// 已经出现过，跳过
+    Duplicate,
+}
+
+/// 从自定义块的渲染器里登记一份 CSS / JS。
+///
+/// 不在渲染中时退化为 [`AssetUse::Inline`] —— 与单独调用渲染器的行为一致。
+pub fn use_asset(kind: AssetKind, content: impl Into<String>) -> AssetUse {
+    match emit(kind, content.into()) {
+        Emission::Inline(content) => AssetUse::Inline(content),
+        Emission::Linked(url) => AssetUse::Linked(url),
+        Emission::Duplicate => AssetUse::Duplicate,
+    }
+}
+
 /// 一份资源在页面里该怎么出现。
 pub(crate) enum Emission {
     /// 第一次出现，内联这段内容。
