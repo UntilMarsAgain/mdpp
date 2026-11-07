@@ -33,11 +33,14 @@
 //!   星号那对原封不动，还是 CommonMark 的全部活性。
 
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use markdown_it::generics::inline::emph_pair::EmphPairScanner;
 use markdown_it::parser::core::CoreRule;
+use markdown_it::plugins::cmark::block::heading::ATXHeading;
+use markdown_it::plugins::cmark::block::lheading::SetextHeader;
 use markdown_it::plugins::cmark::inline::autolink::Autolink;
 use markdown_it::plugins::cmark::inline::link::Link;
 use markdown_it::plugins::extra::linkify::Linkified;
@@ -49,7 +52,6 @@ use crate::context::{self, RenderContext};
 use crate::registry::BlockRegistry;
 use crate::slug;
 use crate::syntax;
-use crate::targets;
 use crate::telemetry::{Size, debug, trace};
 
 /// 「在渲染途中再渲染一段 markdown」的能力，即 `::html` 里的 `<markdown>`。
@@ -205,9 +207,6 @@ fn render_parts(
     source: &str,
     mode: AssetMode,
 ) -> (String, Vec<Asset>) {
-    // 目标里的空格先补成 `%20`（CommonMark 不认带空格的目标，见 `targets`）
-    let prepared = targets::encode_target_spaces(source);
-
     // 顺序无所谓，四个都是各自独立的槽位
     let _registry_guard = crate::registry::enter(Arc::new(registry.clone()));
     let _context_guard = context::enter(context.clone());
@@ -230,8 +229,8 @@ fn render_parts(
     };
 
     let started = std::time::Instant::now();
-    let html = parser.parse(&prepared).render();
-    let size = Size::measure(&prepared, started.elapsed(), &html);
+    let html = parse_markdown(parser, source).render();
+    let size = Size::measure(source, started.elapsed(), &html);
     debug!(
         in_bytes = size.in_bytes,
         out_bytes = size.out_bytes,
@@ -247,6 +246,16 @@ fn render_parts(
     };
     drop(assets_guard);
     (html, assets)
+}
+
+/// 解析一段 markdown；**每一层**（顶层、块正文、模板展开、`<markdown>`）都走这里。
+///
+/// `targets` 的链接目标空格编码必须在原始区之外做，而原始区只有解析器自己
+/// 知道（块引用、列表、嵌套容器）。所以这里先探针解析一遍拿区间，再交给
+/// 真正的解析器 —— 顶层与嵌套层用的是同一条规矩。
+pub(crate) fn parse_markdown(parser: &MarkdownIt, source: &str) -> Node {
+    let prepared = crate::targets::encode_target_spaces(source);
+    parser.parse(&prepared)
 }
 
 /// [`Mdpp`] 的构建器。
@@ -410,12 +419,10 @@ impl MdppBuilder {
         }
 
         if options.heading_anchors {
-            markdown_it::plugins::extra::heading_anchors::add(&mut md, slug::heading_id);
-            // 紧接着把重复的收掉：标题 id 那条规则每跑一次 `md.parse` 都走**整棵
-            // 树**，包括子解析（Markdown 档的块、分栏的每一节、模板页展开）搬进来
-            // 的孩子 —— 子解析已挂过一次，外层再挂一次，页面上就成了
-            // `id="甲" id="甲"`。详见 [`DropDuplicateHeadingIds`]。
-            md.add_rule::<DropDuplicateHeadingIds>();
+            // 自己挂锚点，而不是 `heading_anchors` 插件：插件每次 `md.parse` 都
+            // 无条件 `push` 一个 `id`，嵌套解析搬进来的子树会被外层再挂一遍；
+            // 这里一条规则走完整棵树，按出现次序给 slug 加计数，天然唯一。
+            md.add_rule::<UniqueHeadingAnchors>();
         }
 
         // 外部链接标记：给带协议的站外链接加一个 `external` 类，样式表据此
@@ -456,26 +463,38 @@ impl MdppBuilder {
     }
 }
 
-/// 收掉重复的标题 `id`，**留下先挂的那一个**。
+/// 给标题挂 `id`，并保证**同一份文档内唯一**。
 ///
-/// `heading_anchors` 的 core 规则每跑一次 `md.parse` 都会走整棵树。嵌套解析把
-/// 子树的节点搬进外层之后，外层那一遍会再挂一次 —— `::note` 里的标题于是有两个
-/// `id`，经模板页展开的语法页有三个。重复的 `id` 是无效 HTML，锚点也会指错。
-///
-/// 挂完立刻收，顺序就定死在这一处：不依赖渲染时去重，也不会改到别的属性。
-struct DropDuplicateHeadingIds;
+/// 规则每跑一次 `md.parse` 走整棵树。子解析（块正文、分栏的每一节、模板展开）
+/// 先给自己的子树挂过一遍，外层这一遍会**重挂**：不是再 push 一个，而是把
+/// 已有的 `id` 改成按整棵树重新算出来的那个。于是嵌套不会留下重复属性，
+/// 同页两个同名标题也会得到 `安装` / `安装-1`。
+struct UniqueHeadingAnchors;
 
-impl CoreRule for DropDuplicateHeadingIds {
+impl CoreRule for UniqueHeadingAnchors {
     fn run(root: &mut Node, _md: &MarkdownIt) {
+        let mut seen: HashSet<String> = HashSet::new();
         root.walk_mut(|node, _| {
-            let mut kept = false;
-            node.attrs.retain(|(name, _)| {
-                if *name != "id" {
-                    return true;
-                }
-                // 第一个留下，后面的都丢掉
-                !std::mem::replace(&mut kept, true)
-            });
+            if !(node.is::<ATXHeading>() || node.is::<SetextHeader>()) {
+                return;
+            }
+            let base = slug::heading_id(&node.collect_text());
+            let base = if base.is_empty() {
+                // `## !!!` 也该有个能跳过去的锚点
+                "section".to_string()
+            } else {
+                base
+            };
+            let mut id = base.clone();
+            let mut count = 1usize;
+            while !seen.insert(id.clone()) {
+                id = format!("{base}-{count}");
+                count += 1;
+            }
+            match node.attrs.iter_mut().find(|(name, _)| *name == "id") {
+                Some((_, value)) => *value = id,
+                None => node.attrs.push(("id", id)),
+            }
         });
     }
 }
@@ -630,6 +649,18 @@ mod tests {
             1,
             "一个标题只该有一个 id：{html}"
         );
+    }
+
+    /// 同一页两个同名标题：锚点要唯一，后一个加计数
+    #[test]
+    fn two_headings_with_the_same_text_get_unique_ids() {
+        let html = md_of("## 安装\n\n## 安装\n");
+        assert_eq!(
+            html.matches(r#"id="安装""#).count(),
+            1,
+            "第一个保持原名：{html}"
+        );
+        assert!(html.contains(r#"id="安装-1""#), "第二个要加计数：{html}");
     }
 
     /// 关掉之后一个 `id=` 都不剩 —— 开关要关得干净，而不是只关掉一半
