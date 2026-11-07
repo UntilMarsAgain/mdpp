@@ -19,7 +19,7 @@
 //! 不带 `href`）。默认**只是报出来**，不让 build 失败 —— 写到还没写的页面是常态。
 //! `--strict` 才把它变成非零退出码。
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use crate::context::template_pages;
@@ -229,7 +229,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
     let extra_js = read_all(&project.config.extra_js, &project.root)?;
 
     if options.clean {
-        clean(project, site_dir)?;
+        clean(project, site_dir, options.allow_outside)?;
     }
     ensure_dir(site_dir)?;
 
@@ -503,6 +503,7 @@ fn resolve_nav(
                 let (label, key) = map.iter().next().expect("check 里验过只有一项");
                 let target = normalize(key)
                     .ok_or_else(|| format!("nav 里 {label:?} → {key:?} 不是个站内页的键"))?;
+                crate::project::site::check_key(&target)?;
                 let page = site
                     .by_key(&target)
                     .ok_or_else(|| format!("nav 里 {label:?} → {key:?} 站内没有这样的页"))?;
@@ -585,26 +586,109 @@ fn templates_of(project: &Project) -> Result<Option<mdpp::block::template::Templ
 /// `--clean`：清空 `site_dir` 再出。
 ///
 /// **`site_dir` 是配置里的一行字**，打错一个字就可能让这条命令去删整个项目 ——
-/// 所以先确认它不在正文、模板与项目根里面，连「是它们的上一级」也不放过。
-fn clean(project: &Project, site_dir: &Path) -> Result<(), String> {
-    for keep in [
-        project.root.clone(),
-        project.pages_dir(),
-        project.templates_dir(),
-    ] {
-        if keep.starts_with(site_dir) {
+/// 甚至去删项目外面的一整个目录。所以这里不是「检查一下」，而是：
+///
+/// - 默认**必须**严格位于项目根之内，且不能是正文/模板目录或它们的子目录；
+/// - 无论谁调用，都不能是项目根、正文、模板的**祖先**，不能是 `/`、`$HOME`、
+///   系统临时目录本身；
+/// - 比较之前先做词法归一 + 已存在部分的符号链接解析；比较的是真路径，不是字面。
+///
+/// `allow_outside` 只给 `serve` 用（它出到系统临时目录里的预览缓存）。命令行
+/// 上的 `build --clean` 永远拿不到这个开关。
+fn clean(project: &Project, site_dir: &Path, allow_outside: bool) -> Result<(), String> {
+    let site_dir = real_path(site_dir);
+    let root = real_path(&project.root);
+    let pages = real_path(&project.pages_dir());
+    let templates = real_path(&project.templates_dir());
+
+    if !allow_outside {
+        if site_dir == root || !site_dir.starts_with(&root) {
             return Err(format!(
-                "site_dir（{}）不能是项目、正文或模板目录的**上一层** —— 清空它会连内容一起删掉",
-                shown(site_dir)
+                "site_dir（{}）必须在项目目录（{}）里面，且不能就是项目根 —— \
+                 `--clean` 会先清空它",
+                shown(&site_dir),
+                shown(&root)
+            ));
+        }
+        for (what, keep) in [("正文", &pages), ("模板", &templates)] {
+            if site_dir == *keep || site_dir.starts_with(keep) {
+                return Err(format!(
+                    "site_dir（{}）不能是{what}目录或它的子目录 —— 清空它会连内容一起删掉",
+                    shown(&site_dir)
+                ));
+            }
+        }
+    }
+
+    // 这几种位置，就算调用方允许「项目外」也不该清。
+    if site_dir.parent().is_none() {
+        return Err(format!("site_dir（{}）是根目录，拒绝清空", shown(&site_dir)));
+    }
+    for (what, keep) in [("项目根", &root), ("正文", &pages), ("模板", &templates)] {
+        if keep.starts_with(&site_dir) {
+            return Err(format!(
+                "site_dir（{}）是{what}目录的上一层 —— 清空它会连内容一起删掉",
+                shown(&site_dir)
             ));
         }
     }
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
+        if real_path(&home) == site_dir {
+            return Err("site_dir 指向家目录，拒绝清空".to_string());
+        }
+    }
+    if real_path(&std::env::temp_dir()) == site_dir {
+        return Err("site_dir 指向系统临时目录本身，拒绝清空".to_string());
+    }
+
     if site_dir.exists() {
-        std::fs::remove_dir_all(site_dir)
-            .map_err(|error| format!("清不了 {}：{error}", shown(site_dir)))?;
-        debug!(dir = shown(site_dir), "已清空产物目录");
+        std::fs::remove_dir_all(&site_dir)
+            .map_err(|error| format!("清不了 {}：{error}", shown(&site_dir)))?;
+        debug!(dir = shown(&site_dir), "已清空产物目录");
     }
     Ok(())
+}
+
+/// 词法归一 + 已存在部分的符号链接解析。
+///
+/// `a/../b` 与 `b` 要比较成同一个东西；`build` 是指向别处的符号链接时，
+/// 也要按它真正指向的地方比较。不存在的尾部按字面接回去 —— 那正是
+/// `--clean` 要建出来的目录。
+fn real_path(path: &Path) -> PathBuf {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(path)
+    };
+    let mut lexical = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                lexical.pop();
+            }
+            other => lexical.push(other.as_os_str()),
+        }
+    }
+    // 已存在的最深一层做 canonicalize，剩下的尾部接回去
+    let mut probe = lexical.clone();
+    let mut tail: Vec<std::ffi::OsString> = Vec::new();
+    while !probe.exists() {
+        match probe.file_name() {
+            Some(name) => {
+                tail.push(name.to_os_string());
+                probe.pop();
+            }
+            None => break,
+        }
+    }
+    let mut out = std::fs::canonicalize(&probe).unwrap_or(probe);
+    for name in tail.iter().rev() {
+        out.push(name);
+    }
+    out
 }
 
 /// 读配置里附的那几个 CSS / JS

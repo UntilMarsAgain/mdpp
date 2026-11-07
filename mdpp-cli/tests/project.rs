@@ -725,6 +725,34 @@ fn init_builds_into_the_workdir_rather_than_the_process_dir() {
     assert!(!elsewhere.join("子站").exists(), "不该长在进程当前目录下");
 }
 
+/// `--clean` 不能删到项目外面：`build_dir = "../victim"` 必须在删除任何东西之前报错
+#[test]
+fn clean_refuses_a_build_dir_outside_the_project() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    let victim = dir.path().join("victim");
+    std::fs::create_dir_all(&victim).expect("建得出");
+    std::fs::write(victim.join("keep.txt"), "重要文件").expect("写得下");
+
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(
+        &config,
+        text.replace("build_dir = \"build\"", "build_dir = \"../victim\""),
+    )
+    .expect("改得下");
+
+    let out = mdpp(&root, &["build", "--clean"]);
+    assert!(!out.status.success(), "该拒绝：{out:?}");
+    let stderr = stderr_of(&out);
+    assert!(stderr.contains("site_dir") || stderr.contains("项目"), "{stderr}");
+    assert!(
+        victim.join("keep.txt").is_file(),
+        "项目外的目录不该被清：{}",
+        victim.display()
+    );
+}
+
 /// `::css` / `::js` 在站点模式下外链成 `assets/mdpp-<hash>.*`：
 /// 重复内容只生成一份文件，多页共享同一份，嵌套页用相对前缀引用。
 #[test]

@@ -106,7 +106,12 @@ impl Site {
             others,
             ..Site::default()
         };
-        for page in found {
+        for mut page in found {
+            // 键最终会变成产物里的路径。先校验再算 `output` —— 文件名里带
+            // `a\..\..\x` 这种写法时，拼出来的路径能跑到站点目录外面去。
+            check_key(&page.key)
+                .map_err(|why| format!("{}：{why}", page.source.display()))?;
+            page.output = output_of(&page.key);
             let key = normalize(&page.key).unwrap_or_default();
             let at = site.pages.len();
             if site.by_key.contains_key(&key) {
@@ -136,7 +141,11 @@ impl Site {
     ///
     /// 键撞了现有的（或者撞了之前加进来的）就报错 —— 生成页不该默默
     /// 盖住作者自己写的那一页。
-    pub fn insert(&mut self, page: Page) -> Result<(), String> {
+    pub fn insert(&mut self, mut page: Page) -> Result<(), String> {
+        // 生成页的键来自 `mdpp.toml` 的 `toc`，同样是配置里的一行字，
+        // 同样不能让它把产物写到站点目录外面。
+        check_key(&page.key)?;
+        page.output = output_of(&page.key);
         let key = normalize(&page.key).unwrap_or_default();
         if self.by_key.contains_key(&key) {
             return Err(format!(
@@ -201,7 +210,23 @@ fn walk(
         if name.starts_with('.') {
             continue;
         }
-        if path.is_dir() {
+        // **不跟随符号链接**：链接指向哪里是链接自己的事，而产物路径是按
+        // 它在这一层看见的名字拼的 —— 跟过去就可能把 `pages/` 外面的东西
+        // 纳进站点。要共享内容就放真目录，或者把共享目录放在 `pages/` 里面。
+        let meta = match std::fs::symlink_metadata(&path) {
+            Ok(meta) => meta,
+            Err(_) => continue,
+        };
+        if meta.file_type().is_symlink() {
+            others.push(
+                path.strip_prefix(root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+            continue;
+        }
+        if meta.is_dir() {
             walk(root, &path, into, others)?;
             continue;
         }
@@ -233,7 +258,23 @@ fn key_of(root: &Path, path: &Path) -> Option<String> {
     if !is_page {
         return None;
     }
-    Some(strip_suffix(&relative.to_string_lossy()).replace('\\', "/"))
+    // 用 `Path::components` 而不是对整条字符串做 `replace('\\', "/")`：
+    // 在 Unix 上反斜杠是普通文件名字符，替换之后 `a\..\..\x` 会变成
+    // `a/../../x`，键就带上了 `..`。这里只收正常段，段里还剩反斜杠的，
+    // 交给 [`check_key`] 拒绝。
+    let mut segments: Vec<String> = Vec::new();
+    for component in relative.components() {
+        match component {
+            std::path::Component::Normal(part) => {
+                segments.push(part.to_string_lossy().into_owned());
+            }
+            // CurDir / ParentDir / RootDir / Prefix 都不该出现在
+            // `strip_prefix` 之后；出现了就说明这条路不正常，不当页面收。
+            _ => return None,
+        }
+    }
+    let key = segments.join("/");
+    Some(strip_suffix(&key).to_string())
 }
 
 /// 砍掉末尾的页面后缀（带点，比大小写不敏感 —— 归一本来就要转小写）。
@@ -253,14 +294,75 @@ fn strip_suffix(text: &str) -> &str {
         .unwrap_or(text)
 }
 
+/// 页面键的校验：键最终会变成产物里的路径，任何一段都不能是 `.` / `..`、
+/// 不能带反斜杠或控制字符。**在算输出路径之前调用** —— 校验不过的键
+/// 连 `PathBuf` 都不该拼出来。
+///
+/// 反斜杠在 Unix 上本来是合法文件名字符，但它在 Windows 上是分隔符；一个键
+/// 如果两边解释不同，同一个项目在两个平台上的产物就会不一样。这里统一拒绝。
+pub fn check_key(key: &str) -> Result<(), String> {
+    if key.is_empty() {
+        return Err("页面键不能为空".to_string());
+    }
+    for segment in key.split('/') {
+        if segment.is_empty() || segment == "." || segment == ".." {
+            return Err(format!(
+                "页面键「{key}」里有一段不是页名（空段、`.` 或 `..`）"
+            ));
+        }
+        if segment.contains('\\') {
+            return Err(format!(
+                "页面键「{key}」里不能有反斜杠 —— 目录层级用 `/` 写"
+            ));
+        }
+        if segment.chars().any(char::is_control) {
+            return Err(format!("页面键「{key}」里有控制字符"));
+        }
+        // Windows 上这些名字不能当文件/目录名。站点通常要能跨平台构建，
+        // 所以在哪个平台上都拒绝，而不是等到 Windows 上才炸。
+        if windows_reserved(segment) {
+            return Err(format!(
+                "页面键「{key}」里的「{segment}」是 Windows 保留名，换个名字"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Windows 设备名（不区分大小写，带不带后缀都算）
+fn windows_reserved(segment: &str) -> bool {
+    let stem = segment
+        .split('.')
+        .next()
+        .unwrap_or(segment)
+        .to_ascii_uppercase();
+    if matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL") {
+        return true;
+    }
+    let Some(rest) = stem
+        .strip_prefix("COM")
+        .or_else(|| stem.strip_prefix("LPT"))
+    else {
+        return false;
+    };
+    // COM1..COM9 / LPT1..LPT9；COM0 与 COM10 不是保留名
+    rest.len() == 1 && matches!(rest.as_bytes()[0], b'1'..=b'9')
+}
+
 /// 输出文件：`<键>/index.html`。
 ///
 /// **首页是个例外**：`index` 落在 `build/index.html`，而不是
 /// `build/index/index.html` —— 后者会让站点根上多出一层没人访问得到的目录。
+///
+/// 这里再挡一次 `.` / `..`：调用方应当先走 [`check_key`]，但拼路径这一步
+/// 是最后一道闸，不能只靠上游记得查。
 pub fn output_of(key: &str) -> PathBuf {
     let mut out = PathBuf::new();
     if key != INDEX_KEY {
-        for segment in key.split('/').filter(|segment| !segment.is_empty()) {
+        for segment in key.split('/') {
+            if segment.is_empty() || segment == "." || segment == ".." {
+                continue;
+            }
             out.push(segment);
         }
     }
@@ -388,6 +490,10 @@ impl LinkResolver for Links {
         }
 
         let key = normalize(target)?;
+        // 指向 `..` 的链接不是站内页；当红链处理，别让它变成产物里的路径。
+        if check_key(&key).is_err() {
+            return None;
+        }
 
         if let Some(page) = self.site.by_key(&key) {
             return Some(self.link_to(page));
@@ -439,6 +545,76 @@ mod tests {
         let dir = temp_pages(files);
         let site = Site::collect(dir.path()).expect("扫得动");
         (dir, site)
+    }
+
+    /// 页面键最终会变成产物里的路径：`.` / `..` / 反斜杠 / 控制字符一律拒绝
+    #[test]
+    fn page_keys_refuse_path_segments_that_can_escape() {
+        for key in [
+            "",
+            "..",
+            "../x",
+            "a/../b",
+            "a//b",
+            "/x",
+            "a\\b",
+            "a\u{0}b",
+            "CON",
+            "nul.txt",
+            "指南/..",
+        ] {
+            assert!(check_key(key).is_err(), "{key:?} 该被拒绝");
+        }
+        for key in ["index", "指南/入门", "2.0", "我的 页", "com10", "auxiliary"] {
+            assert!(check_key(key).is_ok(), "{key:?} 该通过");
+        }
+    }
+
+    /// 即使上游漏了校验，拼输出路径这一步也不能留下 `..`
+    #[test]
+    fn output_of_never_keeps_parent_segments() {
+        assert_eq!(output_of("../pwn"), PathBuf::from("pwn/index.html"));
+        assert_eq!(output_of("a/../../b"), PathBuf::from("a/b/index.html"));
+        assert_eq!(output_of("index"), PathBuf::from("index.html"));
+    }
+
+    /// 生成页（目录页）的键也来自配置，同样不能逃出站点目录
+    #[test]
+    fn a_generated_page_key_cannot_escape() {
+        let (_dir, mut site) = site_of(&["index.mdpp"]);
+        let page = Page {
+            source: PathBuf::new(),
+            key: "../pwn".to_string(),
+            output: output_of("../pwn"),
+        };
+        let error = site.insert(page).expect_err("该拒绝");
+        assert!(error.contains("不是页名"), "{error}");
+    }
+
+    /// Unix 上反斜杠是合法文件名字符；它不能被当成目录分隔符来解释
+    #[cfg(unix)]
+    #[test]
+    fn a_backslash_in_a_page_name_cannot_escape_the_site_dir() {
+        let dir = temp_pages(&["a\\..\\..\\pwn.mdpp"]);
+        let error = Site::collect(dir.path()).expect_err("该拒绝");
+        assert!(error.contains("不是页名") || error.contains("反斜杠"), "{error}");
+    }
+
+    /// 符号链接不跟：链接指向哪里是链接自己的事，站点不该替它把外面纳进来
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_page_is_not_followed() {
+        let dir = temp_pages(&["real.mdpp"]);
+        std::os::unix::fs::symlink(dir.path().join("real.mdpp"), dir.path().join("link.mdpp"))
+            .expect("建得出符号链接");
+        let site = Site::collect(dir.path()).expect("扫得动");
+        let keys: Vec<&str> = site.pages().iter().map(|page| page.key.as_str()).collect();
+        assert_eq!(keys, vec!["real"]);
+        assert!(
+            site.others().iter().any(|one| one == "link.mdpp"),
+            "{:?}",
+            site.others()
+        );
     }
 
     /// 键去掉后缀、换成 `/`，输出永远是 `<键>/index.html`
