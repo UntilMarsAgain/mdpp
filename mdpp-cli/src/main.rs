@@ -5,20 +5,22 @@
 
 // 这些模块只属于这个二进制，库那边一概不知道它们存在 —— 所以它们住在 `mdpp-cli`
 // 这个包里，并且对 `mdpp::` 不可见（`pub(crate)`）。
+//
+// 按职责分组：
+// - `cli`：参数定义；
+// - `render`：单文件渲染与页面外壳；
+// - `project`：项目、整站构建与预览命令；
+// - `server`：预览用的 HTTP/SSE；
+// - `support`：颜色、输入上限、日志、地址编解码。
 #![forbid(unsafe_code)]
-mod color;
-mod context;
-mod http;
-mod limits;
-mod options;
-mod page;
+mod cli;
 mod project;
 mod render;
-mod telemetry;
-mod url;
+mod server;
+mod support;
 
-use options::{Cli, Command, NAME};
-use telemetry::install;
+use cli::options::{Cli, Command, NAME};
+use support::telemetry::install;
 
 use std::process::ExitCode;
 

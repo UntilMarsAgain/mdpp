@@ -20,6 +20,15 @@
 //    是**普通数据**：外部构造自己那份，灌进 [`MdppBuilder::registry`] 即可。
 // 3. **渲染状态是每次调用各自一份。** 理由写在 [`context`]。
 //
+// ## 代码地图
+//
+// - [`block`]：`::` 方言的扫描、分发、模板展开、填充与内置块；
+// - [`engine`] / [`context`] / [`assets`]：一次渲染的构建、状态与资源；
+// - [`link`]：内部链接的解析 trait；
+// - [`author`]：写自定义块/模板时用的公开工具面；
+// - `parse` / `support`：解析辅助（原始区、slug、行内语法）与日志统计；
+//   它们是内部模块，对外只通过根上的重导出出现。
+//
 // ## 一分钟上手
 //
 //! ```
@@ -72,20 +81,22 @@
 #[doc = include_str!("../../README.md")]
 pub struct ReadmeSnippets;
 
-mod state;
+mod api;
+mod parse;
+mod runtime;
+mod support;
 
-pub mod assets;
-pub mod author;
 pub mod block;
-pub mod context;
-pub mod engine;
 pub mod link;
-pub mod raw;
-pub mod registry;
-pub mod slug;
-pub mod syntax;
-pub mod targets;
-pub mod telemetry;
+
+// 物理目录按职责分组（runtime / parse / block / api / support），
+// 根上的模块名保持稳定：`mdpp::engine`、`mdpp::context`、`mdpp::raw` 等旧路径照常可用。
+pub use api::author;
+pub use block::registry;
+pub use parse::{raw, slug, syntax, targets};
+pub(crate) use runtime::state;
+pub use runtime::{assets, context, engine};
+pub use support::telemetry;
 
 /// 重导出：写块渲染器要用的 `Node` / `Renderer` / `NodeValue` 就在这里，
 /// 使用方不必自己往 `Cargo.toml` 里加一条 `markdown-it` 就能对上版本。

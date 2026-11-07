@@ -19,13 +19,14 @@
 //! - [`html`]：`::html` 的净化器 —— 按 HTML5 规范解析后按白名单重建；
 //! - [`stdlib`]：随库自带的那些块。加一块 = 写一个渲染器 + 在表里加一行。
 //!
-//! 块的**类型**与注册表在 [`crate::registry`]（`Block` / `BlockSpec` / `ContentMode`）——
+//! 块的**类型**与注册表在 [`registry`]（`Block` / `BlockSpec` / `ContentMode`）——
 //! 渲染外部注册块时要用的那几件东西都在那儿，本模块只管把它们接起来。
 
 pub mod dispatch;
 pub mod expand;
 pub mod fill;
 pub mod html;
+pub mod registry;
 pub mod scanner;
 pub mod stdlib;
 pub mod template;

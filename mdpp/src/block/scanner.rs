@@ -102,7 +102,7 @@ impl BlockRule for BlockScanner {
             ContentMode::Sections => {
                 for (label, text) in split_sections(&source) {
                     let mut section = Node::new(Section { label });
-                    let mut parsed = crate::engine::parse_markdown(state.md, &text);
+                    let mut parsed = crate::parse::markdown::parse_markdown(state.md, &text);
                     section.children = std::mem::take(&mut parsed.children);
                     node.children.push(section);
                 }
@@ -118,7 +118,7 @@ impl BlockRule for BlockScanner {
                 // 只挡住症状，挡住之后内容就少了。
                 //
                 // `Node` 带 Drop，字段不能直接搬出来，所以用 `mem::take` 换走它的 children。
-                let mut parsed = crate::engine::parse_markdown(state.md, &source);
+                let mut parsed = crate::parse::markdown::parse_markdown(state.md, &source);
                 node.children = std::mem::take(&mut parsed.children);
             }
         }

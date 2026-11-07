@@ -55,6 +55,9 @@
 
 ### 工程
 
+- `mdpp` 的源码按职责收进 `runtime` / `parse` / `block` / `api` / `support`，
+  `mdpp-cli` 收进 `cli` / `render` / `project` / `server` / `support`；根上的
+  `mdpp::engine`、`mdpp::context`、`mdpp::raw` 等公开路径通过重导出保持不变。
 - `cargo fmt`、`cargo clippy -D warnings` 全绿；两个 crate 都 `forbid(unsafe_code)`。
 - 默认生成的文件/目录名与模板占位符只用 ASCII（`cache/turn-N`、`.mdpp-tmp-*`、
   `toc = "contents"`、`{{title}}` / `{{home}}` 等）；中文内容仍原样支持，

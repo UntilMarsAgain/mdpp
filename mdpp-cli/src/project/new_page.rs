@@ -7,7 +7,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::options::New;
+use crate::cli::options::New;
 use crate::project::{Project, shown, write_file};
 
 use tracing::info;
@@ -109,7 +109,7 @@ fn has_home_page(pages: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::options::Init;
+    use crate::cli::options::Init;
     use crate::project::site::Site;
 
     /// 一个建好骨架的项目，以及那个项目本身
@@ -249,7 +249,7 @@ mod tests {
     /// 参数解析：`new` 的页名是必填的
     #[test]
     fn new_parses_its_page_name() {
-        use crate::options::{Cli, Command};
+        use crate::cli::options::{Cli, Command};
         use clap::Parser;
         let cli = Cli::try_parse_from(["mdpp", "new", "指南/入门"]).expect("该行");
         assert!(matches!(

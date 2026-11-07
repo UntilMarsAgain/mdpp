@@ -29,7 +29,7 @@ pub use config::Config;
 /// 站点模板：`mdpp init` 拷走的那一个目录（`mdpp-cli/site/`）。
 ///
 /// 编译期整个嵌进二进制，`init` 把它原样拷到目标目录 —— 想改新项目长什么样，改那个
-/// 目录里的文件，不必碰代码。它与 [`crate::page`] 里那一套 `assets/` 是两回事：
+/// 目录里的文件，不必碰代码。它与 [`crate::render::page`] 里那一套 `assets/` 是两回事：
 /// 那一套是**页面外壳**（build 时拷进产物），这一套是**新项目的骨架**（init 时拷走）。
 pub static SITE: Dir = include_dir!("$CARGO_MANIFEST_DIR/site");
 

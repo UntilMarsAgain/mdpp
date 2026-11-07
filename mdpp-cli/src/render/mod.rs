@@ -3,10 +3,12 @@
 //! 这一趟是「一个进程一件事」的活：读进来、渲染、写到 stdout。它**不知道**有没有项目，
 //! 也不想知道 —— 整站的事在 [`crate::project`]。
 
-use crate::context::{link_resolver, template_pages};
-use crate::options::Render;
-use crate::page;
-use crate::page::ExternalScript;
+pub mod context;
+pub mod page;
+
+use crate::cli::options::Render;
+use crate::render::context::{link_resolver, template_pages};
+use crate::render::page::ExternalScript;
 
 use std::io::Write;
 
@@ -134,12 +136,15 @@ fn build_context(options: &Render) -> Result<RenderContext, String> {
 /// 本来就要整篇拼成一个文档。
 fn read_sources(options: &Render) -> Result<Vec<(String, String)>, String> {
     if options.inputs.is_empty() {
-        return Ok(vec![(options.title_or(), crate::limits::read_stdin()?)]);
+        return Ok(vec![(
+            options.title_or(),
+            crate::support::limits::read_stdin()?,
+        )]);
     }
 
     let mut sources = Vec::with_capacity(options.inputs.len());
     for path in &options.inputs {
-        let text = crate::limits::read_text(path)?;
+        let text = crate::support::limits::read_text(path)?;
         let name = path
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
@@ -153,7 +158,7 @@ fn read_sources(options: &Render) -> Result<Vec<(String, String)>, String> {
 fn read_all(paths: &[std::path::PathBuf]) -> Result<Vec<String>, String> {
     paths
         .iter()
-        .map(|path| crate::limits::read_text(path))
+        .map(|path| crate::support::limits::read_text(path))
         .collect()
 }
 
@@ -220,7 +225,7 @@ impl std::fmt::Display for Stats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::options::{Cli, Command};
+    use crate::cli::options::{Cli, Command};
 
     /// `render` 的参数：从顶层解析进去
     fn options_of(args: &[&str]) -> Render {

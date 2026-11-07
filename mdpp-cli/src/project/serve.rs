@@ -3,7 +3,7 @@
 //! 三件事：
 //!
 //! 1. **出一遍**到临时目录（不是你的 `build/` —— 预览到一半的东西不该被当成产物），
-//!    每一页里塞一段连着长连接的脚本（[`crate::http::LIVE_RELOAD`]）；
+//!    每一页里塞一段连着长连接的脚本（[`crate::server::http::LIVE_RELOAD`]）；
 //! 2. **盯着** `pages/`、`templates/`、`mdpp.toml`，外加配置里指的那几个文件
 //!    （`extra_css` / `extra_js` / `favicon` —— 它们每次出站点都要读）；
 //! 3. **一有改动就重出**，重出好了把那把计数加一，浏览器那边自己刷新。
@@ -21,10 +21,10 @@ use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use crate::http;
-use crate::options::{Build, Serve};
+use crate::cli::options::{Build, Serve};
 use crate::project::build;
 use crate::project::{Project, config, shown, under};
+use crate::server::http;
 
 use tracing::{debug, info};
 
@@ -201,7 +201,7 @@ fn pages_of(site_dir: &Path) -> Vec<PathBuf> {
         // `assets/` 里不会有页面，不必往下走
         if path
             .file_name()
-            .is_some_and(|one| one == crate::page::ASSET_DIR)
+            .is_some_and(|one| one == crate::render::page::ASSET_DIR)
         {
             continue;
         }
@@ -371,7 +371,7 @@ mod tests {
     fn scaffold() -> (tempfile::TempDir, Project) {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         let root = dir.path().join("站点");
-        crate::project::init::run(&crate::options::Init {
+        crate::project::init::run(&crate::cli::options::Init {
             dir: Some(root.clone()),
             name: Some("测试站点".to_string()),
         })

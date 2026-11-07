@@ -57,7 +57,7 @@
 
 use std::path::Path;
 
-use crate::color::Color;
+use crate::support::color::Color;
 use include_dir::{Dir, File, include_dir};
 
 /// 页面模板的文件名。它**不**跟着 [`copy_assets`] 拷进产物 —— 它是模板，不是资源
