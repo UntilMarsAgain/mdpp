@@ -40,10 +40,23 @@
   `Markdown` / `Sections` / `Raw`。
 - `mdpp::author`：写自定义块/模板时用的稳定工具面（填空、分节、净化、诊断框）。
 - `use_asset` / `AssetUse`：自定义块可以登记自己的 CSS / JS。
+- `mdpp::variants`：`Group` / `Variant` / `Control` / `Scope`，把「一列选项 +
+  每个选项自己的延迟资源」做成公开能力；`::tabs` 与 `::theme` 都改用它。
+- `AssetUse::Deferred` / `DeferredAsset` / `AssetPolicy`：变体作用域里的
+  CSS / JS 变成惰性资源；`use_asset_with` 与 `use_asset_once` 可以选择
+  「每次激活执行」或「只执行一次」。
 - `mdpp/examples/bench.rs`：单线程与多线程渲染的轻量基准。
 
 ### 前端
 
+- `::tabs` 的面板资源也按选项延迟挂载：未选中的面板不再在页面加载时直接
+  执行其中的 CSS / JS。
+- 所有由 mdpp 生成的 `<script>` 都带 `data-mdpp-version` 与 `data-mdpp-mode`；
+  延迟脚本还带 `data-mdpp-group` / `value` / `key` / `run`。`mdpp.js` 提供
+  `window.mdppVariants` 的 `get` / `set` / `refresh` / `rescan` / `onChange` /
+  `hasRun` / `runCount` / `markRun`，并继续保留 `window.mdppThemeInject` 别名。
+- 动态加载只做 DOM 挂载：`render --full` 内联在 `<template>`，`build` 写成
+  `assets/` 下的静态文件；不引入 fetch、服务端接口或运行时后端。
 - 站外链接标记改为「方框 + 斜向箭头」的 CSS mask 图标（取自 MediaWiki 的
   external-link 图标），颜色跟 `currentColor` 走；图标不跟链接文字下划线。
   打印时恢复成 ` (URL)` 文本。

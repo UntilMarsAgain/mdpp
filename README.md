@@ -229,9 +229,39 @@ use mdpp::{AssetKind, AssetUse, use_asset};
 match use_asset(AssetKind::Css, ".mine { color: red; }") {
     AssetUse::Inline(css) => { /* 单页：写进 <style> */ }
     AssetUse::Linked(url) => { /* 站点：写 <link href=url> */ }
+    AssetUse::Deferred(asset) => { /* 变体作用域：写 asset.html() */ }
     AssetUse::Duplicate => {}
 }
 ```
+
+### 变体组与延迟资源
+
+`::tabs` 与 `::theme` 共用一套「变体组」：一组选项，每个选项可以带自己的
+`::css` / `::js` / `::html js`。渲染某个选项时进入它的作用域，资源就会变成
+`AssetUse::Deferred`，由页面脚本在选项激活时挂载：
+
+```rust
+use mdpp::variants::{Control, Group};
+
+let group = Group::new("mine", Control::Choice)
+    .option("0", "甲")
+    .option("1", "乙");
+assert_eq!(group.variants().len(), 2);
+```
+
+自定义块只需要把 `container_attrs()` 挂到容器、`option_attrs()` 挂到控件、
+`panel_attrs()` 挂到面板，并在渲染选项内容时调用
+`group.with_option(value, || ...)`。`::tabs` 和 `::theme` 是这套公开 API 的
+内置使用者，完整 DOM 协议见 `mdpp::variants` 的文档。
+
+所有脚本都带 `data-mdpp-version` 与 `data-mdpp-mode`；延迟脚本还带
+`data-mdpp-group` / `data-mdpp-value` / `data-mdpp-key` / `data-mdpp-run`，
+脚本内可用 `document.currentScript.dataset` 读取，或用
+`window.mdppVariants.hasRun(key)` / `runCount(key)` / `markRun(key)` 判断/标记。
+默认每次激活执行一次；`::js once` 或 `use_asset_once` 可以改成只执行一次。
+
+动态加载只做 DOM 挂载：`render --full` 把内容内联在 `<template>` 里，`build`
+把资源写成 `assets/` 下的静态文件。两条路都不需要网络接口，也没有运行时后端。
 
 写块、模板时常用的填空、分节、净化、诊断框都在 `mdpp::author` 里；具体块的
 DOM（`.tabs`、`.callout` …）不属于扩展契约，要复用分节数据就用

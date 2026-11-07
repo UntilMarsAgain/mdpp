@@ -34,6 +34,7 @@ stdout 只放产物，日志和错误走 stderr。CLI 参数测试在 `mdpp-cli/
 |---|---|
 | 库的公开 API | `mdpp/src/lib.rs` |
 | 解析与渲染 | `mdpp/src/runtime/engine/` |
+| 变体组与延迟资源 | `mdpp/src/runtime/variants.rs`、`runtime/assets.rs` |
 | 块语法、分发、内置块 | `mdpp/src/block/` |
 | 命令行子命令 | `mdpp-cli/src/cli/options/` |
 | 整站构建 | `mdpp-cli/src/project/build/` |
@@ -53,6 +54,8 @@ stdout 只放产物，日志和错误走 stderr。CLI 参数测试在 `mdpp-cli/
 - `Mdpp` 必须保持 `Send + Sync`；每次渲染的可变状态放线程局部，不放解析器。
 - `mdpp-cli/assets/` 的 `mdpp.css`、`site.css`、`mdpp.js` 是**综合文件**，
   不要拆分。改 class / `data-*` 时同步 `mdpp.js` 与 `site.html` 的无 JS 降级。
+- 动态资源只做 DOM 挂载：`render --full` 内联在 `<template>`，`build` 写成静态
+  `assets/` 文件；不要引入 fetch、服务端接口或运行时后端。
 - `mdpp-cli/site/` 是 `mdpp init` 的项目骨架，不是页面资源；除非任务要求，不要动。
 - `::html` 必须走白名单净化；`raw_html` 默认关闭是安全边界。
 - `build_dir` 必须在项目内；`allow_outside` 只给 `serve` 的临时预览用。
