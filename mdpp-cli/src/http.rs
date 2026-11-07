@@ -22,7 +22,8 @@ use std::time::Duration;
 use axum::Router;
 use axum::body::Body;
 use axum::extract::{Request, State};
-use axum::http::{StatusCode, header::CONTENT_TYPE};
+use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
+use axum::http::{HeaderValue, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -182,13 +183,18 @@ async fn events(
 async fn static_files(State(state): State<AppState>, request: Request) -> Response {
     let root = state.root.serving();
     let service = ServeDir::new(root);
-    match service.oneshot(request).await {
-        Ok(response) if response.status() == StatusCode::NOT_FOUND => not_found(),
+    let mut response = match service.oneshot(request).await {
+        Ok(response) if response.status() == StatusCode::NOT_FOUND => return not_found(),
         // `ServeDir` 的响应体是它自己的 `ResponseBody`，换成 axum 的 `Body`
         // 才能直接作为 handler 的返回值
         Ok(response) => response.map(Body::new),
         Err(infallible) => match infallible {},
-    }
+    };
+    // 预览产物每重建一遍 URL 不变，缓存住就看不到新内容
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
 }
 
 /// 没有这一页时的 HTML。比一行 `404 Not Found` 好读，也方便直接点回站点根。
@@ -200,12 +206,16 @@ fn not_found() -> Response {
         a{color:#2f6fd0}</style>\n\
         <h1>没有这一页</h1>\n\
         <p>地址不对，或者那一页还没建。<a href=\"/\">回站点根</a></p>\n";
-    (
+    let mut response = (
         StatusCode::NOT_FOUND,
         [(CONTENT_TYPE, "text/html; charset=utf-8")],
         BODY,
     )
-        .into_response()
+        .into_response();
+    response
+        .headers_mut()
+        .insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
 }
 
 // ---------------------------------------------------------------- 盯文件
