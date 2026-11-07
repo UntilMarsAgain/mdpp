@@ -24,7 +24,16 @@ pub fn read_text(path: &Path) -> Result<String, String> {
             MAX_SOURCE_BYTES
         ));
     }
-    std::fs::read_to_string(path).map_err(|error| format!("读不了 {}：{error}", path.display()))
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| format!("读不了 {}：{error}", path.display()))?;
+    if text.len() as u64 > MAX_SOURCE_BYTES {
+        return Err(format!(
+            "{} 太大了（超过单份输入上限 {} 字节）",
+            path.display(),
+            MAX_SOURCE_BYTES
+        ));
+    }
+    Ok(text)
 }
 
 /// 从标准输入读，超过上限就拒绝。
