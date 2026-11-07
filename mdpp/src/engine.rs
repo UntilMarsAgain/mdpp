@@ -222,21 +222,14 @@ pub struct Rendered {
     pub assets: Vec<Asset>,
 }
 
-/// 真正干活的那一趟。四样东西各自装上、各自还原，全在同一次调用里成对出现。
-///
-/// 拆成自由函数（而不是留在 `&self` 的方法里）是因为嵌套渲染要在线程局部里存一个
-/// `'static` 闭包，而闭包得抓住解析器与上下文的**所有权**（`Arc` 的克隆）。
-///
-/// 返回值里的资源只在**最外层**有意义；嵌套渲染的资源由 [`assets::Guard`] 合并回
-/// 外层，不会丢。
-fn render_parts(
+/// 装上这一趟的渲染状态：上下文、注册表、资源收集器、嵌套入口，以及从外层
+/// 继承的层数与主题槽。
+fn enter_render_state(
     parser: &Arc<MarkdownIt>,
     registry: &BlockRegistry,
     context: &RenderContext,
-    source: &str,
     mode: AssetMode,
-) -> (String, Vec<Asset>) {
-    // 「再渲染一段」用的是**当次这一趟**的上下文与注册表，而不是新的空的一份
+) -> crate::state::Guard {
     let (depth, theme_slot) =
         crate::state::with(|state| (state.depth, state.theme_slot.clone())).unwrap_or((0, None));
     let state = crate::state::RenderState {
@@ -245,7 +238,7 @@ fn render_parts(
         assets: Some(crate::assets::Sink {
             mode: mode.clone(),
             assets: Vec::new(),
-            hashes: std::collections::HashSet::new(),
+            hashes: HashSet::new(),
         }),
         nested: Some(Box::new({
             let parser = Arc::clone(parser);
@@ -257,7 +250,25 @@ fn render_parts(
         theme_slot,
         depth,
     };
-    let guard = crate::state::enter(state);
+    crate::state::enter(state)
+}
+
+/// 真正干活的那一趟：装上这一趟的渲染状态，解析、渲染，退出时还原。
+///
+/// 拆成自由函数（而不是留在 `&self` 的方法里）是因为嵌套渲染要在线程局部里存一个
+/// `'static` 闭包，而闭包得抓住解析器与上下文的**所有权**（`Arc` 的克隆）。
+///
+/// 返回值里的资源只在**最外层**有意义；嵌套渲染的资源由 `state::Guard` 合并回
+/// 外层，不会丢。
+fn render_parts(
+    parser: &Arc<MarkdownIt>,
+    registry: &BlockRegistry,
+    context: &RenderContext,
+    source: &str,
+    mode: AssetMode,
+) -> (String, Vec<Asset>) {
+    // 「再渲染一段」用的是**当次这一趟**的上下文与注册表，而不是新的空的一份
+    let guard = enter_render_state(parser, registry, context, mode);
     let nested = guard.nested();
     trace!(
         depth = crate::context::depth(),
@@ -295,27 +306,7 @@ fn render_node_parts(
     context: &RenderContext,
     mode: AssetMode,
 ) -> (String, Vec<Asset>) {
-    let (depth, theme_slot) =
-        crate::state::with(|state| (state.depth, state.theme_slot.clone())).unwrap_or((0, None));
-    let state = crate::state::RenderState {
-        context: Some(context.clone()),
-        registry: Some(Arc::new(registry.clone())),
-        assets: Some(crate::assets::Sink {
-            mode: mode.clone(),
-            assets: Vec::new(),
-            hashes: std::collections::HashSet::new(),
-        }),
-        nested: Some(Box::new({
-            let parser = Arc::clone(parser);
-            let registry = registry.clone();
-            let context = context.clone();
-            let mode = mode.clone();
-            move |more: &str| render_parts(&parser, &registry, &context, more, mode.clone()).0
-        })),
-        theme_slot,
-        depth,
-    };
-    let guard = crate::state::enter(state);
+    let guard = enter_render_state(parser, registry, context, mode);
     let nested = guard.nested();
     let html = node.render();
     let assets = if nested {
