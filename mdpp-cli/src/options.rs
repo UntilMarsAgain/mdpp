@@ -273,7 +273,7 @@ pub struct Serve {
     override_usage = "mdpp build [选项]"
 )]
 pub struct Build {
-    /// 输出之前先清空 site_dir（默认不清 —— 清错了不好找回来）
+    /// 保留兼容：`build` 现在总是整目录替换（失败时不动旧站点），这个开关不再改变行为
     #[arg(long)]
     pub clean: bool,
 

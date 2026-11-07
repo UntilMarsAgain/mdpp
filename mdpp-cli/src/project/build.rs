@@ -92,19 +92,111 @@ impl Built {
 pub fn run(options: &Build) -> Result<(), String> {
     let project = Project::open()?;
     let site_dir = project.site_dir();
-    let built = build_into(&project, options, &site_dir)?;
+
+    // 先验最终目录：它要能安全地成为站点根。**验完不删** —— 这一版先出到
+    // 同级的临时目录，全部成功了才换名；失败时旧站点一个字都不动。
+    check_clean(&project, &site_dir, options.allow_outside)?;
+    let staging = staging_dir(&site_dir)?;
+    let staging_options = Build {
+        // 临时目录里可能有上一次崩溃留下的半截；先清掉再出
+        clean: true,
+        strict: options.strict,
+        external_script: options.external_script.clone(),
+        allow_outside: options.allow_outside,
+    };
+    let mut built = match build_into(&project, &staging_options, &staging) {
+        Ok(built) => built,
+        Err(error) => {
+            // 失败的那一遍不换名，临时目录也不留 —— 下一次构建从干净的地方开始
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(error);
+        }
+    };
+    built.site_dir = site_dir.clone();
     report(&built);
 
-    // `--strict`：把「有问题」变成非零退出码，好挂进 CI
+    // `--strict`：把「有问题」变成非零退出码，好挂进 CI。
+    // 这一条要在换名之前 —— 失败的那一遍不该把旧站点顶掉。
     if options.strict && built.has_problems() {
+        let _ = std::fs::remove_dir_all(&staging);
         return Err(format!(
-            "有问题没解决（--strict）：红链 {} 条，块问题 {} 页，资源缺 {} 个",
+            "有问题没解决（--strict）：红链 {} 条，块问题 {} 页，资源缺 {} 个；\
+             旧站点没有替换",
             built.links.len(),
             built.broken.len(),
             built.absent.len()
         ));
     }
+
+    // 全部写好之后才换名。备份 → 新目录换名 → 删备份；中间任何一步失败都尽量还原。
+    swap_into_place(&staging, &site_dir)?;
     Ok(())
+}
+
+/// 出到最终目录**同级的临时目录**：同一个文件系统，`rename` 才是原子的。
+fn staging_dir(site_dir: &Path) -> Result<PathBuf, String> {
+    let parent = site_dir
+        .parent()
+        .ok_or_else(|| format!("site_dir（{}）没有上一级目录", shown(site_dir)))?;
+    let name = site_dir
+        .file_name()
+        .ok_or_else(|| format!("site_dir（{}）不像一个目录名", shown(site_dir)))?;
+    Ok(parent.join(format!(
+        ".{}.mdpp-tmp-{}",
+        name.to_string_lossy(),
+        std::process::id()
+    )))
+}
+
+/// 把出好的临时目录换成正式目录。
+///
+/// 顺序：旧目录先改名到备份 → 临时目录改名到正式 → 删备份。第二步失败时把
+/// 备份改回去，于是「失败」不会留下半个站点，也不会把旧站点弄丢。
+fn swap_into_place(staging: &Path, site_dir: &Path) -> Result<(), String> {
+    if !staging.is_dir() {
+        return Err(format!("临时产物目录不在（{}）", shown(staging)));
+    }
+    let parent = site_dir
+        .parent()
+        .ok_or_else(|| format!("site_dir（{}）没有上一级目录", shown(site_dir)))?;
+    let name = site_dir
+        .file_name()
+        .ok_or_else(|| format!("site_dir（{}）不像一个目录名", shown(site_dir)))?;
+    let backup = parent.join(format!(
+        ".{}.mdpp-old-{}",
+        name.to_string_lossy(),
+        std::process::id()
+    ));
+    remove_any(&backup);
+
+    let had_old = site_dir.exists();
+    if had_old {
+        std::fs::rename(site_dir, &backup)
+            .map_err(|error| format!("挪不开旧站点 {}：{error}", shown(site_dir)))?;
+    }
+    if let Err(error) = std::fs::rename(staging, site_dir) {
+        // 换名失败：把旧站点挪回去，再报错
+        if had_old {
+            let _ = std::fs::rename(&backup, site_dir);
+        }
+        return Err(format!(
+            "换不了站点目录 {}：{error}（旧站点已尽量还原）",
+            shown(site_dir)
+        ));
+    }
+    if had_old {
+        remove_any(&backup);
+    }
+    Ok(())
+}
+
+/// 删一个文件或目录；不关心它是什么、也不在意它已经不在了
+fn remove_any(path: &Path) {
+    if path.is_dir() {
+        let _ = std::fs::remove_dir_all(path);
+    } else if path.exists() {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 /// 逐页渲染时**跨页共用**的那几样：解析器、站点，以及三本账。
@@ -597,7 +689,7 @@ fn templates_of(project: &Project) -> Result<Option<mdpp::block::template::Templ
 ///
 /// `allow_outside` 只给 `serve` 用（它出到系统临时目录里的预览缓存）。命令行
 /// 上的 `build --clean` 永远拿不到这个开关。
-fn clean(project: &Project, site_dir: &Path, allow_outside: bool) -> Result<(), String> {
+fn check_clean(project: &Project, site_dir: &Path, allow_outside: bool) -> Result<(), String> {
     let site_dir = real_path(site_dir);
     let root = real_path(&project.root);
     let pages = real_path(&project.pages_dir());
@@ -645,11 +737,16 @@ fn clean(project: &Project, site_dir: &Path, allow_outside: bool) -> Result<(), 
     if real_path(&std::env::temp_dir()) == site_dir {
         return Err("site_dir 指向系统临时目录本身，拒绝清空".to_string());
     }
+    Ok(())
+}
 
+/// 先验再删：`serve` 的临时目录与 `build_into` 的直写路径都走这里
+fn clean(project: &Project, site_dir: &Path, allow_outside: bool) -> Result<(), String> {
+    check_clean(project, site_dir, allow_outside)?;
     if site_dir.exists() {
-        std::fs::remove_dir_all(&site_dir)
-            .map_err(|error| format!("清不了 {}：{error}", shown(&site_dir)))?;
-        debug!(dir = shown(&site_dir), "已清空产物目录");
+        std::fs::remove_dir_all(site_dir)
+            .map_err(|error| format!("清不了 {}：{error}", shown(site_dir)))?;
+        debug!(dir = shown(site_dir), "已清空产物目录");
     }
     Ok(())
 }

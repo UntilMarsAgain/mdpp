@@ -754,6 +754,47 @@ fn clean_refuses_a_build_dir_outside_the_project() {
     );
 }
 
+/// 构建失败时旧站点不能被顶掉：先出到临时目录，全部成功才换名。
+#[test]
+fn a_failed_build_leaves_the_previous_site_untouched() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    assert!(mdpp(&root, &["build"]).status.success());
+
+    let before = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    // 不是合法 UTF-8：读到这一页时整趟构建会失败
+    std::fs::write(root.join("pages/坏页.mdpp"), [0xff, 0xfe, 0xfd]).expect("写得下");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(!out.status.success(), "该失败：{out:?}");
+
+    let after = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert_eq!(before, after, "失败的构建不该动旧站点");
+    assert!(!root.join("build/坏页/index.html").exists());
+    let stray: Vec<String> = std::fs::read_dir(&root)
+        .expect("读得动项目根")
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with(".build.mdpp-"))
+        .collect();
+    assert!(stray.is_empty(), "临时/备份目录不该留在项目里：{stray:?}");
+}
+
+/// `build` 是**整目录替换**：上一次留下、这一次不再生成的文件不该继续留在产物里
+#[test]
+fn a_rebuild_replaces_the_whole_site_dir() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    assert!(mdpp(&root, &["build"]).status.success());
+
+    std::fs::write(root.join("build/旧文件.txt"), "上一版").expect("写得下");
+    assert!(mdpp(&root, &["build"]).status.success());
+    assert!(
+        !root.join("build/旧文件.txt").exists(),
+        "不在这一版产物里的文件应当消失"
+    );
+}
+
 /// `::css` / `::js` 在站点模式下外链成 `assets/mdpp-<hash>.*`：
 /// 重复内容只生成一份文件，多页共享同一份，嵌套页用相对前缀引用。
 #[test]
