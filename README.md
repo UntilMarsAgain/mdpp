@@ -48,8 +48,8 @@
 </div>
 ```
 
-内置块 21 个，覆盖条件渲染、分节/行表格遍历、页面与模板包含条件、图片音视频、代码块、
-公式、mermaid 图、导航框、原样文本、内联样式与原始 HTML；`columns`、`fields`、`fold`、`tabs`、`theme`、
+内置块 23 个，覆盖条件渲染、分节/行表格遍历、行内渲染、受控样式变量、页面与模板
+包含条件、图片音视频、代码块、公式、mermaid 图、导航框、原样文本、内联样式与原始 HTML；`columns`、`fields`、`fold`、`tabs`、`theme`、
 `indent`、`banner`、`aside`、`quote`、`title` 等展示块由标准库模板提供。完整的巡览见
 [`examples/tour.mdpp`](examples/tour.mdpp)，内置块清单见 `mdpp render --list-blocks`。
 
@@ -348,7 +348,8 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 不会和 `{{@item.body}}` 冲突。
 
 `only=甲,乙` / `skip=above,below` 过滤标签，`required` 让过滤后为空时报用法问题；
-`name=` / `empty-why=` 可以改诊断框里的名字与空列表提示。
+`min=` / `max=` 约束数量，`nonempty` 要求每节正文非空；`check` 只校验、不输出，
+可以放在模板顶部做预检。`name=` / `empty-why=` 可以改诊断框里的名字与空列表提示。
 
 ### 行表格 `::rows`
 
@@ -369,6 +370,33 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 `row.index` / `row.first` / `row.last` 是行位置；缺列可用 `{{?@row.N}}`。
 `max=2` 只拆第一道 `|`，剩下的 `|` 留在第二格；`fields` 模板就是这么保持
 「标签 | 值」语义的。`Block::rows()` 把这行解析能力也开放给自定义块。
+
+### 行内渲染 `::inline`
+
+`::inline` 把正文按 markdown 解析，但只保留单段行内内容，不产生 `<p>` 或别的
+容器。标题、标签、组名这类必须落在 `<span>` / `<th>` 里的值用它：
+
+```mdpp
+::inline
+  {{@item.label}}
+```
+
+`[[链接]]`、强调等正常解析；多段、列表或块级结构会报用法问题。
+
+### 受控样式变量 `::style-vars`
+
+`::style-vars` 是一个带受控 CSS 自定义属性的盒子。变量名必须写成 `--名字`，
+值只认十六进制颜色与尺寸（数字加 `px` / `%` / `em` / `rem` / `vh` / `vw`）：
+
+```mdpp
+::style-vars tag=div class=box --navbox-group-bg=#0055a4 --gap=1.5rem
+  正文
+```
+
+`--名字-bg=#RRGGBB` 会按背景亮度自动补出 `--名字-fg`；显式写
+`--名字-fg=#...` 可以覆盖。任意 CSS、`url(...)` 与未知参数都会拒绝。它和
+`::surface` 的分工是：`surface` 管一个盒子的常规外观，`::style-vars` 管一组
+需要被样式表/子元素继承的变量。
 
 ### 变体组与延迟资源
 
