@@ -200,12 +200,16 @@
   * [[梁桥]]
   * [[悬索桥]]
 
-# 类与缩进容器
+# 包装与缩进容器
 
-`::class` 加类名、`::indent` 加缩进，两者都是内容容器，内容照常按 markdown 解析。
+`::element` 包一层可选标签、类名与受控属性，`::indent` 加缩进，两者都是内容容器，
+内容照常按 markdown 解析。
 
-::class class=highlight
+::element class=highlight
   这段会被包进 `<div class="highlight">`，配合 `::css` 用。
+
+::surface color=#eef4ff text=auto
+  这是 `::surface` 基础盒子：底色、字色、圆角与尺寸都由参数校验后落成样式。
 
 ::indent indent=2
   这段会被缩进 3.2em（indent × 1.6em）。
