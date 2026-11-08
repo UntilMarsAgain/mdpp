@@ -1,7 +1,7 @@
 //! 两个基础包装块：`::surface` 与 `::element`。
 //!
-//! - `::surface` 是**只负责样式值的盒子**：颜色、字色、高度、圆角、紧凑模式都经过
-//!   校验；动态颜色与字色对比不可能由纯文本模板算出来，所以这一层留在 Rust。
+//! - `::surface` 是**只负责样式值的盒子**：颜色、字色、高度、缩进、圆角、紧凑模式
+//!   都经过校验；动态颜色与字色对比不可能由纯文本模板算出来，所以这一层留在 Rust。
 //!   class **由调用者自己写**：写了就用调用者的那一串，不再额外塞 `surface`，
 //!   也不自动生成 `surface--*`。高度、圆角、mini 落成行内样式，类名只归模板管。
 //!   `tag=auto` 按正文形状选 `p` / `div`，给 `banner` 一类块用。
@@ -77,14 +77,24 @@ const ELEMENT_TAGS: &[&str] = &[
     "code",
 ];
 
-/// `::surface color=#0055a4 text=auto rounded=on height=120px mini=off class=... [tag=auto] [inline=on]`
+/// `::surface color=#0055a4 text=auto rounded=on height=120px indent=2 mini=off class=... [tag=auto] [inline=on] [name=surface]`
 ///
 /// `class=` 写了就按原样使用（不写默认 `surface`）；`surface` 不再追加
 /// `surface--sized` / `surface--square` / `surface--mini`，这些效果改为行内样式。
+/// `indent=` 只落 `--mdpp-indent` 等级；`1.6em` 的比例在 `mdpp.css` 的 `.indent` 里。
 /// `tag=auto` 按正文形状选标签：单段落 `p`，多段/含块 `div`。
 pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
+    // 模板页可以给诊断框一个更贴近的名字（`indent` / `banner` …）
+    let name = block
+        .param("name")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("surface");
+    let mut problem_block = block.clone();
+    problem_block.name = name.to_string();
+
     if node.children.is_empty() {
-        render_problem(block, fmt, "内容是空的：::surface 要包裹点东西");
+        render_problem(&problem_block, fmt, "内容是空的：::surface 要包裹点东西");
         return;
     }
 
@@ -105,7 +115,7 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
         .filter(|value| !value.is_empty());
     if let Some(color) = color {
         let Some(hex) = normalize_hex(color) else {
-            render_problem(block, fmt, &hex_why("color", None));
+            render_problem(&problem_block, fmt, &hex_why("color", None));
             return;
         };
         push_decl(&mut style, &format!("background: {hex};"));
@@ -120,7 +130,7 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
             }
             Some(text) => {
                 let Some(fg) = normalize_hex(text) else {
-                    render_problem(block, fmt, &hex_why("text", None));
+                    render_problem(&problem_block, fmt, &hex_why("text", None));
                     return;
                 };
                 push_decl(&mut style, &format!("color: {fg};"));
@@ -132,7 +142,7 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
         .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("auto"))
     {
         let Some(fg) = normalize_hex(text) else {
-            render_problem(block, fmt, &hex_why("text", None));
+            render_problem(&problem_block, fmt, &hex_why("text", None));
             return;
         };
         push_decl(&mut style, &format!("color: {fg};"));
@@ -159,11 +169,28 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
         );
     }
 
+    if let Some(indent) = block
+        .param("indent")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let Some(value) = indent_value(indent) else {
+            render_problem(
+                block,
+                fmt,
+                "indent= 只认非负数字（缩进等级），例如 indent=2（缩进 3.2em）",
+            );
+            return;
+        };
+        // 只落一个等级；1.6em 的比例在 `mdpp.css` 的 `.indent` 里
+        push_decl(&mut style, &format!("--mdpp-indent: {value};"));
+    }
+
     match on_off(block.param("rounded"), true) {
         Ok(true) => {}
         Ok(false) => push_decl(&mut style, "border-radius: 0;"),
         Err(()) => {
-            render_problem(block, fmt, "rounded= 只认 on / off");
+            render_problem(&problem_block, fmt, "rounded= 只认 on / off");
             return;
         }
     }
@@ -175,7 +202,7 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
         ),
         Ok(false) => {}
         Err(()) => {
-            render_problem(block, fmt, "mini= 只认 on / off");
+            render_problem(&problem_block, fmt, "mini= 只认 on / off");
             return;
         }
     }
@@ -183,10 +210,11 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
     if let Err(why) = only_params(
         block,
         &[
-            "color", "text", "rounded", "height", "mini", "class", "tag", "inline",
+            "color", "text", "rounded", "height", "indent", "mini", "class", "tag", "inline",
+            "name",
         ],
     ) {
-        render_problem(block, fmt, &why);
+        render_problem(&problem_block, fmt, &why);
         return;
     }
     let auto = block.param("tag").map(str::trim) == Some("auto");
@@ -196,7 +224,7 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
         let tag = match tag_of(block, SURFACE_TAGS) {
             Ok(tag) => tag,
             Err(why) => {
-                render_problem(block, fmt, &why);
+                render_problem(&problem_block, fmt, &why);
                 return;
             }
         };
@@ -323,6 +351,15 @@ fn push_decl(style: &mut String, declaration: &str) {
     style.push_str(declaration);
 }
 
+/// `indent=` 的缩进等级：只认非负数字。比例不在这里，模板/样式表决定。
+fn indent_value(value: &str) -> Option<String> {
+    let value: f64 = value.trim().parse().ok()?;
+    if !value.is_finite() || value < 0.0 {
+        return None;
+    }
+    Some(value.to_string())
+}
+
 /// `on` / `off` 一类的开关；`None` 用默认值。
 fn on_off(value: Option<&str>, default: bool) -> Result<bool, ()> {
     match value.map(str::trim).map(str::to_lowercase).as_deref() {
@@ -395,6 +432,19 @@ mod tests {
         let html = render("::surface mini=on\n  正文\n");
         assert!(html.contains("font-size: 0.9em;"), "{html}");
         assert!(!html.contains("surface--mini"), "{html}");
+    }
+
+    /// `indent=` 只落等级变量，比例交给 CSS 的 `.indent`
+    #[test]
+    fn surface_carries_an_indent_level() {
+        let html = render("::surface class=indent indent=2\n  正文\n");
+        assert!(html.contains("--mdpp-indent: 2;"), "{html}");
+        assert!(html.contains("class=\"indent\""), "{html}");
+
+        for bad in ["-1", "也许", "1px"] {
+            let html = render(&format!("::surface indent={bad}\n  正文\n"));
+            assert!(html.contains("template--problem"), "{bad:?}: {html}");
+        }
     }
 
     /// `tag=p` 也允许：banner 一类后来可以把它当行内盒子用

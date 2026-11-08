@@ -630,6 +630,11 @@
   border-radius: 0.2rem;
 }
 
+/* ::indent 只落一个缩进等级；1.6em 的比例在这里，不在渲染器里。 */
+.mdpp-content .indent {
+  margin-left: calc(var(--mdpp-indent, 0) * 1.6em);
+}
+
 /* 标准库 card 的默认品牌色；调用方给 color= 时行内样式会盖掉它。 */
 .mdpp-content .surface.std-card--brand {
   background: #0055a4;
