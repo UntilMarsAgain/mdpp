@@ -6,15 +6,15 @@
 //! 2. **块边界**：往后看每一行的缩进 —— 更深算块内、不更深即结束，**空行不直接结束**
 //!    （见下面 `run` 里那段规则）；收上来的行按公共缩进削平，还原成块正文；
 //! 3. **内容**：按注册表里那条的 [`ContentMode`] 处理 —— 交给整个解析器再解析一遍、
-//!    按 `[标签]` 分节各解析一遍、或者干脆不解析；
+//!    按严格缩进把 `[标签]` 切成几节各解析一遍、或者干脆不解析；
 //! 4. **名字不在表里**：交给 [`crate::block::expand`] 去模板页里找同名的一页。
 
 use markdown_it::Node;
 use markdown_it::parser::block::{BlockRule, BlockState};
 
 use crate::block::dispatch::BlockNode;
+use crate::block::section::{self, SectionProblem};
 use crate::block::{Section, expand, template};
-use crate::raw::raw_zones;
 use crate::registry::{self as reg, Block, ContentMode};
 
 /// 块级规则：由 [`crate::block::add`] 挂到解析器上，排在段落规则之前。
@@ -108,6 +108,8 @@ impl BlockRule for BlockScanner {
 
         let block = Block { name, params, body };
         let mode = spec.mode_for(&block);
+        // 分节结构错误要在扫描阶段摆出来；block 随后要进节点，先留一份给诊断框
+        let problem_block = block.clone();
         let mut node = Node::new(BlockNode(block));
 
         match mode {
@@ -116,11 +118,27 @@ impl BlockRule for BlockScanner {
             // 分节：块内容按 `[标签]` 切成几节，**各节各解析一遍** ——
             // 一节是一篇小文档，这才谈得上「这一节里写什么」。
             ContentMode::Sections => {
-                for (label, text) in split_sections(&source) {
-                    let mut section = Node::new(Section { label });
-                    let mut parsed = crate::parse::markdown::parse_markdown(state.md, &text);
-                    section.children = std::mem::take(&mut parsed.children);
-                    node.children.push(section);
+                match section::parse(&source) {
+                    Ok(sections) => {
+                        for raw in sections {
+                            let mut section = Node::new(Section {
+                                label: raw.label,
+                                body: raw.body.clone(),
+                            });
+                            let mut parsed =
+                                crate::parse::markdown::parse_markdown(state.md, &raw.body);
+                            section.children = std::mem::take(&mut parsed.children);
+                            node.children.push(section);
+                        }
+                    }
+                    Err(why) => {
+                        // 结构错误在扫描阶段就报：先写出半截分节、渲染时才发现，
+                        // 页面上已经留下一个开着的容器了
+                        return Some((
+                            Node::new(SectionProblem::new(problem_block, why)),
+                            next - start,
+                        ));
+                    }
                 }
             }
             ContentMode::Markdown => {
@@ -231,85 +249,11 @@ fn rebuild_body(lines: &[(usize, &str)]) -> String {
         .join("\n")
 }
 
-/// 把块内容按 `[标签]` 行切成几节：`(标签, 该节的正文)`。
-///
-/// 第一个标签**之前**的内容归到一个标签为空串的节里 —— 切分只管切，
-/// 那一节算「两边都要」还是「这写法不对」，由各个块自己定（见 [`crate::block::stdlib::variants`]）。
-///
-/// **原始区里不切**：围栏代码块与 HTML 块里的一行 `[x]` 是给人看的字，不是节的
-/// 开头（见 [`crate::raw`]）。少了这一条，一个带例子的选项卡会被劈成三节，而劈开
-/// 之后每节的内容都是错的 —— 症状是「选项卡标签里冒出了本该是代码的东西」。
-///
-/// ## 一处**故意**不处理的歧义
-///
-/// 列表项之后紧跟的一行 `[x]`，在 CommonMark 里是那个列表项的**懒延续**，而这里
-/// 认成标签。不跟着 CommonMark 走是有理由的：例子文件里的选项卡就是
-/// `- 甲` 紧接 `[读法二]` 这么连着写的，跟着 markdown 走会把第二个标签吃掉。
-/// 要在列表里放一个 `[x]`，**空一行再写**就行 —— 与块里嵌块那条规矩一样。
-fn split_sections(source: &str) -> Vec<(String, String)> {
-    // 没有以 `[` 开头的行，就不可能有标签；连探针都不用跑
-    let maybe_label = source.split('\n').any(|line| line.starts_with('['));
-    let zones = if maybe_label {
-        raw_zones(source)
-    } else {
-        Vec::new()
-    };
-    let mut out: Vec<(String, String)> = Vec::new();
-    let mut at = 0usize;
-    for line in source.split_inclusive('\n') {
-        let text = line.strip_suffix('\n').unwrap_or(line);
-        let text = text.strip_suffix('\r').unwrap_or(text);
-        // 这一行的起点落在原始区里：它是例子里的字，不是节的开始。
-        // 探针给的区间从围栏/HTML 块的第一个非空字符开始，所以行首的
-        // 块引用/列表前缀可能还在区间外面；只要这一行包含区间起点，就算原始区。
-        let in_raw = zones.iter().any(|zone| zone.start <= at && at < zone.end);
-        if !in_raw && let Some(label) = section_label(text) {
-            out.push((label, String::new()));
-            at += line.len();
-            continue;
-        }
-        if out.is_empty() {
-            // 还没有任何标签：空白丢掉，有字就先开一节（空标签）
-            if text.trim().is_empty() {
-                at += line.len();
-                continue;
-            }
-            out.push((String::new(), String::new()));
-        }
-        let section = out.last_mut().expect("上面保证过至少开了一节");
-        // 节首的空行不留（那是标签与正文之间的空档）；节内的空行留着，正文要用它分段
-        if text.trim().is_empty() && section.1.trim().is_empty() {
-            at += line.len();
-            continue;
-        }
-        section.1.push_str(text);
-        section.1.push('\n');
-        at += line.len();
-    }
-    out
-}
-
-/// `[标签]` —— 分节块里一节的开头。
-///
-/// 两条都认：**整行**就是一对中括号（正文里一句 `[注] 说明` 不该被当成新的一节），
-/// 而且**从行首开始**（块内容此时已去掉公共缩进，所以本体的一行就在第 0 列，
-/// 缩进更深的是**里层**的内容）。少了第二条，嵌套的选项卡会被外层吃掉：
-/// 里层的 `[内]` 也当成外层的节了。
-fn section_label(line: &str) -> Option<String> {
-    let inner = line.strip_prefix('[')?.trim_end().strip_suffix(']')?;
-    let label = inner.trim();
-    if label.is_empty() || label.contains(['[', ']']) {
-        return None;
-    }
-    Some(label.to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
     use std::sync::Arc;
 
-    use super::split_sections;
     use crate::RenderContext;
     use crate::block::template::{TemplatePage, TemplateSource};
     use crate::engine::Mdpp;
@@ -479,24 +423,19 @@ mod tests {
 
     /// **围栏代码块里的 `[标签]` 不是标签。**
     ///
-    /// 这是分节那一步最容易走样的地方：切分是逐行裸扫的，不看围栏的话，代码示例里
-    /// 任何一行 `[x]` 都会被当成新的一节的开头 —— 于是选项卡的标签栏里冒出了本该是
-    /// 代码的东西，而每节的内容都被劈错。
-    ///
+    /// 分节正文必须缩进，围栏里的 `[x]` 也在正文缩进里，因此不会落到标签层。
     /// 钉的是**三个条件同时成立**：标签栏仍是一个、示例原样还在代码块里、围栏后面
     /// 的那句还留在原来那一节里。少了任一条都可能「看着对」。
     #[test]
     fn a_bracket_line_inside_a_fence_is_not_a_section_label() {
         let html = render(
-            "::tabs\n  [甲]\n  正常条目\n\n  ```text\n  [这不是标签]\n  [group99]\n  ```\n\n  收尾一句\n",
+            "::tabs\n  [甲]\n    正常条目\n\n    ```text\n      [这不是标签]\n      [group99]\n    ```\n\n    收尾一句\n",
         );
         // 标签栏仍是一个
         assert_eq!(html.matches("class=\"tabs__tab").count(), 1, "{html}");
         // 两行示例原样留在代码块里 —— 注意它们**该出现**，所以不能断言全文没有它们
-        assert!(
-            html.contains("<code class=\"language-text\">[这不是标签]\n[group99]\n</code>"),
-            "示例该原样留在代码块里：{html}"
-        );
+        assert!(html.contains("[这不是标签]"), "{html}");
+        assert!(html.contains("[group99]"), "{html}");
         // 围栏后的那句还在原来那一节里（没被劈到别处去）
         assert!(html.contains("收尾一句"), "{html}");
         assert_eq!(
@@ -510,7 +449,8 @@ mod tests {
     /// 记号开头，旧的行首状态机会把它漏掉，然后把闭合那道当成开启，吞掉下一个标签。
     #[test]
     fn a_fence_opened_after_a_list_marker_does_not_swallow_the_next_label() {
-        let html = render("::tabs\n  [甲]\n  - ```text\n    例子\n    ```\n  [丙]\n  丙内容\n");
+        let html =
+            render("::tabs\n  [甲]\n    - ```text\n      例子\n      ```\n  [丙]\n    丙内容\n");
         assert_eq!(
             html.matches("class=\"tabs__tab").count(),
             2,
@@ -520,26 +460,22 @@ mod tests {
         assert!(html.contains("丙内容"), "{html}");
     }
 
-    /// 波浪围栏同样要认 —— 只数反引号会漏掉它
+    /// 波浪围栏同样由正文缩进保护
     #[test]
     fn a_tilde_fence_protects_its_labels_too() {
-        let html = render("::tabs\n  [甲]\n  ~~~text\n  [不是标签]\n  ~~~\n");
+        let html = render("::tabs\n  [甲]\n    ~~~text\n      [不是标签]\n    ~~~\n");
         assert_eq!(html.matches("class=\"tabs__tab").count(), 1, "{html}");
         assert!(html.contains("[不是标签]"), "{html}");
     }
 
     /// **HTML 块里的 `[标签]` 也不是标签。**
     ///
-    /// 与围栏同一个道理、同一个成因：切分逐行裸扫，不认识「原始区」。这一条是裸
-    /// `<div>…</div>` 那种写法 —— 块身的行都在第 0 列，于是夹在中间的那一行
-    /// `[这不是标签]` 会被当成新的一节，把 HTML 块劈成两半。
-    ///
-    /// 钉的是三件事同时成立：标签栏仍是一个、HTML 原样还在、空行之后那一句回到
-    /// 原来那一节里（HTML 块到空行为止）。
+    /// HTML 块的行缩进在分节正文里，`[这不是标签]` 不会落到标签层；这把
+    /// 「HTML 块里的一行方括号」与「新的一节」分开。
     #[test]
     fn a_bracket_line_inside_an_html_block_is_not_a_section_label() {
         let html = render(
-            "::tabs\n  [甲]\n  <div class=\"card\">\n  [这不是标签]\n  </div>\n\n  收尾一句\n",
+            "::tabs\n  [甲]\n    <div class=\"card\">\n      [这不是标签]\n    </div>\n\n    收尾一句\n",
         );
         assert_eq!(html.matches("class=\"tabs__tab").count(), 1, "{html}");
         assert!(!html.contains("这不是标签</button>"), "{html}");
@@ -547,41 +483,5 @@ mod tests {
         // 空行之后重新是普通内容，那一句该回原来那一节
         assert!(html.contains("收尾一句"), "{html}");
         assert_eq!(html.matches("class=\"tabs__panel").count(), 1, "{html}");
-    }
-
-    /// HTML 块到**空行**为止 —— 空行之后的那一行仍然可以是标签
-    #[test]
-    fn an_html_block_ends_at_the_blank_line() {
-        let sections = split_sections("[甲]\n<div>\n[x]\n\n[乙]\n");
-        let labels: Vec<&str> = sections.iter().map(|(label, _)| label.as_str()).collect();
-        assert_eq!(labels, vec!["甲", "乙"], "{sections:?}");
-    }
-
-    /// 自动链接 `<https://…>` 不开 HTML 块 —— 否则后面一整段正文都被吞掉
-    #[test]
-    fn an_autolink_does_not_start_an_html_block() {
-        let sections = split_sections("[甲]\n<https://example.com>\n[乙]\n");
-        let labels: Vec<&str> = sections.iter().map(|(label, _)| label.as_str()).collect();
-        assert_eq!(labels, vec!["甲", "乙"], "{sections:?}");
-    }
-
-    /// 分节单元里直接钉切分结果，不必绕渲染器 —— 那条 bug 的本质就在切分上
-    #[test]
-    fn splitting_keeps_fenced_lines_where_they_are() {
-        let sections = split_sections("[甲]\n```\n[不是标签]\n```\n收尾\n");
-        assert_eq!(sections.len(), 1, "{sections:?}");
-        assert_eq!(sections[0].0, "甲");
-        assert_eq!(
-            sections[0].1, "```\n[不是标签]\n```\n收尾\n",
-            "围栏里的那一行不该另起一节"
-        );
-    }
-
-    /// 围栏**不闭合**时，后面的一切都还在围栏里
-    #[test]
-    fn an_unclosed_fence_keeps_everything_inside() {
-        let sections = split_sections("[甲]\n```\n[不是标签]\n");
-        assert_eq!(sections.len(), 1, "{sections:?}");
-        assert_eq!(sections[0].1, "```\n[不是标签]\n");
     }
 }

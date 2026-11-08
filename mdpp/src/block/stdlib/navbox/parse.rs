@@ -1,4 +1,4 @@
-use crate::block::dispatch::{BlockNode, no_leading_content, render_problem, sections};
+use crate::block::dispatch::{BlockNode, render_problem, sections};
 use crate::block::stdlib::{hex_why, normalize_hex, text_on};
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
@@ -120,7 +120,7 @@ pub(super) fn inline_html(text: &str) -> String {
 /// 就出 `href`，没递或解析器说没有就落成红链 —— 与正文里的 `[[…]]` 一模一样。
 ///
 /// 为什么不给 `[分组名 [[链接]]]` 那种写法：分节那一步只认「整行一对方括号」
-/// （见 `block::scanner` 的 `section_label`），而它为了不把 `[[甲]]` 认成标签，
+/// （见 `block::section` 的 `section_label`），而它为了不把 `[[甲]]` 认成标签，
 /// 会把**任何含方括号**的标签都退回去。放开它就得去数嵌套的方括号——而一个写错
 /// 半边的 `[a [b]` 会让整个分节错位，页面从此莫名其妙。分开写没这个风险。
 fn group_label_html(label: &str) -> Result<String, String> {
@@ -275,11 +275,6 @@ pub(super) fn prepare<'a>(
 
     // 先**整块**认一遍再渲染：标签写错了就整块报出来，免得渲染半截
     let list = sections(node);
-    // 标签前有正文 = 方括号漏写了：那时连「分组名」都无从谈起，得先挡在一切之前
-    if let Err(why) = no_leading_content(&list, "导航框") {
-        render_problem(block, fmt, &why);
-        return None;
-    }
     let mut above: Option<&Node> = None;
     let mut below: Option<&Node> = None;
     let mut segments: Vec<Segment> = Vec::new();

@@ -28,7 +28,7 @@ use std::collections::HashSet;
 
 use markdown_it::{Node, Renderer};
 
-use super::super::dispatch::{no_leading_content, render_problem, sections};
+use super::super::dispatch::{render_problem, sections};
 use crate::registry::Block;
 use crate::variants::{ALWAYS, Control, Group};
 
@@ -165,13 +165,13 @@ fn parts<'a>(
             let mut parts = Vec::new();
             for (label, content) in list {
                 let value = match label.to_lowercase().as_str() {
-                    "" | "both" | "all" => ALWAYS,
+                    "both" | "all" => ALWAYS,
                     "light" => "light",
                     "dark" => "dark",
                     _ => {
                         return Err(format!(
-                            "认不出这一节的标签 [{label}]：只认 [light] 与 [dark] \
-                             （写在最前面的内容两边都显示）"
+                            "认不出这一节的标签 [{label}]：只认 [light] 与 [dark]；\
+                             两边都显示写 [both]"
                         ));
                     }
                 };
@@ -183,18 +183,15 @@ fn parts<'a>(
             }
             Ok(parts)
         }
-        Control::Choice => {
-            no_leading_content(list, params.label)?;
-            Ok(list
-                .iter()
-                .enumerate()
-                .map(|(index, (label, content))| Part {
-                    value: index.to_string(),
-                    label,
-                    content,
-                })
-                .collect())
-        }
+        Control::Choice => Ok(list
+            .iter()
+            .enumerate()
+            .map(|(index, (label, content))| Part {
+                value: index.to_string(),
+                label,
+                content,
+            })
+            .collect()),
         Control::Manual => Err("`::variants` 暂不支持 control=manual".to_string()),
     }
 }
@@ -377,13 +374,13 @@ mod tests {
     /// theme / tabs 现在走标准库模板；这里顺带钉住模板与 primitive 的接缝
     #[test]
     fn standard_library_templates_use_the_primitive() {
-        let tabs = render("::tabs\n  [甲]\n  甲文\n  [乙]\n  乙文\n");
+        let tabs = render("::tabs\n  [甲]\n    甲文\n  [乙]\n    乙文\n");
         assert!(tabs.contains(r#"class="tabs__bar""#), "{tabs}");
         assert!(tabs.contains(r#"class="tabs__panel""#), "{tabs}");
         assert!(tabs.contains("data-mdpp-option=\"0\""), "{tabs}");
         assert!(tabs.contains("甲文") && tabs.contains("乙文"), "{tabs}");
 
-        let theme = render("::theme\n  [light]\n  浅色\n  [dark]\n  深色\n");
+        let theme = render("::theme\n  [light]\n    浅色\n  [dark]\n    深色\n");
         assert!(theme.contains("theme__part--light"), "{theme}");
         assert!(theme.contains("theme__part--dark"), "{theme}");
         assert!(theme.contains("data-mdpp-value=\"light\""), "{theme}");
@@ -394,7 +391,7 @@ mod tests {
     fn theme_has_no_control_bar_and_keeps_every_panel() {
         let html = render(
             "::variants control=theme group=theme class=theme panel-class=theme__part \
-             panel-variant-class=on\n  [light]\n  甲\n  [dark]\n  乙\n",
+             panel-variant-class=on\n  [light]\n    甲\n  [dark]\n    乙\n",
         );
         assert!(html.contains(r#"class="theme""#), "{html}");
         assert!(html.contains(r#"data-mdpp-control="theme""#), "{html}");
@@ -410,7 +407,7 @@ mod tests {
     fn choice_renders_buttons_panels_and_legacy_hooks() {
         let html = render(
             "::variants control=choice group=tabs class=tabs bar-class=tabs__bar \
-             button-class=tabs__tab button-on-class=tabs__tab--on panel-class=tabs__panel\n  [甲]\n  甲文\n  [乙]\n  乙文\n",
+             button-class=tabs__tab button-on-class=tabs__tab--on panel-class=tabs__panel\n  [甲]\n    甲文\n  [乙]\n    乙文\n",
         );
         assert!(html.contains(r#"data-mdpp-control="choice""#), "{html}");
         assert!(
@@ -427,7 +424,7 @@ mod tests {
     /// 标签是显示用的字，原样保留
     #[test]
     fn labels_keep_their_case() {
-        let html = render("::variants control=choice\n  [API]\n  内容\n");
+        let html = render("::variants control=choice\n  [API]\n    内容\n");
         assert!(html.contains(">API</button>"), "{html}");
     }
 
@@ -435,11 +432,11 @@ mod tests {
     #[test]
     fn bad_headers_are_reported_before_anything_is_written() {
         for source in [
-            "::variants\n  [甲]\n  甲\n",
-            "::variants control=manual\n  [甲]\n  甲\n",
-            "::variants control=theme\n  [blue]\n  甲\n",
-            "::variants control=choice default=9\n  [甲]\n  甲\n",
-            "::variants control=choice\n  没标签\n  [甲]\n  甲\n",
+            "::variants\n  [甲]\n    甲\n",
+            "::variants control=manual\n  [甲]\n    甲\n",
+            "::variants control=theme\n  [blue]\n    甲\n",
+            "::variants control=choice default=9\n  [甲]\n    甲\n",
+            "::variants control=choice\n  没标签\n  [甲]\n    甲\n",
         ] {
             let html = render(source);
             assert!(html.contains("template--problem"), "{source:?}: {html}");
@@ -450,7 +447,7 @@ mod tests {
     #[test]
     fn assets_are_scoped_to_the_option() {
         let html = render(
-            "::variants control=choice group=tabs class=tabs\n  [甲]\n  ::css\n    .a { }\n  [乙]\n  ::js\n    console.log(1);\n",
+            "::variants control=choice group=tabs class=tabs\n  [甲]\n    ::css\n      .a { }\n  [乙]\n    ::js\n      console.log(1);\n",
         );
         assert!(html.contains("data-mdpp-group=\"tabs-1\""), "{html}");
         assert!(html.contains("data-mdpp-value=\"0\""), "{html}");
@@ -458,7 +455,7 @@ mod tests {
         assert!(html.contains("data-mdpp-asset=\"js\""), "{html}");
 
         let both = render(
-            "::variants control=theme group=theme class=theme\n  两边都显示\n  ::css\n    .a { }\n  [dark]\n  深色\n",
+            "::variants control=theme group=theme class=theme\n  [both]\n    两边都显示\n    ::css\n      .a { }\n  [dark]\n    深色\n",
         );
         assert!(both.contains("data-mdpp-value=\"*\""), "{both}");
     }
@@ -466,7 +463,8 @@ mod tests {
     /// 一节里还能再嵌一个选项卡（各节是各自解析的小文档）
     #[test]
     fn tabs_nest() {
-        let nested = render("::tabs\n  [甲]\n  ::tabs\n    [内]\n    内文\n  [乙]\n  乙文\n");
+        let nested =
+            render("::tabs\n  [甲]\n    ::tabs\n      [内]\n        内文\n  [乙]\n    乙文\n");
         assert_eq!(nested.matches("class=\"tabs\"").count(), 2, "{nested}");
         assert!(
             nested.contains("内文") && nested.contains("乙文"),
@@ -477,7 +475,7 @@ mod tests {
     /// 未选中的面板先藏着，一节里的正文仍按 markdown 解析
     #[test]
     fn tabs_hide_the_other_panels_and_parse_markdown() {
-        let html = render("::tabs\n  [一]\n  **加粗**\n  [二]\n  乙\n");
+        let html = render("::tabs\n  [一]\n    **加粗**\n  [二]\n    乙\n");
         assert_eq!(html.matches("class=\"tabs__tab").count(), 2, "{html}");
         assert!(html.contains("<strong>加粗</strong>"), "{html}");
         assert!(html.contains("hidden"), "{html}");
@@ -487,7 +485,7 @@ mod tests {
     #[test]
     fn theme_assets_are_deferred() {
         let html = render(
-            "::theme\n  [light]\n  ::css\n    .a { color: red; }\n  ::js\n    console.log('light');\n  ::html js\n    <script>alert('light')</script>\n  [dark]\n  ::css\n    .b { color: blue; }\n",
+            "::theme\n  [light]\n    ::css\n      .a { color: red; }\n    ::js\n      console.log('light');\n    ::html js\n      <script>alert('light')</script>\n  [dark]\n    ::css\n      .b { color: blue; }\n",
         );
         assert!(html.contains("data-mdpp-asset=\"css\""), "{html}");
         assert!(html.contains("data-mdpp-asset=\"js\""), "{html}");
@@ -514,7 +512,7 @@ mod tests {
         use crate::{Mdpp, RenderContext};
 
         let rendered = Mdpp::new().render_with_assets(
-            "::theme\n  [light]\n  ::css\n    .a { }\n  ::js\n    console.log(1);\n  [dark]\n  ::css\n    .b { }\n",
+            "::theme\n  [light]\n    ::css\n      .a { }\n    ::js\n      console.log(1);\n  [dark]\n    ::css\n      .b { }\n",
             &RenderContext::new(),
             "assets",
         );
@@ -536,7 +534,7 @@ mod tests {
     /// `::js once` 把一次性策略写进占位符
     #[test]
     fn tabs_can_mark_a_script_once() {
-        let html = render("::tabs\n  [一]\n  ::js once\n    console.log(1);\n");
+        let html = render("::tabs\n  [一]\n    ::js once\n      console.log(1);\n");
         assert!(html.contains("data-mdpp-once=\"once\""), "{html}");
     }
 }
