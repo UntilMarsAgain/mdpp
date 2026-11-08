@@ -1,7 +1,7 @@
 ::if condition-defined={{@text}}
   [then]
-    ::surface class="title-block {{?@class}}" text={{?@color}} inline=on
-      {{?text}}
+  ::surface class="title-block {{?@class}}" text={{?@color}} inline=on
+    {{?text}}
   [else]
-    ::surface class="title-block {{?@class}}" text={{?@color}} inline=on
-      {{body}}
+  ::surface class="title-block {{?@class}}" text={{?@color}} inline=on
+    {{body}}

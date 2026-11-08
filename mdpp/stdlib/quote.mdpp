@@ -3,5 +3,5 @@
 
   ::if condition-defined={{@origin}}
     [then]
-      ::element tag=p class=quote__origin inline=on
-        — {{?origin}}
+    ::element tag=p class=quote__origin inline=on
+      — {{?origin}}
