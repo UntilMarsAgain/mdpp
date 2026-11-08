@@ -6,9 +6,9 @@
 //! ```text
 //! ::if condition-exist={{@body}}
 //!   [then]
-//!   有正文时才出现
+//!     有正文时才出现
 //!   [else]
-//!   没有正文
+//!     没有正文
 //! ```
 //!
 //! `{{@名字}}` 是晚绑定引用：块头已经分完词，值里有空格、引号、换行也不会破坏
@@ -20,17 +20,18 @@
 //! - `condition-empty`：不存在或空白；
 //! - `condition-equals`：与 `value=` 去空白后完全相等，大小写敏感；
 //! - `condition-truthy`：存在且不是空串、`0`、`false`、`no`、`off`；
-//! - `condition-yesno`：值（去空白、忽略大小写）是 `yes` / `on` / `true` / `1` 时为真。
+//! - `condition-yes`：值（去空白、忽略大小写）是 `yes` / `on` / `true` / `1` 时为真；
+//! - `condition-no`：值是 `no` / `off` / `false` / `0` 时为真（空值与缺失都不算）。
 //!
 //! `condition-not` 反转最后结果。多个测试会报用法问题；需要「且」时嵌套 `::if`，
 //! 需要「或」时等将来的 `::choose` 或表达式。
 //!
-//! `[then]` 必填，`[else]` 可选；正文里出现未知标签、重复标签或标签前正文都算
-//! 用法问题。两枝都会被解析，只渲染选中那一枝。
+//! `[then]` 必填，`[else]` 可选；正文里出现未知标签、重复标签，或标签层上出现
+//! 没有标签头的正文，都算用法问题。两枝都会被解析，只渲染选中那一枝。
 
 use markdown_it::{Node, Renderer};
 
-use super::super::dispatch::{no_leading_content, render_problem, sections};
+use super::super::dispatch::{render_problem, sections};
 use crate::block::fill;
 use crate::context;
 use crate::registry::Block;
@@ -129,11 +130,13 @@ fn condition(block: &Block) -> Result<bool, String> {
                 .is_some_and(|(left, right)| left.trim() == right.trim())
         }
         "condition-truthy" => resolve(test.value)?.is_some_and(|value| truthy(&value)),
-        "condition-yesno" => resolve(test.value)?.is_some_and(|value| yesno(&value)),
+        "condition-yes" => resolve(test.value)?.is_some_and(|value| yes(&value)),
+        "condition-no" => resolve(test.value)?.is_some_and(|value| no(&value)),
         other => {
             return Err(format!(
                 "`::if` 不认条件 `{other}`；可写 condition-exist / condition-defined / \
-                 condition-empty / condition-equals / condition-truthy / condition-yesno。"
+                 condition-empty / condition-equals / condition-truthy / condition-yes / \
+                 condition-no。"
             ));
         }
     };
@@ -183,11 +186,19 @@ fn truthy(value: &str) -> bool {
     )
 }
 
-/// `condition-yesno`：只把 `yes` / `on` / `true` / `1` 当作真，其余都是假。
-fn yesno(value: &str) -> bool {
+/// `condition-yes`：只把 `yes` / `on` / `true` / `1` 当作真。
+fn yes(value: &str) -> bool {
     matches!(
         value.trim().to_lowercase().as_str(),
         "yes" | "on" | "true" | "1"
+    )
+}
+
+/// `condition-no`：只把 `no` / `off` / `false` / `0` 当作真，空值与缺失都不算。
+fn no(value: &str) -> bool {
+    matches!(
+        value.trim().to_lowercase().as_str(),
+        "no" | "off" | "false" | "0"
     )
 }
 
@@ -196,7 +207,6 @@ fn check_sections(sections: &[(&str, &Node)]) -> Result<(), String> {
     if sections.is_empty() {
         return Err("`::if` 是空的：至少要写 `[then]` 一节。".to_string());
     }
-    no_leading_content(sections, "条件块")?;
     let mut then = false;
     let mut otherwise = false;
     for (label, _) in sections {
@@ -242,11 +252,11 @@ mod tests {
     /// 字面量条件：`[then]` / `[else]` 各走一次
     #[test]
     fn a_literal_condition_picks_a_branch() {
-        let yes = render("::if condition-exist=是\n  [then]\n    甲\n  [else]\n    乙\n");
+        let yes = render("::if condition-exist=是\n  [then]\n      甲\n  [else]\n      乙\n");
         assert!(yes.contains("甲"), "{yes}");
         assert!(!yes.contains("乙"), "{yes}");
 
-        let no = render("::if condition-exist=\n  [then]\n    甲\n  [else]\n    乙\n");
+        let no = render("::if condition-exist=\n  [then]\n      甲\n  [else]\n      乙\n");
         assert!(!no.contains("甲"), "{no}");
         assert!(no.contains("乙"), "{no}");
     }
@@ -258,7 +268,7 @@ mod tests {
         pages.0.insert(
             "卡片".into(),
             TemplatePage::Ready(
-                "::if condition-exist= {{@body}}\n  [then]\n    有\n  [else]\n    无\n".into(),
+                "::if condition-exist= {{@body}}\n  [then]\n      有\n  [else]\n      无\n".into(),
             ),
         );
         let context = RenderContext::new().with_templates(Arc::new(pages));
@@ -278,7 +288,8 @@ mod tests {
         pages.0.insert(
             "检查".into(),
             TemplatePage::Ready(
-                "::if condition-defined={{@flag}}\n  [then]\n    定义\n  [else]\n    缺失\n".into(),
+                "::if condition-defined={{@flag}}\n  [then]\n      定义\n  [else]\n      缺失\n"
+                    .into(),
             ),
         );
         let context = RenderContext::new().with_templates(Arc::new(pages));
@@ -290,20 +301,28 @@ mod tests {
         assert!(absent.contains("缺失"), "{absent}");
     }
 
-    /// `condition-yesno` 只认 yes / on / true / 1
+    /// `condition-yes` / `condition-no` 各认各的词；空值与第三值两边都是假
     #[test]
-    fn yesno_accepts_only_the_yes_words() {
+    fn yes_and_no_accept_only_their_words() {
         for value in ["yes", "on", "true", "1", "YES", "On", "TRUE"] {
             let html = render(&format!(
-                "::if condition-yesno={value}\n  [then]\n    真\n  [else]\n    假\n"
+                "::if condition-yes={value}\n  [then]\n      真\n  [else]\n      假\n"
             ));
-            assert!(html.contains("真"), "{value:?}：{html}");
+            assert!(html.contains("真"), "情 {value:?}：{html}");
         }
-        for value in ["no", "off", "false", "0", "", "随便"] {
+        for value in ["no", "off", "false", "0", "NO", "Off", "FALSE"] {
             let html = render(&format!(
-                "::if condition-yesno={value}\n  [then]\n    真\n  [else]\n    假\n"
+                "::if condition-no={value}\n  [then]\n      真\n  [else]\n      假\n"
             ));
-            assert!(html.contains("假"), "{value:?}：{html}");
+            assert!(html.contains("真"), "否 {value:?}：{html}");
+        }
+        for value in ["", "随便"] {
+            for condition in ["condition-yes", "condition-no"] {
+                let html = render(&format!(
+                    "::if {condition}={value}\n  [then]\n      真\n  [else]\n      假\n"
+                ));
+                assert!(html.contains("假"), "{condition} {value:?}：{html}");
+            }
         }
     }
 
@@ -330,11 +349,11 @@ mod tests {
     /// `condition-equals` 与 `condition-not`
     #[test]
     fn equality_and_negation() {
-        let yes = render("::if condition-equals=warning value=warning\n  [then]\n    命中\n");
+        let yes = render("::if condition-equals=warning value=warning\n  [then]\n      命中\n");
         assert!(yes.contains("命中"), "{yes}");
 
         let no = render(
-            "::if condition-equals=warning value=info condition-not\n  [then]\n    没命中\n",
+            "::if condition-equals=warning value=info condition-not\n  [then]\n      没命中\n",
         );
         assert!(no.contains("没命中"), "{no}");
     }
@@ -343,9 +362,9 @@ mod tests {
     #[test]
     fn bad_sections_are_reported() {
         for source in [
-            "::if condition-exist=是\n  [else]\n    乙\n",
-            "::if condition-exist=是\n  [then]\n    甲\n  [other]\n    乙\n",
-            "::if condition-exist=是\n  [then]\n    甲\n  [then]\n    乙\n",
+            "::if condition-exist=是\n  [else]\n      乙\n",
+            "::if condition-exist=是\n  [then]\n      甲\n  [other]\n      乙\n",
+            "::if condition-exist=是\n  [then]\n      甲\n  [then]\n      乙\n",
         ] {
             let html = render(source);
             assert!(html.contains("template--problem"), "{html}");
@@ -356,7 +375,7 @@ mod tests {
     #[test]
     fn if_blocks_nest() {
         let html = render(
-            "::if condition-exist=yes\n  [then]\n    ::if condition-exist=\n      [then]\n        内甲\n      [else]\n        内乙\n",
+            "::if condition-exist=yes\n  [then]\n      ::if condition-exist=\n        [then]\n            内甲\n        [else]\n            内乙\n",
         );
         assert!(html.contains("内乙"), "{html}");
         assert!(!html.contains("内甲"), "{html}");
@@ -372,11 +391,12 @@ mod tests {
         pages.0.insert(
             "卡片".into(),
             TemplatePage::Ready(
-                "::if condition-exist={{@body}}\n  [then]\n    {{body}}\n  [else]\n    空\n".into(),
+                "::if condition-exist={{@body}}\n  [then]\n      {{body}}\n  [else]\n      空\n"
+                    .into(),
             ),
         );
         let context = RenderContext::new().with_templates(Arc::new(pages));
-        let html = Mdpp::new().render_with("::卡片\n  [else]\n  用户内容\n", &context);
+        let html = Mdpp::new().render_with("::卡片\n  [else]\n    用户内容\n", &context);
         assert!(html.contains("用户内容"), "{html}");
         assert!(!html.contains("空"), "外层 else 不该被选中：{html}");
     }
@@ -385,8 +405,8 @@ mod tests {
     #[test]
     fn if_headers_are_checked_strictly() {
         for source in [
-            "::if condition-exist=\"没关上\n  [then]\n    甲\n",
-            "::if condition-exist=是 condition-empty=否\n  [then]\n    甲\n",
+            "::if condition-exist=\"没关上\n  [then]\n      甲\n",
+            "::if condition-exist=是 condition-empty=否\n  [then]\n      甲\n",
         ] {
             let html = render(source);
             assert!(html.contains("template--problem"), "{source:?}：{html}");
@@ -397,10 +417,10 @@ mod tests {
     #[test]
     fn bad_conditions_are_reported() {
         for source in [
-            "::if\n  [then]\n    甲\n",
-            "::if condition-exist=是 condition-empty=否\n  [then]\n    甲\n",
-            "::if condition-equals=是\n  [then]\n    甲\n",
-            "::if foo=bar\n  [then]\n    甲\n",
+            "::if\n  [then]\n      甲\n",
+            "::if condition-exist=是 condition-empty=否\n  [then]\n      甲\n",
+            "::if condition-equals=是\n  [then]\n      甲\n",
+            "::if foo=bar\n  [then]\n      甲\n",
         ] {
             let html = render(source);
             assert!(html.contains("template--problem"), "{html}");
