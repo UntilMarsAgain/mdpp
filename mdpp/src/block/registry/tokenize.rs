@@ -17,6 +17,9 @@ pub(super) struct Token {
 /// `key ="value"` 是同一个意思。切分按**第一个** `=` 来，所以 `key="a=b"` 的值
 /// 就是 `a=b`。
 ///
+/// 裸 flag 是语法糖：只写 `key` 等于 `key=on`。显式写成 `key=` 才是空值 ——
+/// 模板里的可选参数缺失时会落成 `key=`，这样两者就分得开。
+///
 /// 只有一个歧义要特别处理：`a="" b=""` 里 `a=` 后面那个 `b=` 是**下一个参数**，
 /// 不是值。未加引号、里面又带 `=` 的 token 按「像另一个键」处理；真要把 `a=b`
 /// 当值，请加引号。
@@ -77,7 +80,8 @@ pub(super) fn pairs(tokens: &[Token]) -> Vec<(String, String)> {
         }
         match token.text.split_once('=') {
             Some((key, value)) => out.push((key.to_string(), value.to_string())),
-            None => out.push((token.text.clone(), String::new())),
+            // 裸 flag：语法糖，等价于 `key=on`
+            None => out.push((token.text.clone(), "on".to_string())),
         }
         index += 1;
     }

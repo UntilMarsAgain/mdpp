@@ -185,11 +185,12 @@ pub fn source_of(block: &Block) -> Result<String, String> {
 
 /// 开关式参数开没开：写了 `flag`、`flag=true`、`flag=yes`、`flag=on` 都算开了。
 ///
-/// 只写 key 的写法（`js`）本来就是「打开」的意思 —— 要让开关式的参数能表达「关」，
-/// 得写它专有的关值（比如 `rounded=off`），那由各个块自己说。
+/// 裸 flag 在解析时已经落成 `on`；显式 `flag=` 是空值，不算打开。
+/// 要让开关式的参数表达「关」，写它专有的关值（比如 `rounded=off`），
+/// 那由各个块自己说。
 pub fn flag(block: &Block, key: &str) -> bool {
     block.params.iter().any(|(name, value)| {
-        name == key && matches!(value.to_lowercase().as_str(), "" | "true" | "yes" | "on")
+        name == key && matches!(value.to_lowercase().as_str(), "true" | "yes" | "on")
     })
 }
 

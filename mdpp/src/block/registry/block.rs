@@ -25,7 +25,8 @@ pub enum ContentMode {
 pub struct Block {
     /// `::` 后面的名字（派发就用它）
     pub name: String,
-    /// `key=value` 参数；只写了 `key` 的开关式参数，值是空串
+    /// `key=value` 参数；只写了 `key` 的开关式参数，值是 `on`（裸 flag 是
+    /// `key=on` 的语法糖）；显式 `key=` 才是空串
     pub params: Vec<(String, String)>,
     /// 块内容原文，已去掉公共缩进
     pub body: String,
@@ -68,8 +69,8 @@ impl Block {
             .map(|(_, value)| value.as_str())
     }
 
-    /// 这个开关有没有写。与 [`Block::param`] 的区别：只写 `flag` 的参数值是空串，
-    /// `param("flag")` 给出 `Some("")`，与「写了 `flag=`」分不开。
+    /// 这个开关有没有写。裸 `flag` 的值是 `on`，显式 `flag=` 是空串，
+    /// 两者用 [`Block::param`] 就分得开。
     pub fn has(&self, key: &str) -> bool {
         self.params.iter().any(|(name, _)| name == key)
     }

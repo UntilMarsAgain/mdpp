@@ -66,6 +66,18 @@ fn unknown_or_unclosed_placeholders_stay_visible() {
     assert_eq!(substitute("{{unclosed", &item, ""), "{{unclosed");
 }
 
+/// 裸 flag 解析成 `on`；显式 `flag=` 是空值，不打开开关
+#[test]
+fn bare_flags_are_on_and_explicit_empty_is_not() {
+    let bare = block("x", &[("js", "on")], "");
+    assert!(flag(&bare, "js"));
+
+    let empty = block("x", &[("js", "")], "");
+    assert!(!flag(&empty, "js"));
+
+    assert!(!flag(&block("x", &[], ""), "js"));
+}
+
 /// 严格填空：必填缺失报错，`?` 开头缺失填空串，正文里的 `@` 引用也报错
 #[test]
 fn checked_fill_separates_required_optional_and_late_refs() {
@@ -215,14 +227,15 @@ fn script_end_cannot_close_its_own_tag() {
     assert_eq!(escape_script_end("没有"), "没有");
 }
 
-/// 这几种常见写法都得算数 —— 少认一种，作者明明写了想打开，结果静悄悄关着
+/// 这几种常见写法都得算数 —— 少认一种，作者明明写了想打开，结果静悄悄关着；
+/// 显式 `js=` 是空值，不再算打开（裸 flag 在解析时已经落成 `on`）
 #[test]
 fn switches_read_the_usual_spellings() {
-    for spelling in ["", "true", "yes", "on", "ON"] {
+    for spelling in ["true", "yes", "on", "ON"] {
         let item = block("x", &[("js", spelling)], "");
         assert!(allows_js(&item), "js={spelling:?} 应当算打开");
     }
-    for spelling in ["false", "off", "no", "0"] {
+    for spelling in ["", "false", "off", "no", "0"] {
         let item = block("x", &[("js", spelling)], "");
         assert!(!allows_js(&item), "js={spelling:?} 不该算打开");
     }

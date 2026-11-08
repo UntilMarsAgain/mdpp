@@ -618,8 +618,8 @@
   font-size: 0.94em;
 }
 
-/* aside 里嵌套的 banner mini：与 aside 背景区分，更深一点 */
-.mdpp-content .aside .banner.banner--mini {
+/* aside 里嵌套的 banner：与 aside 背景区分，更深一点 */
+.mdpp-content .aside .banner {
   background: var(--mdpp-surface);
   border: 1px solid var(--mdpp-border);
 }

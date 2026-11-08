@@ -12,7 +12,7 @@ fn parsing_a_header_yields_name_and_params() {
         params,
         vec![
             ("key".to_string(), "value".to_string()),
-            ("flag".to_string(), String::new()),
+            ("flag".to_string(), "on".to_string()),
             ("另一个".to_string(), "值".to_string()),
         ]
     );
@@ -29,7 +29,7 @@ fn quotes_protect_spaces_and_escapes() {
         vec![
             ("标题".to_string(), "含 空格".to_string()),
             ("引号".to_string(), "他说\"好\"".to_string()),
-            ("flag".to_string(), String::new()),
+            ("flag".to_string(), "on".to_string()),
         ]
     );
 }
@@ -171,7 +171,7 @@ fn a_lone_equals_does_not_swallow_the_next_parameter() {
         params,
         vec![
             ("=".to_string(), String::new()),
-            ("flag".to_string(), String::new()),
+            ("flag".to_string(), "on".to_string()),
             ("title".to_string(), "提醒".to_string())
         ]
     );
@@ -191,16 +191,27 @@ fn only_the_first_equals_splits() {
     assert_eq!(params, vec![("标题".to_string(), "a=b=c".to_string())]);
 }
 
-/// 开关认得出来：`has` 说有、`param` 给空串 —— 与「没给这个参数」的 `None` 分得开
+/// 裸 flag 是 `flag=on` 的语法糖；显式 `flag=` 才是空串
 #[test]
-fn a_bare_flag_is_present_but_empty() {
+fn a_bare_flag_is_present_and_on() {
+    let (_, params) = Block::parse_header("::x flag empty=").unwrap();
+    assert_eq!(
+        params,
+        vec![
+            ("flag".to_string(), "on".to_string()),
+            ("empty".to_string(), String::new()),
+        ]
+    );
+
     let block = Block {
         name: "x".into(),
-        params: vec![("flag".into(), String::new())],
+        params,
         body: String::new(),
     };
     assert!(block.has("flag"));
-    assert_eq!(block.param("flag"), Some(""));
+    assert_eq!(block.param("flag"), Some("on"));
+    assert!(block.has("empty"));
+    assert_eq!(block.param("empty"), Some(""));
     assert!(!block.has("other"));
     assert_eq!(block.param("other"), None);
 }

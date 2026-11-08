@@ -48,9 +48,9 @@
 </div>
 ```
 
-内置块 22 个，覆盖横条、条件渲染、选项卡、深浅色主题、水平分栏、图片音视频、代码块、
-公式、mermaid 图、导航框、原样文本、内联样式与原始 HTML；`aside`、`quote`、`title` 等
-展示块由标准库模板提供。完整的巡览见 [`examples/tour.mdpp`](examples/tour.mdpp)，
+内置块 21 个，覆盖条件渲染、选项卡、深浅色主题、水平分栏、图片音视频、代码块、公式、
+mermaid 图、导航框、原样文本、内联样式与原始 HTML；`banner`、`aside`、`quote`、`title`
+等展示块由标准库模板提供。完整的巡览见 [`examples/tour.mdpp`](examples/tour.mdpp)，
 内置块清单见 `mdpp render --list-blocks`。
 
 ## 命令行
@@ -257,14 +257,15 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 
 库自带的标准库模板在 `mdpp` 包里，编译期嵌入，不需要项目里再放一份；默认
 `RenderContext` 已经带上，项目 `templates/` 里的同名页优先覆盖。目前从 Rust 实用块
-迁入的是 `small` / `title` / `quote` / `signature` / `flatlist` / `aside` / `note` /
-`tip` / `warning` / `danger` / `error`；`::card`、`::panel`、`::main`、`::deprecated`、
+迁入的是 `small` / `title` / `quote` / `signature` / `flatlist` / `banner` /
+`aside` / `note` / `tip` / `warning` / `danger` / `error`；`::card`、`::panel`、`::main`、`::deprecated`、
 `::grammar`、`::example` 属于示例或文档项目，不是库标准库。
 
 基础包装块用 `::element`（替代原来的 `::class`）、`::surface`（受控的底色/字色/
 尺寸盒子）和 `::text`（正文原样输出，不解析 markdown），外围模板可以由它们组合出来。
 `::surface` 的 `class=` 归调用者：写了就按原样用，不再自动追加 `surface` 或
-`surface--*`；高度、圆角与 `mini` 会落成行内样式。
+`surface--*`；高度、圆角与 `mini` 会落成行内样式。`tag=auto` 会按正文形状选
+`<p>` 或 `<div>`。裸 flag `key` 等价于 `key=on`，显式 `key=` 才是空值。
 
 ```mdpp
 ::if condition-exist={{@body}}
