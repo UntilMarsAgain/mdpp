@@ -1,7 +1,9 @@
 //! 两个基础包装块：`::surface` 与 `::element`。
 //!
-//! - `::surface` 是**带受控样式的盒子**：底色、字色、高度、圆角、紧凑模式都经过
+//! - `::surface` 是**只负责样式值的盒子**：颜色、字色、高度、圆角、紧凑模式都经过
 //!   校验；动态颜色与字色对比不可能由纯文本模板算出来，所以这一层留在 Rust。
+//!   class **由调用者自己写**：写了就用调用者的那一串，不再额外塞 `surface`，
+//!   也不自动生成 `surface--*`。高度、圆角、mini 落成行内样式，类名只归模板管。
 //!   这里的 `text=` 是**字色**（`auto` 或十六进制），不是正文替换；扫描器对
 //!   `surface` 不走 `text=` 那条正文捷径。
 //! - `::element` 是 `::class` 的替代品：可以选标签、挂 class、`role`、`aria-*` 与
@@ -20,10 +22,11 @@ use super::{hex_why, normalize_hex, size_rule, text_on};
 use crate::block::fill;
 use crate::registry::Block;
 
-/// `::surface` 可用的标签。样式盒子是块级容器，`span` 留给行内用法。
-const SURFACE_TAGS: &[&str] = &["div", "span", "section", "aside"];
+/// `::surface` 可用的标签。样式盒子是块级容器，`span` / `p` 留给行内用法。
+const SURFACE_TAGS: &[&str] = &["div", "span", "section", "aside", "p"];
 
-/// `::element` 可用的标签。刻意不给 `script` / `style` / `iframe` / `form`。
+/// `::element` 可用的标签。刻意不给 `script` / `style` / `iframe` / `form`，
+/// 也不给 `a` / `img` / `video` 这类需要单独校验 URL 属性的标签。
 const ELEMENT_TAGS: &[&str] = &[
     "div",
     "span",
@@ -38,6 +41,26 @@ const ELEMENT_TAGS: &[&str] = &[
     "figcaption",
     "blockquote",
     "button",
+    "details",
+    "summary",
+    "dl",
+    "dt",
+    "dd",
+    "time",
+    "mark",
+    "small",
+    "strong",
+    "em",
+    "cite",
+    "q",
+    "s",
+    "del",
+    "ins",
+    "kbd",
+    "samp",
+    "var",
+    "sub",
+    "sup",
     "table",
     "thead",
     "tbody",
@@ -54,13 +77,24 @@ const ELEMENT_TAGS: &[&str] = &[
 ];
 
 /// `::surface color=#0055a4 text=auto rounded=on height=120px mini=off class=... [inline=on]`
+///
+/// `class=` 写了就按原样使用（不写默认 `surface`）；`surface` 不再追加
+/// `surface--sized` / `surface--square` / `surface--mini`，这些效果改为行内样式。
 pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     if node.children.is_empty() {
         render_problem(block, fmt, "内容是空的：::surface 要包裹点东西");
         return;
     }
 
-    let mut class = "surface".to_string();
+    // class 归调用者。写了就按原样用；没写才落到默认的 `surface`。
+    // 这里不追加 `surface--*`：修饰类与「有没有某个参数」属于模板的 `::if`，
+    // `surface` 只把参数换算成经过校验的行内样式。
+    let class = block
+        .param("class")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("surface")
+        .to_string();
     let mut style = String::new();
 
     let color = block
@@ -72,22 +106,22 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
             render_problem(block, fmt, &hex_why("color", None));
             return;
         };
-        style.push_str(&format!("background: {hex};"));
+        push_decl(&mut style, &format!("background: {hex};"));
         match block
             .param("text")
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            None => style.push_str(&format!(" color: {};", text_on(&hex))),
+            None => push_decl(&mut style, &format!("color: {};", text_on(&hex))),
             Some(text) if text.eq_ignore_ascii_case("auto") => {
-                style.push_str(&format!(" color: {};", text_on(&hex)));
+                push_decl(&mut style, &format!("color: {};", text_on(&hex)))
             }
             Some(text) => {
                 let Some(fg) = normalize_hex(text) else {
                     render_problem(block, fmt, &hex_why("text", None));
                     return;
                 };
-                style.push_str(&format!(" color: {fg};"));
+                push_decl(&mut style, &format!("color: {fg};"));
             }
         }
     } else if let Some(text) = block
@@ -99,7 +133,7 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
             render_problem(block, fmt, &hex_why("text", None));
             return;
         };
-        style.push_str(&format!("color: {fg};"));
+        push_decl(&mut style, &format!("color: {fg};"));
     }
 
     if let Some(height) = block
@@ -115,31 +149,32 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
             );
             return;
         };
-        style.push_str(&rule);
-        class.push_str(" surface--sized");
+        push_decl(&mut style, &rule);
+        // 原来由 `.surface--sized` 负责的居中，现在直接落成样式
+        push_decl(
+            &mut style,
+            "display: flex; align-items: center; justify-content: center;",
+        );
     }
 
     match on_off(block.param("rounded"), true) {
         Ok(true) => {}
-        Ok(false) => class.push_str(" surface--square"),
+        Ok(false) => push_decl(&mut style, "border-radius: 0;"),
         Err(()) => {
             render_problem(block, fmt, "rounded= 只认 on / off");
             return;
         }
     }
     match on_off(block.param("mini"), false) {
-        Ok(true) => class.push_str(" surface--mini"),
+        Ok(true) => push_decl(
+            &mut style,
+            "font-size: 0.9em; padding: 0.35rem 0.7rem; margin: 0.3em 0; \
+             line-height: 1.4; border-radius: 0.2rem;",
+        ),
         Ok(false) => {}
         Err(()) => {
             render_problem(block, fmt, "mini= 只认 on / off");
             return;
-        }
-    }
-
-    if let Some(extra) = block.param("class").map(str::trim) {
-        if !extra.is_empty() {
-            class.push(' ');
-            class.push_str(extra);
         }
     }
 
@@ -254,6 +289,14 @@ fn tag_of<'a>(block: &'a Block, allowed: &[&str]) -> Result<&'a str, String> {
     }
 }
 
+/// 往 style 串里接一条声明，中间留一个空格；空串时不留前导空格。
+fn push_decl(style: &mut String, declaration: &str) {
+    if !style.is_empty() {
+        style.push(' ');
+    }
+    style.push_str(declaration);
+}
+
 /// `on` / `off` 一类的开关；`None` 用默认值。
 fn on_off(value: Option<&str>, default: bool) -> Result<bool, ()> {
     match value.map(str::trim).map(str::to_lowercase).as_deref() {
@@ -289,21 +332,49 @@ mod tests {
         Mdpp::new().render(src)
     }
 
-    /// `::surface` 的底色、字色自动对比、尺寸与 class 一起落出来
+    /// `::surface` 的底色、字色、尺寸与调用者写的 class 一起落出来
     #[test]
     fn surface_carries_validated_style() {
         let html = render(
             "::surface color=#0055a4 text=auto height=120px rounded=off class=card\n  正文\n",
         );
-        assert!(
-            html.contains("class=\"surface surface--sized surface--square card\""),
-            "{html}"
-        );
+        // 写了 class 就用调用者的那一串，不再自动追加 surface / surface--*
+        assert!(html.contains("class=\"card\""), "{html}");
+        assert!(!html.contains("surface--"), "{html}");
         assert!(html.contains("background: #0055a4;"), "{html}");
         assert!(html.contains("color: #f5f5f5;"), "{html}");
         assert!(html.contains("min-height: 120px;"), "{html}");
+        assert!(
+            html.contains("display: flex; align-items: center; justify-content: center;"),
+            "{html}"
+        );
+        assert!(html.contains("border-radius: 0;"), "{html}");
         // `text=` 是字色，不是正文替换：正文还得在
         assert!(html.contains("<p>正文</p>"), "{html}");
+    }
+
+    /// 没写 class 时才落到默认的 `surface`；类名不再由 surface 拼修饰类
+    #[test]
+    fn surface_defaults_to_the_surface_class() {
+        let html = render("::surface\n  正文\n");
+        assert!(html.contains("class=\"surface\""), "{html}");
+    }
+
+    /// `mini` 现在是行内样式，不再生成 `surface--mini`
+    #[test]
+    fn surface_mini_is_an_inline_style() {
+        let html = render("::surface mini=on\n  正文\n");
+        assert!(html.contains("font-size: 0.9em;"), "{html}");
+        assert!(!html.contains("surface--mini"), "{html}");
+    }
+
+    /// `tag=p` 也允许：banner 一类后来可以把它当行内盒子用
+    #[test]
+    fn surface_can_use_a_paragraph_tag() {
+        let html = render("::surface tag=p class=banner inline=on\n  正文\n");
+        assert!(html.contains("<p class=\"banner\">"), "{html}");
+        assert!(html.contains("正文"), "{html}");
+        assert!(!html.contains("<p><p>"), "{html}");
     }
 
     /// 颜色和尺寸的坏值要报错，不写进 style
@@ -347,6 +418,27 @@ mod tests {
         ] {
             let html = render(source);
             assert!(html.contains("template--problem"), "{source:?}：{html}");
+        }
+    }
+
+    /// 结构标签与行内语义标签可以进 element；URL 类标签仍不在白名单里
+    #[test]
+    fn element_accepts_the_expanded_safe_tags() {
+        let html = render(
+            "::element tag=details\n  ::element tag=summary\n    标题\n  ::element tag=dl\n    ::element tag=dt\n      甲\n    ::element tag=dd\n      乙\n",
+        );
+        assert!(html.contains("<details>"), "{html}");
+        assert!(html.contains("<summary>"), "{html}");
+        assert!(html.contains("<dl>"), "{html}");
+        assert!(html.contains("<dt>"), "{html}");
+        assert!(html.contains("<dd>"), "{html}");
+
+        for tag in ["script", "style", "iframe", "form", "a", "img"] {
+            let html = render(&format!("::element tag={tag}\n  正文\n"));
+            assert!(
+                html.contains("template--problem"),
+                "tag={tag} 不该放行：{html}"
+            );
         }
     }
 

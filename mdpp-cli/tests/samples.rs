@@ -115,6 +115,7 @@ fn the_tour_visits_every_builtin_block() {
         ("banner", r#"class="banner"#),
         ("element", r#"class="highlight""#),
         ("surface", r#"class="surface""#),
+        ("text", "**不解析**"),
         ("title", "title-block"),
         ("tabs", r#"class="tabs__bar""#),
         // 条件成立时 [then] 里的那句才会出现

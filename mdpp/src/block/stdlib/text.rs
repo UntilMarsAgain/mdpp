@@ -1,9 +1,10 @@
-//! 只写文字的块：`aside` / `banner` / `fields`；`quote` / `title` / `signature` 已迁到
-//! 标准库模板，见 [`crate::stdlib`]。
+//! 只写文字的块：`aside` / `banner` / `fields`，以及原样文本原语 `text`；
+//! `quote` / `title` / `signature` 已迁到标准库模板，见 [`crate::stdlib`]。
 //!
-//! 除 `fields` 外，内容都**照常按 markdown 解析** —— 子节点已经挂在 `node.children`
-//! 上，渲染器只管 `fmt.contents(&node.children)`，所以块里能写链接、列表、内部链接，
-//! 也能再嵌一个块。要「不解析」的块在 [`super::embeds`]。
+//! 除 `fields` 与 `text` 外，内容都**照常按 markdown 解析** —— 子节点已经挂在
+//! `node.children` 上，渲染器只管 `fmt.contents(&node.children)`，所以块里能写链接、
+//! 列表、内部链接，也能再嵌一个块。要「不解析」的块在 [`super::embeds`] 与
+//! [`render_text`]。
 //!
 //! `fields` 是本组唯一的例外：内容是**逐行拆出来**的属性表，值用原文 —— 它是
 //! 「查参数」用的，一行一项最清楚。
@@ -16,6 +17,27 @@ use super::{hex_why, normalize_hex, size_rule, text_on};
 use crate::registry::Block;
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::{Node, Renderer};
+
+/// `::text` —— 原样文本原语：正文**不按 markdown 解析**，HTML 记号也按字面转义。
+///
+/// 它不产生自己的元素，只把文字写出去；需要外层结构时由模板用 `::element` 包住。
+/// 这是给「标题、标签、字段值」这类必须保持字面的内容用的，不适合写正文。
+pub(super) fn render_text(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
+    if !block.params.is_empty() {
+        render_problem(block, fmt, "`::text` 不接受参数：正文会按字面输出");
+        return;
+    }
+
+    let text = block.body.trim();
+    if text.is_empty() {
+        render_problem(block, fmt, "内容是空的：::text 要写点字");
+        return;
+    }
+
+    fmt.cr();
+    fmt.text(text);
+    fmt.cr();
+}
 
 /// `::aside title="十四门桥"` —— 右侧的信息栏，**内容照常按 markdown 渲染**。
 ///
@@ -377,5 +399,32 @@ mod tests {
         let html = render("::banner mini=也许\n  内容\n");
         assert!(html.contains("template--problem"), "{html}");
         assert!(html.contains("mini="), "{html}");
+    }
+
+    /// `::text` 只做 HTML 转义，不解析 markdown
+    #[test]
+    fn text_is_literal_and_escaped() {
+        let html = render("::text\n  <b>**不解析**</b>\n");
+        assert!(html.contains("&lt;b&gt;**不解析**&lt;/b&gt;"), "{html}");
+        assert!(!html.contains("<strong>"), "{html}");
+        assert!(!html.contains("<b>"), "{html}");
+    }
+
+    /// `::text` 可以放进 `::element`，由外层提供结构
+    #[test]
+    fn text_can_sit_inside_an_element() {
+        let html = render("::element tag=p\n  ::text\n    原样 <tag>\n");
+        assert!(html.contains("<p>"), "{html}");
+        assert!(html.contains("原样 &lt;tag&gt;"), "{html}");
+    }
+
+    /// 空正文与参数都算用法问题
+    #[test]
+    fn text_rejects_empty_content_and_parameters() {
+        let empty = render("::text\n");
+        assert!(empty.contains("template--problem"), "{empty}");
+
+        let param = render("::text class=foo\n  内容\n");
+        assert!(param.contains("template--problem"), "{param}");
     }
 }

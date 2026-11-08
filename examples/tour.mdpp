@@ -211,6 +211,10 @@
 ::surface color=#eef4ff text=auto
   这是 `::surface` 基础盒子：底色、字色、圆角与尺寸都由参数校验后落成样式。
 
+::element tag=p
+  ::text
+    这里 **不解析** markdown，<tag> 也按字面转义。
+
 ::indent indent=2
   这段会被缩进 3.2em（indent × 1.6em）。
 
