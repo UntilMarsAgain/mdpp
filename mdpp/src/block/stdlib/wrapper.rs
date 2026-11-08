@@ -4,6 +4,7 @@
 //!   校验；动态颜色与字色对比不可能由纯文本模板算出来，所以这一层留在 Rust。
 //!   class **由调用者自己写**：写了就用调用者的那一串，不再额外塞 `surface`，
 //!   也不自动生成 `surface--*`。高度、圆角、mini 落成行内样式，类名只归模板管。
+//!   `tag=auto` 按正文形状选 `p` / `div`，给 `banner` 一类块用。
 //!   这里的 `text=` 是**字色**（`auto` 或十六进制），不是正文替换；扫描器对
 //!   `surface` 不走 `text=` 那条正文捷径。
 //! - `::element` 是 `::class` 的替代品：可以选标签、挂 class、`role`、`aria-*` 与
@@ -76,10 +77,11 @@ const ELEMENT_TAGS: &[&str] = &[
     "code",
 ];
 
-/// `::surface color=#0055a4 text=auto rounded=on height=120px mini=off class=... [inline=on]`
+/// `::surface color=#0055a4 text=auto rounded=on height=120px mini=off class=... [tag=auto] [inline=on]`
 ///
 /// `class=` 写了就按原样使用（不写默认 `surface`）；`surface` 不再追加
 /// `surface--sized` / `surface--square` / `surface--mini`，这些效果改为行内样式。
+/// `tag=auto` 按正文形状选标签：单段落 `p`，多段/含块 `div`。
 pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     if node.children.is_empty() {
         render_problem(block, fmt, "内容是空的：::surface 要包裹点东西");
@@ -187,12 +189,18 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
         render_problem(block, fmt, &why);
         return;
     }
-    let tag = match tag_of(block, SURFACE_TAGS) {
-        Ok(tag) => tag,
-        Err(why) => {
-            render_problem(block, fmt, &why);
-            return;
-        }
+    let auto = block.param("tag").map(str::trim) == Some("auto");
+    let (tag, inline) = if auto {
+        auto_tag(node)
+    } else {
+        let tag = match tag_of(block, SURFACE_TAGS) {
+            Ok(tag) => tag,
+            Err(why) => {
+                render_problem(block, fmt, &why);
+                return;
+            }
+        };
+        (tag, fill::flag(block, "inline"))
     };
 
     let mut attrs: Vec<(&str, String)> = vec![("class", class)];
@@ -202,25 +210,31 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
     fmt.cr();
     fmt.open(tag, &attrs);
     fmt.cr();
-    contents(node, fmt, fill::flag(block, "inline"));
+    contents(node, fmt, inline);
     fmt.cr();
     fmt.close(tag);
     fmt.cr();
 }
 
-/// `::element tag=div class=... role=... aria-*=... data-mdpp-*=... [inline=on]`
+/// `::element tag=div|auto class=... role=... aria-*=... data-mdpp-*=... [inline=on]`
 pub(super) fn render_element(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     if node.children.is_empty() {
         render_problem(block, fmt, "内容是空的：::element 要包裹点东西");
         return;
     }
 
-    let tag = match tag_of(block, ELEMENT_TAGS) {
-        Ok(tag) => tag,
-        Err(why) => {
-            render_problem(block, fmt, &why);
-            return;
-        }
+    let auto = block.param("tag").map(str::trim) == Some("auto");
+    let (tag, inline) = if auto {
+        auto_tag(node)
+    } else {
+        let tag = match tag_of(block, ELEMENT_TAGS) {
+            Ok(tag) => tag,
+            Err(why) => {
+                render_problem(block, fmt, &why);
+                return;
+            }
+        };
+        (tag, fill::flag(block, "inline"))
     };
 
     let mut attrs: Vec<(&str, String)> = Vec::new();
@@ -257,10 +271,22 @@ pub(super) fn render_element(block: &Block, node: &Node, fmt: &mut dyn Renderer)
     fmt.cr();
     fmt.open(tag, &attrs);
     fmt.cr();
-    contents(node, fmt, fill::flag(block, "inline"));
+    contents(node, fmt, inline);
     fmt.cr();
     fmt.close(tag);
     fmt.cr();
+}
+
+/// `tag=auto`：单段落用 `<p>` 并摊平行内内容，多段/含块用 `<div>`。
+///
+/// 这是 `banner` 一类「一行是横条、多段是容器」的块留下的结构判断；
+/// 模板看不到解析后的节点，所以放在包装原语里。
+fn auto_tag(node: &Node) -> (&'static str, bool) {
+    if matches!(node.children.as_slice(), [only] if only.is::<Paragraph>()) {
+        ("p", true)
+    } else {
+        ("div", false)
+    }
 }
 
 /// `inline=on` 时把单段正文直接写进行内，避免 `<p>` 里再套 `<p>`。
@@ -300,8 +326,11 @@ fn push_decl(style: &mut String, declaration: &str) {
 /// `on` / `off` 一类的开关；`None` 用默认值。
 fn on_off(value: Option<&str>, default: bool) -> Result<bool, ()> {
     match value.map(str::trim).map(str::to_lowercase).as_deref() {
-        None => Ok(default),
-        Some("") | Some("on") | Some("true") | Some("yes") | Some("1") => Ok(true),
+        // 裸 flag 现在是 `key=on`；显式 `key=` / 模板可选参数缺失才是空值，
+        // 空值按默认值处理，不能当成 true —— 否则模板里的 `mini={{?@mini}}`
+        // 会在没传 mini 时把它打开。
+        None | Some("") => Ok(default),
+        Some("on") | Some("true") | Some("yes") | Some("1") => Ok(true),
         Some("off") | Some("false") | Some("no") | Some("0") => Ok(false),
         Some(_) => Err(()),
     }
@@ -375,6 +404,34 @@ mod tests {
         assert!(html.contains("<p class=\"banner\">"), "{html}");
         assert!(html.contains("正文"), "{html}");
         assert!(!html.contains("<p><p>"), "{html}");
+    }
+
+    /// `tag=auto`：单段落用 p，多段用 div —— 这是 banner 需要的结构判断
+    #[test]
+    fn auto_tag_follows_the_content_shape() {
+        let single = render("::surface tag=auto class=banner\n  一行\n");
+        assert!(single.contains("<p class=\"banner\">"), "{single}");
+        assert!(!single.contains("<div class=\"banner\">"), "{single}");
+        assert!(!single.contains("<p><p>"), "{single}");
+
+        let multi = render("::surface tag=auto class=banner\n  第一段\n\n  第二段\n");
+        assert!(multi.contains("<div class=\"banner\">"), "{multi}");
+        assert!(multi.contains("<p>第一段</p>"), "{multi}");
+        assert!(multi.contains("<p>第二段</p>"), "{multi}");
+
+        let element = render("::element tag=auto class=banner\n  一行\n");
+        assert!(element.contains("<p class=\"banner\">"), "{element}");
+    }
+
+    /// 裸 flag 已经解析成 `on`；显式空值才走默认值：
+    /// `mini=` 不能把 mini 打开
+    #[test]
+    fn an_explicit_empty_flag_uses_the_default() {
+        let bare = render("::surface mini\n  正文\n");
+        assert!(bare.contains("font-size: 0.9em;"), "{bare}");
+
+        let empty = render("::surface mini=\n  正文\n");
+        assert!(!empty.contains("font-size: 0.9em;"), "{empty}");
     }
 
     /// 颜色和尺寸的坏值要报错，不写进 style

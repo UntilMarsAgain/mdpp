@@ -4,7 +4,7 @@
 //! 文件在编译期由 [`include_dir!`] 整个嵌进二进制，运行时不碰文件系统。
 //!
 //! 目前从原 Rust 实用块迁出来的是 `small` / `title` / `quote` / `signature` /
-//! `flatlist` / `aside` / `note` / `tip` / `warning` / `danger` / `error`；
+//! `flatlist` / `banner` / `aside` / `note` / `tip` / `warning` / `danger` / `error`；
 //! `problem` 是模板内部共用的诊断框。以后可迁移的基础块也放这里，外围标准库和
 //! 项目模板都通过同样的 [`TemplateSource`] 接口覆盖。
 //!
@@ -167,6 +167,50 @@ mod tests {
         let bad = crate::Mdpp::new().render("::aside align=maybe\n  内容\n");
         assert!(bad.contains("template--problem"), "{bad}");
         assert!(bad.contains("align="), "{bad}");
+    }
+
+    /// `banner` 单段落用 `<p>`，多段用 `<div>`；文案可来自正文或 `text=`
+    #[test]
+    fn banner_uses_tag_auto_and_takes_text_or_body() {
+        let body = crate::Mdpp::new().render("::banner\n  福建省文物保护单位\n");
+        assert!(body.contains(r#"<p class="banner">"#), "{body}");
+        assert!(!body.contains("<p><p>"), "{body}");
+
+        let text = crate::Mdpp::new().render("::banner text=\"**加粗**的标题\"\n");
+        assert!(text.contains("<strong>加粗</strong>"), "{text}");
+        assert!(text.contains(r#"<p class="banner">"#), "{text}");
+
+        let multi = crate::Mdpp::new().render("::banner\n  第一段\n\n  第二段\n");
+        assert!(multi.contains(r#"<div class="banner">"#), "{multi}");
+        assert!(multi.contains("<p>第二段</p>"), "{multi}");
+    }
+
+    /// `banner` 的高度、圆角、mini 与底色都由 `surface` 落成行内样式
+    #[test]
+    fn banner_style_values_go_through_surface() {
+        let sized = crate::Mdpp::new().render("::banner text=标题 height=120px\n");
+        assert!(sized.contains("min-height: 120px"), "{sized}");
+        assert!(
+            sized.contains("display: flex; align-items: center; justify-content: center;"),
+            "{sized}"
+        );
+
+        let square = crate::Mdpp::new().render("::banner text=标题 rounded=off\n");
+        assert!(square.contains("border-radius: 0;"), "{square}");
+
+        let mini = crate::Mdpp::new().render("::banner mini\n  小横条\n");
+        assert!(mini.contains("font-size: 0.9em;"), "{mini}");
+
+        let tinted = crate::Mdpp::new().render("::banner color=#0055a4\n  深蓝底\n");
+        assert!(tinted.contains("banner--tinted"), "{tinted}");
+        assert!(tinted.contains("background: #0055a4"), "{tinted}");
+        assert!(tinted.contains("color: #f5f5f5"), "{tinted}");
+
+        let bad = crate::Mdpp::new().render("::banner text=标题 rounded=也许\n");
+        assert!(bad.contains("template--problem"), "{bad}");
+
+        let empty = crate::Mdpp::new().render("::banner\n");
+        assert!(empty.contains("template--problem"), "{empty}");
     }
 
     /// 五种提示框的类名、记号与默认标题都从标准库模板来

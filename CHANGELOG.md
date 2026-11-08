@@ -22,6 +22,8 @@
   `@` 开头的参数名都会报 `template--problem`，不再退回普通段落或静默切错。
 - 模板占位符改为严格填空：`{{名字}}` 缺失时报 `template--problem`，`{{?名字}}`
   缺失时填空串；不再像 MediaWiki 那样原样保留。
+- 裸 flag 改为 `key=on` 的语法糖；显式写成 `key=` 才是空值，模板的可选参数
+  缺失也因此能与裸 flag 分开。
 - 新增 `{{@名字}}` 晚绑定引用：在块头分词之后从当前模板作用域取值，
   值里有空格、引号、换行也不会破坏参数；`{{?@名字}}` 缺失时填空串，
   `body` / `template` 是保留名。
@@ -42,11 +44,12 @@
   `surface` 或 `surface--*`；高度、圆角、`mini` 改为行内样式。需要按参数有无切换
   类名时由模板写 `::if`。
 - 新增原样文本原语 `::text`：正文不解析 markdown，只做 HTML 转义。
+- `::element` / `::surface` 支持 `tag=auto`：单段落用 `<p>`，多段或含块用 `<div>`。
 - `::element` 白名单补充 `details` / `summary` / `dl` / `dt` / `dd` / `time` / `mark`
   等安全结构标签；`a` / `img` / `video` 这类需要 URL 校验的标签仍不开放。
 - `mdpp/stdlib/` 通过 `include_dir!` 嵌入库自带的标准库模板；目前把原 Rust 实用块
-  `small` / `title` / `quote` / `signature` / `flatlist` / `aside` / `note` / `tip` /
-  `warning` / `danger` / `error` 迁成模板，默认 `RenderContext` 已带上，项目
+  `small` / `title` / `quote` / `signature` / `flatlist` / `banner` / `aside` / `note` /
+  `tip` / `warning` / `danger` / `error` 迁成模板，默认 `RenderContext` 已带上，项目
   `templates/` 同名页优先覆盖。
 - 示例、文档站和 `mdpp init` 骨架里的模板仍属于各自项目，不进入库标准库。
 

@@ -5,9 +5,9 @@
 //!
 //! 渲染器按**块内容怎么处理**分成几组：
 //!
-//! - `text`：只写文字的块（`banner` / `fields`）。内容**照常按 markdown 解析**，
-//!   参数只管外框的样子；`aside` / `quote` / `title` / `signature` 等已迁到标准库模板。
-//! - `plain`：`text` 是原样文本原语，正文不解析 markdown，只做 HTML 转义。
+//! - `text`：`fields` 是逐行拆出来的属性表；`text` 是原样文本原语，正文不解析
+//!   markdown，只做 HTML 转义。`banner` / `aside` / `quote` / `title` / `signature`
+//!   等已迁到标准库模板。
 //! - `media`：把一个文件摆出来（`image` / `video` / `audio`）。三者共用一套 `src=`
 //!   校验、尺寸上限与图注规矩。
 //! - `panels`：**按 `[标签]` 分节**的块（`tabs` / `theme` / `columns` / `navbox`）。
@@ -19,7 +19,8 @@
 //! - `wrapper`：基础包装（`element` / `surface`）。前者选标签、挂受控属性，后者提供
 //!   经校验的底色、字色、尺寸与紧凑模式。
 //!
-//! 提示框 `note` / `tip` / `warning` / `danger` / `error` 与 `aside` 已迁到标准库模板。
+//! `banner`、提示框 `note` / `tip` / `warning` / `danger` / `error` 与 `aside` 已迁到
+//! 标准库模板。
 //!
 //! 本文件另有三个多组共用的东西：`size_rule`（尺寸参数 → 一条 CSS 声明）、
 //! `normalize_hex`（`color=` 只认十六进制）与 `text_on`（底色 → 字色）。
@@ -45,13 +46,13 @@ use indent::render_indent;
 use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;
 use panels::{render_columns, render_tabs, render_theme};
-use text::{render_banner, render_fields, render_text};
+use text::{render_fields, render_text};
 use wrapper::{render_element, render_surface};
 
 use crate::registry::{Block, BlockRegistry, BlockSpec, ContentMode};
 
 /// 一条注册项：把函数指针接成渲染器。参数收**函数指针**而不是 trait 对象，是为了
-/// 下面那串 `spec("banner", Markdown, render_banner)` 读起来就是一句话，不必每次装箱。
+/// 下面那串 `spec("fold", Markdown, render_fold)` 读起来就是一句话，不必每次装箱。
 fn spec(
     name: &str,
     mode: ContentMode,
@@ -63,9 +64,8 @@ fn spec(
 /// 全部内置块的名字，按作者写下来的顺序。它与 [`register`] 里挂的那一批必须一致 ——
 /// `the_two_tables_agree` 盯着这件事。
 pub const NAMES: &[&str] = &[
-    "code", "fields", "banner", "tabs", "theme", "columns", "image", "video", "audio", "css",
-    "html", "js", "mermaid", "math", "demo", "fold", "element", "if", "indent", "surface", "text",
-    "navbox",
+    "code", "fields", "tabs", "theme", "columns", "image", "video", "audio", "css", "html", "js",
+    "mermaid", "math", "demo", "fold", "element", "if", "indent", "surface", "text", "navbox",
 ];
 
 /// 把内置块灌进注册表。
@@ -73,7 +73,6 @@ pub fn register(registry: &mut BlockRegistry) {
     registry
         .register(spec("code", ContentMode::Raw, render_code))
         .register(spec("fields", ContentMode::Raw, render_fields))
-        .register(spec("banner", ContentMode::Markdown, render_banner))
         .register(spec("tabs", ContentMode::Sections, render_tabs))
         .register(spec("theme", ContentMode::Sections, render_theme))
         .register(spec("columns", ContentMode::Sections, render_columns))
@@ -123,7 +122,7 @@ pub(crate) fn size_rule(name: &str, value: &str) -> Option<String> {
 
 /// `#abc` / `#aabbcc` → 规范的 `#aabbcc`；别的写法一律不认。
 ///
-/// 放在这一层而不是 [`text`] 里：`color=` 有两组块认它（`::banner` 与提示框那一族），
+/// 放在这一层而不是某个块里：`surface`、`fold` 与 `navbox` 都认 `color=`，
 /// 留在任一组都会让另一组跨界来取 —— 与 [`size_rule`] 是同一个理由。
 pub(crate) fn normalize_hex(text: &str) -> Option<String> {
     let body = text.trim().strip_prefix('#')?;
@@ -140,9 +139,9 @@ pub(crate) fn normalize_hex(text: &str) -> Option<String> {
 
 /// [`normalize_hex`] 认不出来时摆给作者看的那一句，写在**一处**。
 ///
-/// 校验本身已经是 [`normalize_hex`] 一份了，可这句话还有四个地方要说（`::banner`、
-/// 标题、提示框那一族、导航框的三个底色）—— 措辞各写一份必然漂移，而作者是照着
-/// 这句话去改的：少说一种写法，他就会去试那一种。第二个参数是**举个例子**
+/// 校验本身已经是 [`normalize_hex`] 一份了，可这句话还有几个地方要说（`surface`、
+/// `fold`、导航框的几个底色）—— 措辞各写一份必然漂移，而作者是照着这句话去改的：
+/// 少说一种写法，他就会去试那一种。第二个参数是**举个例子**
 /// （`"group-bg"` → 末尾补 `，比如 group-bg=#0055a4`），`None` 就只说两种写法
 pub(crate) fn hex_why(key: &str, example: Option<&str>) -> String {
     let mut why = format!("{key}= 只认 #rgb 或 #rrggbb 这两种写法");
@@ -265,7 +264,7 @@ mod tests {
             Some(ContentMode::Sections)
         );
         assert_eq!(
-            registry.get("banner").map(BlockSpec::mode),
+            registry.get("fold").map(BlockSpec::mode),
             Some(ContentMode::Markdown)
         );
         for name in [
