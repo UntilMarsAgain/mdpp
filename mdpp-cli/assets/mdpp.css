@@ -454,12 +454,8 @@
 /* `::flatlist` 的样子。根元素是一个带 `hlist` 类的 div 元素，与
  * qiuwenbaike 的 `Template:Flatlist` 对齐：
  *
- *   div.hlist[style="margin-left: N em; …"] { … }
- *
- * 缩进由渲染器落在 `style` 里（`indent=` × 1.6em），额外的 `class=` 与
- * `style=` 也原样写进去。水平排列与分隔符全交给 CSS，与 `::navbox`
- * 的 hlist 同一条原则：结构与样式分开，渲染器不吐 hlist/inline
- * 之类标记。
+ * 水平排列与分隔符全交给 CSS，与 `::navbox` 的 hlist 同一条原则：
+ * 结构与样式分开，渲染器不吐 hlist/inline 之类标记。
  *
  * 分隔符缺省 ` · `（中间点），挂在「上一条」的后面，最后一条后面
  * 没有多余的那个。想换分隔符，用 `::css` 覆盖下面的 ::after。
