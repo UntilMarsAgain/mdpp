@@ -17,11 +17,12 @@
 //! - `embeds`：把内容**原样写出去**的块（`code` / `mermaid` / `math` / `css` /
 //!   `html` / `js`），注册为 [`ContentMode::Raw`]，正文一个字符都不解析。
 //! - `control`：控制流（`if`）。按条件渲染 `[then]` / `[else]`，不产生自己的 DOM。
+//! - `include`：`noinclude` / `includeonly` —— 页面直接渲染与模板引入两种语境。
 //! - `wrapper`：基础包装（`element` / `surface`）。前者选标签、挂受控属性，后者提供
 //!   经校验的底色、字色、尺寸与紧凑模式。
 //!
-//! `columns`、`fields`、`indent`、`fold`、`theme`、`tabs`、`banner`、提示框 `note` /
-//! `tip` / `warning` / `danger` / `error` 与 `aside` 已迁到标准库模板。
+//! `columns`、`fields`、`fold`、`theme`、`tabs`、`banner`、提示框 `note` / `tip` /
+//! `warning` / `danger` / `error` 与 `aside` 已迁到标准库模板。
 //!
 //! 本文件另有三个多组共用的东西：`size_rule`（尺寸参数 → 一条 CSS 声明）、
 //! `normalize_hex`（`color=` 只认十六进制）与 `text_on`（底色 → 字色）。
@@ -31,6 +32,7 @@ mod demo;
 mod disclose;
 mod each;
 mod embeds;
+mod include;
 mod media;
 mod navbox;
 mod rows;
@@ -45,6 +47,7 @@ use demo::render_demo;
 use disclose::render_disclose;
 use each::render_each;
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
+use include::{render_includeonly, render_noinclude};
 use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;
 use rows::render_rows;
@@ -67,8 +70,27 @@ fn spec(
 /// 全部内置块的名字，按作者写下来的顺序。它与 [`register`] 里挂的那一批必须一致 ——
 /// `the_two_tables_agree` 盯着这件事。
 pub const NAMES: &[&str] = &[
-    "code", "rows", "image", "video", "audio", "css", "html", "js", "mermaid", "math",
-    "demo", "disclose", "each", "element", "if", "surface", "text", "navbox", "variants",
+    "code",
+    "rows",
+    "image",
+    "video",
+    "audio",
+    "css",
+    "html",
+    "js",
+    "mermaid",
+    "math",
+    "demo",
+    "disclose",
+    "each",
+    "element",
+    "if",
+    "includeonly",
+    "noinclude",
+    "surface",
+    "text",
+    "navbox",
+    "variants",
 ];
 
 /// 把内置块灌进注册表。
@@ -88,6 +110,12 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("each", ContentMode::Sections, render_each))
         .register(spec("element", ContentMode::Markdown, render_element))
         .register(spec("if", ContentMode::Sections, render_if))
+        .register(spec(
+            "includeonly",
+            ContentMode::Markdown,
+            render_includeonly,
+        ))
+        .register(spec("noinclude", ContentMode::Markdown, render_noinclude))
         .register(spec("surface", ContentMode::Markdown, render_surface))
         .register(spec("text", ContentMode::Raw, render_text))
         .register(spec("navbox", ContentMode::Sections, render_navbox))
@@ -235,6 +263,8 @@ mod tests {
                 ),
                 // element 需要 class= 参数
                 "element" => format!("::{name} class=foo\n  内容\n"),
+                // includeonly 在页面直接渲染时是空输出，但不算用法问题
+                "includeonly" | "noinclude" => format!("::{name}\n  正文一行\n"),
                 // if 至少要一节 [then]；用字面量条件，不依赖模板作用域
                 "if" => format!("::{name} condition-exist=yes\n  [then]\n    内容\n"),
                 // surface 包一层带 class 的盒子
