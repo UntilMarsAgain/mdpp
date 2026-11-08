@@ -48,7 +48,7 @@
 </div>
 ```
 
-块一共 31 个，覆盖引用、提示框、条件渲染、信息栏、选项卡、深浅色主题、水平分栏、图片音视频、
+块一共 27 个，覆盖引用、提示框、条件渲染、信息栏、选项卡、深浅色主题、水平分栏、图片音视频、
 代码块、公式、mermaid 图、导航框、内联样式与原始 HTML。完整的巡览见
 [`examples/tour.mdpp`](examples/tour.mdpp)，块名清单见 `mdpp render --list-blocks`。
 
@@ -254,7 +254,7 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 
 库自带的标准库模板在 `mdpp` 包里，编译期嵌入，不需要项目里再放一份；默认
 `RenderContext` 已经带上，项目 `templates/` 里的同名页优先覆盖。目前从 Rust 实用块
-迁入的是 `::small`（等价于 `::element class=small`）；`::card`、`::panel`、
+迁入的是 `small` / `title` / `quote` / `signature` / `flatlist`；`::card`、`::panel`、
 `::main`、`::deprecated`、`::grammar`、`::example` 属于示例或文档项目，不是库标准库。
 
 基础包装块用 `::element`（替代原来的 `::class`）和 `::surface`（受控的底色/字色/
@@ -275,6 +275,7 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 - `condition-empty={{@名字}}`：不存在或空白；
 - `condition-equals={{@名字}} value=字面量`：去首尾空白后相等；
 - `condition-truthy={{@名字}}`：不是空串、`0`、`false`、`no`、`off`；
+- `condition-yesno={{@名字}}`：去空白、忽略大小写后是 `yes` / `on` / `true`；
 - `condition-not`：反转最后结果。
 
 `[then]` 必填，`[else]` 可选；多个条件用嵌套 `::if`。模板里要把 `{{body}}`

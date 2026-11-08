@@ -23,8 +23,8 @@
 - 新增 `{{@名字}}` 晚绑定引用：在块头分词之后从当前模板作用域取值，
   值里有空格、引号、换行也不会破坏参数；`body` / `template` 是保留名。
 - 新增 `::if`：按 `condition-exist` / `condition-defined` / `condition-empty` /
-  `condition-equals` / `condition-truthy` 与 `condition-not` 选择 `[then]` /
-  `[else]` 分支。
+  `condition-equals` / `condition-truthy` / `condition-yesno` 与 `condition-not`
+  选择 `[then]` / `[else]` 分支。`condition-yesno` 只认 `yes` / `on` / `true`。
 - 模板嵌套上限提高到 64 层，并可由调用方改：库用
   `RenderContext::with_max_template_depth`，单文件模式用
   `render --max-template-depth`，站点模式用 `mdpp.toml` 的
@@ -36,7 +36,7 @@
   `tag` / `class` / `role` / `aria-*` / `data-mdpp-*`，后者提供经校验的底色、字色、
   尺寸、圆角与紧凑模式。
 - `mdpp/stdlib/` 通过 `include_dir!` 嵌入库自带的标准库模板；目前把原 Rust 实用块
-  `small` 迁成模板（`::small` 等价于 `::element class=small`），默认
+  `small` / `title` / `quote` / `signature` / `flatlist` 迁成模板，默认
   `RenderContext` 已带上，项目 `templates/` 同名页优先覆盖。
 - 示例、文档站和 `mdpp init` 骨架里的模板仍属于各自项目，不进入库标准库。
 

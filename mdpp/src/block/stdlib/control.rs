@@ -19,7 +19,8 @@
 //! - `condition-defined`：存在即可（空值/裸 flag 也算）；
 //! - `condition-empty`：不存在或空白；
 //! - `condition-equals`：与 `value=` 去空白后完全相等，大小写敏感；
-//! - `condition-truthy`：存在且不是空串、`0`、`false`、`no`、`off`。
+//! - `condition-truthy`：存在且不是空串、`0`、`false`、`no`、`off`；
+//! - `condition-yesno`：值（去空白、忽略大小写）是 `yes` / `on` / `true` 时为真。
 //!
 //! `condition-not` 反转最后结果。多个测试会报用法问题；需要「且」时嵌套 `::if`，
 //! 需要「或」时等将来的 `::choose` 或表达式。
@@ -128,10 +129,11 @@ fn condition(block: &Block) -> Result<bool, String> {
                 .is_some_and(|(left, right)| left.trim() == right.trim())
         }
         "condition-truthy" => resolve(test.value)?.is_some_and(|value| truthy(&value)),
+        "condition-yesno" => resolve(test.value)?.is_some_and(|value| yesno(&value)),
         other => {
             return Err(format!(
                 "`::if` 不认条件 `{other}`；可写 condition-exist / condition-defined / \
-                 condition-empty / condition-equals / condition-truthy。"
+                 condition-empty / condition-equals / condition-truthy / condition-yesno。"
             ));
         }
     };
@@ -179,6 +181,11 @@ fn truthy(value: &str) -> bool {
         value.trim().to_lowercase().as_str(),
         "" | "0" | "false" | "no" | "off"
     )
+}
+
+/// `condition-yesno`：只把 `yes` / `on` / `true` 当作真，其余（含 `1`）都是假。
+fn yesno(value: &str) -> bool {
+    matches!(value.trim().to_lowercase().as_str(), "yes" | "on" | "true")
 }
 
 /// 校验 `[then]` / `[else]`。
@@ -278,6 +285,23 @@ mod tests {
 
         let absent = Mdpp::new().render_with("::检查\n", &context);
         assert!(absent.contains("缺失"), "{absent}");
+    }
+
+    /// `condition-yesno` 只认 yes / on / true
+    #[test]
+    fn yesno_accepts_only_the_three_words() {
+        for value in ["yes", "on", "true", "YES", "On", "TRUE"] {
+            let html = render(&format!(
+                "::if condition-yesno={value}\n  [then]\n    真\n  [else]\n    假\n"
+            ));
+            assert!(html.contains("真"), "{value:?}：{html}");
+        }
+        for value in ["no", "off", "false", "1", "", "随便"] {
+            let html = render(&format!(
+                "::if condition-yesno={value}\n  [then]\n    真\n  [else]\n    假\n"
+            ));
+            assert!(html.contains("假"), "{value:?}：{html}");
+        }
     }
 
     /// 晚绑定的 equals / truthy：值从模板参数来，而不是早绑定文本插值

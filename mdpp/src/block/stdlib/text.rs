@@ -1,4 +1,5 @@
-//! 只写文字的块：`quote` / `aside` / `banner` / `title` / `signature` / `fields`。
+//! 只写文字的块：`aside` / `banner` / `fields`；`quote` / `title` / `signature` 已迁到
+//! 标准库模板，见 [`crate::stdlib`]。
 //!
 //! 除 `fields` 外，内容都**照常按 markdown 解析** —— 子节点已经挂在 `node.children`
 //! 上，渲染器只管 `fmt.contents(&node.children)`，所以块里能写链接、列表、内部链接，
@@ -15,32 +16,6 @@ use super::{hex_why, normalize_hex, size_rule, text_on};
 use crate::registry::Block;
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::{Node, Renderer};
-
-/// 署名前面那条横线（要换写法改这一处即可）。
-const ORIGIN_DASH: &str = "—";
-
-/// `::quote origin="署名"` —— 效果等同 markdown 的 `>`，但可以在参数里给一个署名，
-/// 渲染到右下角。
-///
-/// 内容由整个解析器解析过，所以里面可以写 markdown，也可以再嵌 `::quote`。
-pub(super) fn render_quote(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
-    fmt.cr();
-    // 用 blockquote 标签：左边那条竖线与缩进由正文样式统一负责，这里只补署名
-    fmt.open("blockquote", &[("class", "quote".to_string())]);
-    fmt.cr();
-    fmt.contents(&node.children);
-    if let Some(origin) = block.param("origin") {
-        fmt.cr();
-        fmt.open("p", &[("class", "quote__origin".to_string())]);
-        fmt.text(ORIGIN_DASH);
-        fmt.text(" ");
-        fmt.text(origin);
-        fmt.close("p");
-    }
-    fmt.cr();
-    fmt.close("blockquote");
-    fmt.cr();
-}
 
 /// `::aside title="十四门桥"` —— 右侧的信息栏，**内容照常按 markdown 渲染**。
 ///
@@ -186,49 +161,7 @@ pub(super) fn render_banner(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     fmt.cr();
 }
 
-/// `::title text="大标题" color=#5b8dd6` —— **居中的大标题，没有背景**。
-///
-/// 与 `::banner` 是一对：那条是横条（有底色、占一整行），这个是标题（只有字）。
-/// 卷首的题名、章节的分节标题用它；要一条有底色的横条就用 `::banner`。
-/// `color=` 在这里给的是**字色**（没有底色可给）。
-///
-/// 内容与 `banner` 同一套规矩：块里写一行，或由 `text=` 给出，都按 markdown 渲染。
-pub(super) fn render_title(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
-    if node.children.is_empty() {
-        render_problem(block, fmt, "标题是空的：写一行字，或用 text=… 给");
-        return;
-    }
-
-    let mut attrs: Vec<(&str, String)> = vec![("class", "title-block".to_string())];
-    if let Some(color) = block.param("color") {
-        let Some(hex) = normalize_hex(color) else {
-            render_problem(block, fmt, &hex_why("color", None));
-            return;
-        };
-        attrs.push(("style", format!("color: {hex};")));
-    }
-
-    fmt.cr();
-    inline_or_blocks_in(node, &attrs, fmt);
-    fmt.cr();
-}
-
-/// `::signature` —— 落款：右对齐的一段（署名、日期、「写在最后」的话）。
-///
-/// 内容照常按 markdown 渲染（落款里常有 `[[链接]]`、强调、甚至一张签名图）；
-/// 硬换行保留（样式里那条 `white-space: pre-line`），
-/// 所以「名字一行、日期一行」照写就是两行。
-pub(super) fn render_signature(_block: &Block, node: &Node, fmt: &mut dyn Renderer) {
-    fmt.cr();
-    fmt.open("div", &[("class", "signature".to_string())]);
-    fmt.cr();
-    fmt.contents(&node.children);
-    fmt.cr();
-    fmt.close("div");
-    fmt.cr();
-}
-
-/// 「一行内容」的块（横条、大标题）里的东西该按行内还是按块渲染
+/// 「一行内容」的块（横条）里的东西该按行内还是按块渲染
 enum InlineOrBlocks<'a> {
     /// 一个段落：渲染它里面的行内内容
     Inline(&'a [Node]),
@@ -247,7 +180,7 @@ fn inline_or_blocks<'a>(node: &'a Node) -> InlineOrBlocks<'a> {
 
 /// 把内容摆进 `attrs` 指定的那两个元素之一：**一行就套 `<p>`，写成块了就套 `<div>`**。
 ///
-/// `::banner` 与 `::title` 用的是同一套，所以这段只有一份：
+/// 横条里的内容该按行内还是按块渲染，只在这里定一份：
 ///
 /// - 单段时只取它的**行内内容**摊平放进来 —— 横条与标题自己不是容器，里面再套一个
 ///   `<p>` 就散了；
@@ -298,22 +231,6 @@ mod tests {
         assert!(html.contains("<strong>加粗</strong>"), "{html}");
     }
 
-    /// `::title`：居中的大标题，没有背景；`color=` 给的是字色
-    #[test]
-    fn title_renders_a_centered_heading_without_a_background() {
-        let html = render("::title\n  卷首的题名\n");
-        assert!(html.contains("class=\"title-block\""), "{html}");
-        assert!(html.contains("卷首的题名"), "{html}");
-        assert!(!html.contains("background"), "大标题没有背景：{html}");
-
-        let colored = render("::title text=\"**重**的标题\" color=#123456\n");
-        assert!(colored.contains("color: #123456"), "{colored}");
-        assert!(colored.contains("<strong>重</strong>"), "{colored}");
-
-        let bad = render("::title text=\"x\" color=红色\n");
-        assert!(bad.contains("template--problem"), "{bad}");
-    }
-
     /// `::banner` 的高度与圆角：高度是**最小**高度，圆角默认开着
     #[test]
     fn banner_takes_a_height_and_a_square_corner() {
@@ -332,39 +249,6 @@ mod tests {
         assert!(bad.contains("template--problem"), "{bad}");
         let bad = render("::banner text=\"标题\" rounded=也许\n");
         assert!(bad.contains("template--problem"), "{bad}");
-    }
-
-    /// `::quote origin=` 的署名落成带横线的那一条，正文照常在引用里
-    #[test]
-    fn quote_template_renders_with_origin() {
-        let html = render("::quote origin=\"某 人\"\n  引用内容\n");
-        assert!(html.contains(r#"<blockquote class="quote">"#), "{html}");
-        assert!(html.contains("引用内容"), "{html}");
-        assert!(html.contains("quote__origin"), "{html}");
-        // 署名带一条横线，且引号保护的空格原样保留
-        assert!(html.contains("— 某 人"), "{html}");
-    }
-
-    /// 不写 `origin=` 就不该出现任何署名元素 —— 空署名格是没有必要的输出
-    #[test]
-    fn quote_without_origin_has_no_signature() {
-        let html = render("::quote\n  只引用\n");
-        assert!(html.contains("<blockquote"), "{html}");
-        assert!(!html.contains("quote__origin"), "{html}");
-    }
-
-    /// 引用可以再套引用：内容必须落在**内层**里，被外层接走就是嵌套坏了
-    #[test]
-    fn quote_nests() {
-        let html = render("::quote\n  ::quote origin=\"内层\"\n    文字\n");
-        assert_eq!(html.matches("<blockquote").count(), 2, "{html}");
-        assert!(html.contains("内层"), "{html}");
-
-        // 内容必须落在**内层**里：数一数「文字」之前有几个未闭合的 blockquote
-        // （1 = 只在外层，2 = 正确地嵌在内层）。用字符串顺序猜结构是不可靠的。
-        let before = &html[..html.find("文字").expect("应当渲染出内容")];
-        let depth = before.matches("<blockquote").count() - before.matches("</blockquote>").count();
-        assert_eq!(depth, 2, "内容应当嵌在内层 blockquote 里：{html}");
     }
 
     /// 信息栏的内容照常按 markdown 解析 —— 改成输出原文就丢了强调与链接
@@ -436,15 +320,6 @@ mod tests {
         let bad = render("::banner color=red\n  乱写\n");
         assert!(bad.contains("template--problem"), "{bad}");
         assert!(!bad.contains("style="), "不该拼出 style 属性：{bad}");
-    }
-
-    /// `::signature`：右对齐的落款框，块里几行就写几行（名字一行、日期一行）
-    #[test]
-    fn signature_keeps_markdown_and_a_right_aligned_box() {
-        let html = render("::signature\n  甲  \n  2026 年秋\n");
-        assert!(html.contains(r#"<div class="signature">"#), "{html}");
-        assert!(html.contains("甲"), "{html}");
-        assert!(html.contains("2026 年秋"), "{html}");
     }
 
     /// `::aside align=center`：不浮动，居中小框，宽度随内容

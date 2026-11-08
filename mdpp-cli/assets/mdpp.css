@@ -604,6 +604,12 @@
   font-weight: 700;
 }
 
+/* 标准库 title 用 surface 承载字色，但标题本身不该有盒子的底色与内边距。 */
+.mdpp-content .surface.title-block {
+  background: transparent;
+  padding: 0;
+}
+
 /* ---- 信息栏 / 落款 / 属性表 --------------------------------------- */
 
 .mdpp-content .aside {
