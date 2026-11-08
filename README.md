@@ -48,10 +48,10 @@
 </div>
 ```
 
-内置块 21 个，覆盖条件渲染、选项卡、深浅色主题、水平分栏、图片音视频、代码块、公式、
-mermaid 图、导航框、原样文本、内联样式与原始 HTML；`banner`、`aside`、`quote`、`title`
-等展示块由标准库模板提供。完整的巡览见 [`examples/tour.mdpp`](examples/tour.mdpp)，
-内置块清单见 `mdpp render --list-blocks`。
+内置块 20 个，覆盖条件渲染、水平分栏、图片音视频、代码块、公式、mermaid 图、导航框、
+原样文本、内联样式与原始 HTML；`fold`、`tabs`、`theme`、`banner`、`aside`、`quote`、
+`title` 等展示块由标准库模板提供。完整的巡览见
+[`examples/tour.mdpp`](examples/tour.mdpp)，内置块清单见 `mdpp render --list-blocks`。
 
 ## 命令行
 
@@ -258,8 +258,21 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 库自带的标准库模板在 `mdpp` 包里，编译期嵌入，不需要项目里再放一份；默认
 `RenderContext` 已经带上，项目 `templates/` 里的同名页优先覆盖。目前从 Rust 实用块
 迁入的是 `small` / `title` / `quote` / `signature` / `flatlist` / `banner` /
-`aside` / `note` / `tip` / `warning` / `danger` / `error`；`::card`、`::panel`、`::main`、`::deprecated`、
+`aside` / `note` / `tip` / `warning` / `danger` / `error` / `fold` / `theme` / `tabs`；
+`callout` 是提示框共用的底模板。`::card`、`::panel`、`::main`、`::deprecated`、
 `::grammar`、`::example` 属于示例或文档项目，不是库标准库。
+
+提示框可以写 `collapsible`（展开）或 `collapsible=closed`（默认折着）变成可折叠的
+`<details>`；不写或写 `collapsible=off` 仍是原来的静态形状。它由 `::disclose` 原语
+实现，`fold` 也走同一个原语：
+
+```mdpp
+::note collapsible
+  点标题可以折起来。
+
+::tip collapsible=closed title=先折着
+  打开之后才看到的内容。
+```
 
 基础包装块用 `::element`（替代原来的 `::class`）、`::surface`（受控的底色/字色/
 尺寸盒子）和 `::text`（正文原样输出，不解析 markdown），外围模板可以由它们组合出来。
@@ -292,9 +305,10 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 
 ### 变体组与延迟资源
 
-`::tabs` 与 `::theme` 共用一套「变体组」：一组选项，每个选项可以带自己的
+`::variants` 是变体组的原语：一组选项，每个选项可以带自己的
 `::css` / `::js` / `::html js`。渲染某个选项时进入它的作用域，资源就会变成
-`AssetUse::Deferred`，由页面脚本在选项激活时挂载：
+`AssetUse::Deferred`，由页面脚本在选项激活时挂载。`::tabs` 与 `::theme` 是它上面
+的两层标准库模板：
 
 ```rust
 use mdpp::variants::{Control, Group};
@@ -307,8 +321,9 @@ assert_eq!(group.variants().len(), 2);
 
 自定义块只需要把 `container_attrs()` 挂到容器、`option_attrs()` 挂到控件、
 `panel_attrs()` 挂到面板，并在渲染选项内容时调用
-`group.with_option(value, || ...)`。`::tabs` 和 `::theme` 是这套公开 API 的
-内置使用者，完整 DOM 协议见 `mdpp::variants` 的文档。
+`group.with_option(value, || ...)`。内置的 `::variants` 把分节接到这套 API 上，
+`::tabs` / `::theme` 再由标准库模板给它类名与文案；完整 DOM 协议见 `mdpp::variants`
+的文档。
 
 所有脚本都带 `data-mdpp-version` 与 `data-mdpp-mode`；延迟脚本还带
 `data-mdpp-group` / `data-mdpp-value` / `data-mdpp-key` / `data-mdpp-run`，

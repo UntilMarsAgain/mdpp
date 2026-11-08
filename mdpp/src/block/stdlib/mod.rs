@@ -10,49 +10,52 @@
 //!   等已迁到标准库模板。
 //! - `media`：把一个文件摆出来（`image` / `video` / `audio`）。三者共用一套 `src=`
 //!   校验、尺寸上限与图注规矩。
-//! - `panels`：**按 `[标签]` 分节**的块（`tabs` / `theme` / `columns` / `navbox`）。
-//!   它们不读
-//!   块正文，而是各节已解析好的子节点；`navbox` 的标签同时就是它的分组名。
+//! - `columns`：按 `[标签]` 分节、几栏同时摆出来的 `columns`。
+//! - `disclose`：一份正文 + 布尔状态的原生折叠原语，`fold` 由它加模板实现。
+//! - `variants`：N 份正文 + 选中状态的变体组原语，`theme` / `tabs` 由它加模板实现。
+//! - `navbox`：按 `[标签]` 分组的导航框；标签同时就是分组名。
 //! - `embeds`：把内容**原样写出去**的块（`code` / `mermaid` / `math` / `css` /
 //!   `html` / `js`），注册为 [`ContentMode::Raw`]，正文一个字符都不解析。
 //! - `control`：控制流（`if`）。按条件渲染 `[then]` / `[else]`，不产生自己的 DOM。
 //! - `wrapper`：基础包装（`element` / `surface`）。前者选标签、挂受控属性，后者提供
 //!   经校验的底色、字色、尺寸与紧凑模式。
 //!
-//! `banner`、提示框 `note` / `tip` / `warning` / `danger` / `error` 与 `aside` 已迁到
-//! 标准库模板。
+//! `fold`、`theme`、`tabs`、`banner`、提示框 `note` / `tip` / `warning` / `danger` /
+//! `error` 与 `aside` 已迁到标准库模板。
 //!
 //! 本文件另有三个多组共用的东西：`size_rule`（尺寸参数 → 一条 CSS 声明）、
 //! `normalize_hex`（`color=` 只认十六进制）与 `text_on`（底色 → 字色）。
 
+mod columns;
 mod control;
 mod demo;
+mod disclose;
 mod embeds;
-mod fold;
 mod indent;
 mod media;
 mod navbox;
-mod panels;
 mod text;
+mod variants;
 mod wrapper;
 
 use markdown_it::Node;
 
+use columns::render_columns;
 use control::render_if;
 use demo::render_demo;
+use disclose::render_disclose;
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
-use fold::render_fold;
 use indent::render_indent;
 use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;
-use panels::{render_columns, render_tabs, render_theme};
 use text::{render_fields, render_text};
+use variants::render_variants;
 use wrapper::{render_element, render_surface};
 
 use crate::registry::{Block, BlockRegistry, BlockSpec, ContentMode};
 
 /// 一条注册项：把函数指针接成渲染器。参数收**函数指针**而不是 trait 对象，是为了
-/// 下面那串 `spec("fold", Markdown, render_fold)` 读起来就是一句话，不必每次装箱。
+/// 下面那串 `spec("disclose", Markdown, render_disclose)` 读起来就是一句话，不必每次装箱。
 fn spec(
     name: &str,
     mode: ContentMode,
@@ -64,8 +67,8 @@ fn spec(
 /// 全部内置块的名字，按作者写下来的顺序。它与 [`register`] 里挂的那一批必须一致 ——
 /// `the_two_tables_agree` 盯着这件事。
 pub const NAMES: &[&str] = &[
-    "code", "fields", "tabs", "theme", "columns", "image", "video", "audio", "css", "html", "js",
-    "mermaid", "math", "demo", "fold", "element", "if", "indent", "surface", "text", "navbox",
+    "code", "fields", "columns", "image", "video", "audio", "css", "html", "js", "mermaid", "math",
+    "demo", "disclose", "element", "if", "indent", "surface", "text", "navbox", "variants",
 ];
 
 /// 把内置块灌进注册表。
@@ -73,8 +76,6 @@ pub fn register(registry: &mut BlockRegistry) {
     registry
         .register(spec("code", ContentMode::Raw, render_code))
         .register(spec("fields", ContentMode::Raw, render_fields))
-        .register(spec("tabs", ContentMode::Sections, render_tabs))
-        .register(spec("theme", ContentMode::Sections, render_theme))
         .register(spec("columns", ContentMode::Sections, render_columns))
         .register(spec("image", ContentMode::Raw, render_image))
         .register(spec("video", ContentMode::Raw, render_video))
@@ -85,13 +86,14 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("mermaid", ContentMode::Raw, render_mermaid))
         .register(spec("math", ContentMode::Raw, render_math))
         .register(spec("demo", ContentMode::Raw, render_demo))
-        .register(spec("fold", ContentMode::Markdown, render_fold))
+        .register(spec("disclose", ContentMode::Markdown, render_disclose))
         .register(spec("element", ContentMode::Markdown, render_element))
         .register(spec("if", ContentMode::Sections, render_if))
         .register(spec("indent", ContentMode::Markdown, render_indent))
         .register(spec("surface", ContentMode::Markdown, render_surface))
         .register(spec("text", ContentMode::Raw, render_text))
-        .register(spec("navbox", ContentMode::Sections, render_navbox));
+        .register(spec("navbox", ContentMode::Sections, render_navbox))
+        .register(spec("variants", ContentMode::Sections, render_variants));
 }
 
 /// 全部内置块的名字（诊断与命令行帮助按它列出来）
@@ -220,10 +222,12 @@ mod tests {
             // 这几个要额外的东西才写得出来，给一份最小的可用写法
             let source = match *name {
                 "image" | "video" | "audio" => format!("::{name} src=x.png\n  注\n"),
-                "tabs" => format!("::{name}\n  [甲]\n  正文一行\n"),
-                "theme" => format!("::{name}\n  [light]\n  正文一行\n"),
-                // 分栏与选项卡一样，每节都得有 [标签]，标签前不许有正文
+                // 分栏每节都得有 [标签]，标签前不许有正文
                 "columns" => format!("::{name}\n  [甲]\n  正文一行\n"),
+                // 变体组至少要 control= 与一节 [标签]
+                "variants" => format!("::{name} control=choice\n  [甲]\n  正文一行\n"),
+                // 折叠原语要一个标题；正文不能为空
+                "disclose" => format!("::{name} title=更多\n  正文一行\n"),
                 // element 需要 class= 参数，indent 需要 indent= 参数
                 "element" => format!("::{name} class=foo\n  内容\n"),
                 // if 至少要一节 [then]；用字面量条件，不依赖模板作用域
@@ -252,11 +256,11 @@ mod tests {
     fn the_content_modes_are_what_they_look_like() {
         let registry = BlockRegistry::builtin();
         assert_eq!(
-            registry.get("tabs").map(BlockSpec::mode),
+            registry.get("columns").map(BlockSpec::mode),
             Some(ContentMode::Sections)
         );
         assert_eq!(
-            registry.get("columns").map(BlockSpec::mode),
+            registry.get("variants").map(BlockSpec::mode),
             Some(ContentMode::Sections)
         );
         assert_eq!(
@@ -264,7 +268,7 @@ mod tests {
             Some(ContentMode::Sections)
         );
         assert_eq!(
-            registry.get("fold").map(BlockSpec::mode),
+            registry.get("disclose").map(BlockSpec::mode),
             Some(ContentMode::Markdown)
         );
         for name in [

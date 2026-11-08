@@ -615,6 +615,7 @@ fn the_one_stylesheet_covers_every_block() {
     for (thing, needle) in [
         ("配色变量", "--mdpp-accent"),
         ("提示框", "callout--warning"),
+        ("可折叠提示框", "callout__details"),
         ("平行列表", ".flatlist.hlist"),
         ("折叠", ".fold {"),
         ("标题带", "title-block"),

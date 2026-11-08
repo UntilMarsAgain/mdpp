@@ -1,0 +1,2 @@
+::variants control=choice group=tabs default={{?@default}} class="tabs {{?@class}}" bar-class=tabs__bar button-class=tabs__tab button-on-class=tabs__tab--on panel-class=tabs__panel label=选项卡
+  {{body}}

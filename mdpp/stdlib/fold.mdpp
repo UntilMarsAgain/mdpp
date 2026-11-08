@@ -1,0 +1,2 @@
+::disclose class="fold {{?@class}}" button-class=fold--custom title={{?@title}} default-title=更多 open={{?@open}} color={{?@color}} name=fold empty-why="内容是空的：折起来的那一块要写点东西，或留空不如不用这块"
+  {{body}}

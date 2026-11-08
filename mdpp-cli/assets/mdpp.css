@@ -406,6 +406,41 @@
   font-weight: 400;
 }
 
+/* 可折叠的提示框：标题就是 summary，默认的三角收起来，自己画一个。
+ * 与 `::fold` 同一个做法；不折叠时 `disclose` 输出的是普通 `<p>`，不碰这里。 */
+.mdpp-content .callout__details > summary.callout__title {
+  cursor: pointer;
+  list-style: none;
+}
+
+.mdpp-content .callout__details > summary.callout__title::-webkit-details-marker {
+  display: none;
+}
+
+.mdpp-content .callout__details > summary.callout__title::marker {
+  content: "";
+}
+
+.mdpp-content .callout__details > summary.callout__title::after {
+  content: " ▾";
+  margin-left: auto;
+  font-size: 0.8em;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+.mdpp-content .callout__details[open] > summary.callout__title::after {
+  content: " ▴";
+}
+
+.mdpp-content .callout__details > :not(summary) {
+  margin-top: 0.4em;
+}
+
+.mdpp-content .callout__details > :not(summary):last-child {
+  margin-bottom: 0;
+}
+
 .mdpp-content .callout--note { background: var(--mdpp-note-bg); color: var(--mdpp-note-fg); }
 .mdpp-content .callout--tip { background: var(--mdpp-tip-bg); color: var(--mdpp-tip-fg); }
 .mdpp-content .callout--warning { background: var(--mdpp-warning-bg); color: var(--mdpp-warning-fg); }
@@ -504,6 +539,10 @@
 /* 隐藏浏览器自带的小三角，自己画一个 */
 .mdpp-content .fold > summary::-webkit-details-marker {
   display: none;
+}
+
+.mdpp-content .fold > summary::marker {
+  content: "";
 }
 
 .mdpp-content .fold > summary::after {

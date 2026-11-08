@@ -7,8 +7,8 @@
 //! - 净化：HTML 白名单、CSS 收窄、`</style>` / `</script>` 防护；
 //! - 资源：把自定义 CSS / JS 交给页面（单页内联、站点外链）；在变体作用域里
 //!   自动变成 `DeferredAsset`，由页面脚本在选项激活时挂载；
-//! - 变体组：[`Group`](crate::variants::Group) 列出一组选项，`::tabs` / `::theme`
-//!   以及将来的模板都可以复用同一套 `data-mdpp-*` 协议；
+//! - 变体组：[`Group`](crate::variants::Group) 列出一组选项，内置的 `::variants`
+//!   与将来的模板都可以复用同一套 `data-mdpp-*` 协议；
 //! - 诊断：名字不认识/参数用错时那两个框。
 //!
 //! 具体块的 DOM（`.tabs`、`.callout`、`<figure>` …）**不在这里** —— 那是

@@ -1,17 +1,2 @@
-::if condition-exist={{@body}}
-  [then]
-  ::surface class="callout callout--warning {{?@class}}" color={{?@color}}
-    ::element tag=p class=callout__title
-      ::element tag=span class=callout__mark aria-hidden=true
-        ::text
-          ⚠
-      ::if condition-exist={{@title}}
-        [then]
-        ::text
-          {{?title}}
-        [else]
-        ::text
-          注意
-    {{body}}
-  [else]
-  ::problem name=warning why="内容是空的：正文至少写一行，或用 title= 给个标题再补上正文"
+::callout tone=warning mark=⚠ default=注意 name=warning title={{?@title}} color={{?@color}} class={{?@class}} collapsible={{?@collapsible}}
+  {{body}}

@@ -47,10 +47,21 @@
 - `::element` / `::surface` 支持 `tag=auto`：单段落用 `<p>`，多段或含块用 `<div>`。
 - `::element` 白名单补充 `details` / `summary` / `dl` / `dt` / `dd` / `time` / `mark`
   等安全结构标签；`a` / `img` / `video` 这类需要 URL 校验的标签仍不开放。
+- 新增原生折叠原语 `::disclose`：一份正文 + 布尔状态，输出
+  `<details>` / `<summary>`；`fold` 现在是它上面的一层标准库模板。非法 `color=`
+  与空正文都在写出开标签之前报出来，不会留下半个框。
+- 新增变体组原语 `::variants`：`control=theme` 由页面主题挑面板，`control=choice`
+  生成按钮栏与 `hidden` 面板，每节的 `::css` / `::js` 按选项延迟挂载；`theme` /
+  `tabs` 现在是它上面的两层标准库模板。类名、按钮文字与默认标题全部由模板给。
+- `fold` / `theme` / `tabs` 从 Rust 内置块迁成标准库模板；内置块从 21 个降到 20 个。
+- 提示框 `note` / `tip` / `warning` / `danger` / `error` 共用 `callout` 底模板，并新增
+  `collapsible` / `collapsible=closed`：前者展开，后者默认折着；不写或
+  `collapsible=off` 仍是原来的静态形状。折叠部分是 `::disclose` 的 `plain` /
+  `details` 两种形状。
 - `mdpp/stdlib/` 通过 `include_dir!` 嵌入库自带的标准库模板；目前把原 Rust 实用块
   `small` / `title` / `quote` / `signature` / `flatlist` / `banner` / `aside` / `note` /
-  `tip` / `warning` / `danger` / `error` 迁成模板，默认 `RenderContext` 已带上，项目
-  `templates/` 同名页优先覆盖。
+  `tip` / `warning` / `danger` / `error` / `fold` / `theme` / `tabs` 迁成模板，默认
+  `RenderContext` 已带上，项目 `templates/` 同名页优先覆盖。
 - 示例、文档站和 `mdpp init` 骨架里的模板仍属于各自项目，不进入库标准库。
 
 ### 正确性
