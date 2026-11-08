@@ -618,6 +618,7 @@ fn the_one_stylesheet_covers_every_block() {
         ("平行列表", ".flatlist.hlist"),
         ("折叠", ".fold {"),
         ("标题带", "title-block"),
+        ("基础盒子", ".surface"),
         ("媒体", "figcaption"),
         ("选项卡", "theme__part--dark"),
         ("导航框", "navbox__group"),

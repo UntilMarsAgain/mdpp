@@ -1,8 +1,10 @@
-::banner color=#0055a4
-  **{{title}}**
+::surface color={{@color}} class="std-card std-card--brand {{@class}}"
+  ::if condition-defined={{@title}}
+    [then]
+      **{{title}}**
 
   {{body}}
 
-::if condition-defined={{@extra}}
-  [then]
-    {{extra}}
+  ::if condition-defined={{@extra}}
+    [then]
+      {{extra}}

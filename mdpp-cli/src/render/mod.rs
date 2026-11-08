@@ -7,7 +7,7 @@ pub mod context;
 pub mod page;
 
 use crate::cli::options::Render;
-use crate::render::context::{link_resolver, template_pages};
+use crate::render::context::{link_resolver, template_pages, with_stdlib};
 use crate::render::page::ExternalScript;
 
 use std::io::Write;
@@ -142,10 +142,12 @@ fn build_context(options: &Render) -> Result<RenderContext, String> {
     if let Some(resolver) = link_resolver(options.link_prefix.as_deref()) {
         context = context.with_links(resolver);
     }
-    if let Some(dir) = &options.template_dir {
-        context = context.with_templates(template_pages(dir)?);
-    }
-    Ok(context)
+    let project = options
+        .template_dir
+        .as_ref()
+        .map(|dir| template_pages(dir))
+        .transpose()?;
+    Ok(context.with_templates(with_stdlib(project)))
 }
 
 /// 把输入都读进来：`(显示用的名字, 正文)`。
@@ -320,6 +322,15 @@ mod tests {
         let html = std::fs::read_to_string(&output).expect("读得动");
         assert!(html.contains("<h1"), "{html}");
         assert!(!html.contains("旧内容"), "{html}");
+    }
+
+    /// 没有 `--template-dir` 时也要用上嵌入的标准库模板
+    #[test]
+    fn render_falls_back_to_the_embedded_stdlib() {
+        let context = build_context(&options_of(&["render"])).expect("读得动");
+        let html = mdpp::Mdpp::new().render_with("::card title=标准库\n  正文\n", &context);
+        assert!(html.contains("std-card"), "{html}");
+        assert!(html.contains("<strong>标准库</strong>"), "{html}");
     }
 
     /// 命令行给的模板嵌套上限要真的进上下文
