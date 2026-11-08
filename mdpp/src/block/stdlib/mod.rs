@@ -10,7 +10,6 @@
 //!   等已迁到标准库模板。
 //! - `media`：把一个文件摆出来（`image` / `video` / `audio`）。三者共用一套 `src=`
 //!   校验、尺寸上限与图注规矩。
-//! - `columns`：按 `[标签]` 分节、几栏同时摆出来的 `columns`。
 //! - `disclose`：一份正文 + 布尔状态的原生折叠原语，`fold` 由它加模板实现。
 //! - `each`：把一段模板套在分节上重复渲染，类名与结构全由模板片段决定。
 //! - `variants`：N 份正文 + 选中状态的变体组原语，`theme` / `tabs` 由它加模板实现。
@@ -21,13 +20,12 @@
 //! - `wrapper`：基础包装（`element` / `surface`）。前者选标签、挂受控属性，后者提供
 //!   经校验的底色、字色、尺寸与紧凑模式。
 //!
-//! `fold`、`theme`、`tabs`、`banner`、提示框 `note` / `tip` / `warning` / `danger` /
-//! `error` 与 `aside` 已迁到标准库模板。
+//! `columns`、`fold`、`theme`、`tabs`、`banner`、提示框 `note` / `tip` / `warning` /
+//! `danger` / `error` 与 `aside` 已迁到标准库模板。
 //!
 //! 本文件另有三个多组共用的东西：`size_rule`（尺寸参数 → 一条 CSS 声明）、
 //! `normalize_hex`（`color=` 只认十六进制）与 `text_on`（底色 → 字色）。
 
-mod columns;
 mod control;
 mod demo;
 mod disclose;
@@ -42,7 +40,6 @@ mod wrapper;
 
 use markdown_it::Node;
 
-use columns::render_columns;
 use control::render_if;
 use demo::render_demo;
 use disclose::render_disclose;
@@ -70,7 +67,7 @@ fn spec(
 /// 全部内置块的名字，按作者写下来的顺序。它与 [`register`] 里挂的那一批必须一致 ——
 /// `the_two_tables_agree` 盯着这件事。
 pub const NAMES: &[&str] = &[
-    "code", "fields", "columns", "image", "video", "audio", "css", "html", "js", "mermaid", "math",
+    "code", "fields", "image", "video", "audio", "css", "html", "js", "mermaid", "math",
     "demo", "disclose", "each", "element", "if", "indent", "surface", "text", "navbox",
     "variants",
 ];
@@ -80,7 +77,6 @@ pub fn register(registry: &mut BlockRegistry) {
     registry
         .register(spec("code", ContentMode::Raw, render_code))
         .register(spec("fields", ContentMode::Raw, render_fields))
-        .register(spec("columns", ContentMode::Sections, render_columns))
         .register(spec("image", ContentMode::Raw, render_image))
         .register(spec("video", ContentMode::Raw, render_video))
         .register(spec("audio", ContentMode::Raw, render_audio))
@@ -227,8 +223,6 @@ mod tests {
             // 这几个要额外的东西才写得出来，给一份最小的可用写法
             let source = match *name {
                 "image" | "video" | "audio" => format!("::{name} src=x.png\n  注\n"),
-                // 分栏每节都得有 [标签]，标签前不许有正文
-                "columns" => format!("::{name}\n  [甲]\n    正文一行\n"),
                 // 变体组至少要 control= 与一节 [标签]
                 "variants" => format!("::{name} control=choice\n  [甲]\n    正文一行\n"),
                 // 折叠原语要一个标题；正文不能为空
@@ -264,10 +258,6 @@ mod tests {
     #[test]
     fn the_content_modes_are_what_they_look_like() {
         let registry = BlockRegistry::builtin();
-        assert_eq!(
-            registry.get("columns").map(BlockSpec::mode),
-            Some(ContentMode::Sections)
-        );
         assert_eq!(
             registry.get("variants").map(BlockSpec::mode),
             Some(ContentMode::Sections)
