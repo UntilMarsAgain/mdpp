@@ -840,9 +840,6 @@
   margin-bottom: 0.4em;
 }
 
-/* labels=off：纯摆版面，栏头本就不渲染，这里只作保险 */
-.mdpp-content .columns--nolabels .columns__head { display: none; }
-
 /* ---- 导航框 -------------------------------------------------------- */
 /* `::navbox` 的样子。渲染器只吐结构（见 `mdpp/src/block/stdlib/navbox.rs`），
  * 折叠的开合由 `mdpp.js` 接上 —— 与 `::tabs` 同一个分工。

@@ -1,0 +1,13 @@
+::element class="columns {{?@class}}"
+  ::each name=columns required empty-why="分栏是空的：每一节要以 [标签] 开头"
+    [__template__]
+      ::element class=columns__col
+        ::if condition-no={{?@labels}}
+          [then]
+          [else]
+            ::element class=columns__head inline=on
+              ::text
+                {{@item.label}}
+        {{@item.body}}
+    [__data__]
+      {{body}}
