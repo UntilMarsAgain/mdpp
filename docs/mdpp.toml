@@ -17,6 +17,8 @@ templates_dir = "templates"
 build_dir = "build"
 # override_dir = "override"
 
+# max_template_depth = 64
+
 theme = "system"
 theme_color = "#2f6fd0"
 

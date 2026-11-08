@@ -36,6 +36,9 @@ pages_dir = "pages"
 # 模板文件夹（必填）
 templates_dir = "templates"
 
+# 用户模板最多嵌套层数（默认 64）
+# max_template_depth = 64
+
 # 站点输出文件夹（必填）
 # 构建静态站点时，会输出到此文件夹
 build_dir = "build"

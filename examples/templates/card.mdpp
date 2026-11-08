@@ -3,4 +3,6 @@
 
   {{body}}
 
-{{extra}}
+::if condition-defined={{@extra}}
+  [then]
+    {{extra}}
