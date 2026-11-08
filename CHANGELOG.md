@@ -28,8 +28,9 @@
   值里有空格、引号、换行也不会破坏参数；`{{?@名字}}` 缺失时填空串，
   `body` / `template` 是保留名。
 - 新增 `::if`：按 `condition-exist` / `condition-defined` / `condition-empty` /
-  `condition-equals` / `condition-truthy` / `condition-yesno` 与 `condition-not`
-  选择 `[then]` / `[else]` 分支。`condition-yesno` 只认 `yes` / `on` / `true` / `1`。
+  `condition-equals` / `condition-truthy` / `condition-yes` / `condition-no` 与
+  `condition-not` 选择 `[then]` / `[else]` 分支；`condition-yes` 认
+  `yes` / `on` / `true` / `1`，`condition-no` 认 `no` / `off` / `false` / `0`。
 - 模板嵌套上限提高到 64 层，并可由调用方改：库用
   `RenderContext::with_max_template_depth`，单文件模式用
   `render --max-template-depth`，站点模式用 `mdpp.toml` 的
@@ -53,14 +54,34 @@
 - 新增变体组原语 `::variants`：`control=theme` 由页面主题挑面板，`control=choice`
   生成按钮栏与 `hidden` 面板，每节的 `::css` / `::js` 按选项延迟挂载；`theme` /
   `tabs` 现在是它上面的两层标准库模板。类名、按钮文字与默认标题全部由模板给。
-- `fold` / `theme` / `tabs` 从 Rust 内置块迁成标准库模板；内置块从 21 个降到 20 个。
+- `columns` / `fields` / `fold` / `theme` / `tabs` / `indent` 从 Rust 内置块迁成标准库
+  模板；新增 `disclose` / `variants` / `each` / `rows` 四个原语，内置块最终是 21 个。
+- 新增 `::noinclude` / `::includeonly`：按当前有没有模板作用域判断，页面直接渲染时
+  只输出 `noinclude`，作为模板引入时只输出 `includeonly`；两者都是透明的 Markdown
+  容器，参数会报用法问题。
+- 新增行表格原语 `::rows` 与 `Block::rows()`：按 `|` 把 `[__data__]` 里的正文拆成
+  单元格行，模板用 `{{@row.0}}` / `{{@row.1}}` 取格；`max=` 可限制拆几刀。
+  `fields` 现在是 `rows max=2` 上面的一层两列表格模板。
+- `Section` 节点新增 `body` 原文，`ContentMode::Sections` 在解析 children 的同时
+  保留每一节的原文；`each` / `rows` 也因此能直接用 `Sections` 模式，不再另走
+  无缩进的裸行数据。
+- `::indent` 改为 `::surface indent=` 上面的一层模板：Rust 只校验缩进等级，1.6em 的比例
+  回到 `mdpp.css` 的 `.indent`。
+- 分节语法收紧：`[标签]` 在基础缩进上，正文必须再缩进一层，标签层上出现没有标签头
+  的正文直接报错；不再有匿名空标签节，分节也不再需要 `raw_zones` 特判。`theme` 的
+  “两边都显示”改为显式 `[both]` / `[all]`，原先写在第一个标签之前的内容不再生效。
+- 新增模板遍历原语 `::each`：`[__template__]` 下写模板，`[__data__]` 下放数据分节；
+  每节用 `{{@item.label}}` / `{{@item.body}}` / `{{@item.index}}` 等变量，支持
+  `as=` / `only=` / `skip=` / `required`。
+- 标准库模板、示例、文档站示例与测试全部迁移到「标签正文缩进」的新分节写法。
 - 提示框 `note` / `tip` / `warning` / `danger` / `error` 共用 `callout` 底模板，并新增
   `collapsible` / `collapsible=closed`：前者展开，后者默认折着；不写或
   `collapsible=off` 仍是原来的静态形状。折叠部分是 `::disclose` 的 `plain` /
   `details` 两种形状。
 - `mdpp/stdlib/` 通过 `include_dir!` 嵌入库自带的标准库模板；目前把原 Rust 实用块
   `small` / `title` / `quote` / `signature` / `flatlist` / `banner` / `aside` / `note` /
-  `tip` / `warning` / `danger` / `error` / `fold` / `theme` / `tabs` 迁成模板，默认
+  `tip` / `warning` / `danger` / `error` / `columns` / `fields` / `fold` / `theme` / `tabs` /
+  `indent` 迁成模板，默认
   `RenderContext` 已带上，项目 `templates/` 同名页优先覆盖。
 - 示例、文档站和 `mdpp init` 骨架里的模板仍属于各自项目，不进入库标准库。
 

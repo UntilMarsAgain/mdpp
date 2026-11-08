@@ -22,10 +22,10 @@
 
 ::tabs
   [读法一]
-  照着念。
+    照着念。
 
   [读法二]
-  自己试。
+    自己试。
 ```
 
 输出（略去部分属性，缩排有改动）：
@@ -48,9 +48,9 @@
 </div>
 ```
 
-内置块 20 个，覆盖条件渲染、水平分栏、图片音视频、代码块、公式、mermaid 图、导航框、
-原样文本、内联样式与原始 HTML；`fold`、`tabs`、`theme`、`banner`、`aside`、`quote`、
-`title` 等展示块由标准库模板提供。完整的巡览见
+内置块 21 个，覆盖条件渲染、分节/行表格遍历、页面与模板包含条件、图片音视频、代码块、
+公式、mermaid 图、导航框、原样文本、内联样式与原始 HTML；`columns`、`fields`、`fold`、`tabs`、`theme`、
+`indent`、`banner`、`aside`、`quote`、`title` 等展示块由标准库模板提供。完整的巡览见
 [`examples/tour.mdpp`](examples/tour.mdpp)，内置块清单见 `mdpp render --list-blocks`。
 
 ## 命令行
@@ -258,8 +258,8 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 库自带的标准库模板在 `mdpp` 包里，编译期嵌入，不需要项目里再放一份；默认
 `RenderContext` 已经带上，项目 `templates/` 里的同名页优先覆盖。目前从 Rust 实用块
 迁入的是 `small` / `title` / `quote` / `signature` / `flatlist` / `banner` /
-`aside` / `note` / `tip` / `warning` / `danger` / `error` / `fold` / `theme` / `tabs`；
-`callout` 是提示框共用的底模板。`::card`、`::panel`、`::main`、`::deprecated`、
+`aside` / `note` / `tip` / `warning` / `danger` / `error` / `columns` / `fields` / `fold` /
+`theme` / `tabs` / `indent`；`callout` 是提示框共用的底模板。`::card`、`::panel`、`::main`、`::deprecated`、
 `::grammar`、`::example` 属于示例或文档项目，不是库标准库。
 
 提示框可以写 `collapsible`（展开）或 `collapsible=closed`（默认折着）变成可折叠的
@@ -280,12 +280,17 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 `surface--*`；高度、圆角与 `mini` 会落成行内样式。`tag=auto` 会按正文形状选
 `<p>` 或 `<div>`。裸 flag `key` 等价于 `key=on`，显式 `key=` 才是空值。
 
+分节块（`tabs` / `theme` / `columns` / `navbox` / `if` / `each`）有一条共同规则：
+`[标签]` 在块的基础缩进上，**正文必须再缩进一层**；标签层上不允许出现没有标签头的
+正文。`theme` 的「两边都显示」要显式写成 `[both]`（或 `[all]`），不再用第一个标签
+之前的正文表示。
+
 ```mdpp
 ::if condition-exist={{@body}}
   [then]
-  你好，{{body}}！
+    你好，{{body}}！
   [else]
-  你好！
+    你好！
 ```
 
 条件先支持这几个命名测试：
@@ -295,13 +300,75 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 - `condition-empty={{@名字}}`：不存在或空白；
 - `condition-equals={{@名字}} value=字面量`：去首尾空白后相等；
 - `condition-truthy={{@名字}}`：不是空串、`0`、`false`、`no`、`off`；
-- `condition-yesno={{@名字}}`：去空白、忽略大小写后是 `yes` / `on` / `true` / `1`；
+- `condition-yes={{@名字}}`：去空白、忽略大小写后是 `yes` / `on` / `true` / `1`；
+- `condition-no={{@名字}}`：去空白、忽略大小写后是 `no` / `off` / `false` / `0`；
 - `condition-not`：反转最后结果。
 
-`[then]` 必填，`[else]` 可选；多个条件用嵌套 `::if`。普通分节内容与 `[标签]`
-左对齐即可。只有把 `{{body}}` **直接**当分支内容时才要再缩进一层，不要和
-`[then]` 同列 —— 否则用户正文里的一行 `[else]` 会被外层分节误认。行内模板调用
+`[then]` 必填，`[else]` 可选；多个条件用嵌套 `::if`。分节内容一律缩进在
+`[标签]` 之下，标签之间不再夹匿名正文；`{{body}}` 作为分支内容时也放在那一层
+缩进里，用户正文里的一行 `[else]` 因此不会被外层误认成分节。行内模板调用
 还没做，块级 `::名字` 是当前唯一入口。
+
+### 页面与模板的包含条件
+
+两个透明容器，不产生自己的 DOM：
+
+- `::noinclude`：页面**直接渲染**时输出；作为模板被 `::名字` 引入时隐藏。
+- `::includeonly`：反过来，只在作为模板引入时输出。
+
+判据是当前有没有模板作用域。所以模板页直接打开时看到 `noinclude`，被别的页面
+调用时看到 `includeonly`；模板里再嵌套模板也仍然算“被引入”。
+
+```mdpp
+::noinclude
+  这段只在模板页本身出现。
+::includeonly
+  这段只在别人 `::模板名` 时出现。
+```
+
+### 模板遍历 `::each`
+
+`::each` 是写模板页时用的遍历原语。模板页里把「每一节怎么渲染」放在
+`[__template__]` 下面，把 caller 的正文放在 `[__data__]` 下面：
+
+```mdpp
+::each
+  [__template__]
+    ::element class=columns__col
+      ::text
+        {{@item.label}}
+      {{@item.body}}
+  [__data__]
+    {{body}}
+```
+
+每一项用 `{{@item.label}}` / `{{@item.body}}` / `{{@item.index}}` /
+`{{@item.first}}` / `{{@item.last}}` 取数据；`as=` 可以改名，例如
+`::each as=col` 后写 `{{@col.label}}`。`{{@body}}` 仍然表示 caller 的完整正文，
+不会和 `{{@item.body}}` 冲突。
+
+`only=甲,乙` / `skip=above,below` 过滤标签，`required` 让过滤后为空时报用法问题；
+`name=` / `empty-why=` 可以改诊断框里的名字与空列表提示。
+
+### 行表格 `::rows`
+
+`::rows` 是 `fields` 这类「每行若干格」数据的遍历原语。模板区用
+`[__template__]`，数据行缩进在 `[__data__]` 下面：
+
+```mdpp
+::rows
+  [__template__]
+    ::text
+      {{@row.0}} / {{@row.1}}
+  [__data__]
+    甲|乙
+    丙|丁
+```
+
+`{{@row.0}}` / `{{@row.1}}` … 取单元格；`row.count` 是这一行几格，
+`row.index` / `row.first` / `row.last` 是行位置；缺列可用 `{{?@row.N}}`。
+`max=2` 只拆第一道 `|`，剩下的 `|` 留在第二格；`fields` 模板就是这么保持
+「标签 | 值」语义的。`Block::rows()` 把这行解析能力也开放给自定义块。
 
 ### 变体组与延迟资源
 
