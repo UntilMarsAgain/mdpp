@@ -1,0 +1,11 @@
+::columns
+  [写法]
+    ::code lang=mdpp
+      {{body}}
+
+  [HTML]
+    ::demo
+      {{body}}
+
+  [效果]
+  {{body}}

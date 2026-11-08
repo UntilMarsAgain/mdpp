@@ -30,22 +30,20 @@ pub(super) fn render_page(
     pages_dir: &Path,
     site_dir: &Path,
     parser: &Mdpp,
-    templates: &Option<mdpp::block::template::TemplatePages>,
+    templates: &mdpp::block::template::TemplatePages,
     missing: &Arc<Mutex<Vec<Missing>>>,
     page: &Page,
     assets_prefix: &str,
 ) -> Result<PageBody, String> {
     let source = crate::support::limits::read_text(&page.source)?;
-    let mut context = RenderContext::new()
+    let context = RenderContext::new()
         .with_max_template_depth(project.config.max_template_depth)
         .with_links(Arc::new(Links::for_page(
             site.clone(),
             page,
             missing.clone(),
-        )));
-    if let Some(templates) = templates {
-        context = context.with_templates(templates.clone());
-    }
+        )))
+        .with_templates(templates.clone());
 
     // 站点模式：::css / ::js / ::html js 输出链接，资源随 rendered.assets 返回
     let rendered = parser.render_with_assets(&source, &context, assets_prefix);

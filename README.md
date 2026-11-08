@@ -48,7 +48,7 @@
 </div>
 ```
 
-块一共 31 个，覆盖引用、提示框、条件渲染、信息栏、选项卡、深浅色主题、水平分栏、图片音视频、
+块一共 32 个，覆盖引用、提示框、条件渲染、信息栏、选项卡、深浅色主题、水平分栏、图片音视频、
 代码块、公式、mermaid 图、导航框、内联样式与原始 HTML。完整的巡览见
 [`examples/tour.mdpp`](examples/tour.mdpp)，块名清单见 `mdpp render --list-blocks`。
 
@@ -251,6 +251,11 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 
 模板嵌套上限默认 64：`render --max-template-depth N` 改单文件模式，站点模式在
 `mdpp.toml` 里写 `max_template_depth = N`。
+
+标准库模板随二进制嵌入，不需要项目里再放一份：`::card`、`::panel`、`::main`、
+`::deprecated`、`::grammar`、`::example` 默认就能用；项目 `templates/` 里的同名页
+优先覆盖。基础包装块用 `::element`（替代原来的 `::class`）和 `::surface`（受控的
+底色/字色/尺寸盒子），外围模板可以由它们组合出来。
 
 ```mdpp
 ::if condition-exist={{@body}}

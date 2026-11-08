@@ -32,6 +32,12 @@
 - `::template:名字` 不进入库语法：它仍是普通段落，模板命名空间由调用方识别。
 - 模板目录不跟符号链接，模板文件沿用单份输入 32 MiB 上限；大小写只差一点的
   同名模板直接报错，不再静悄悄互相覆盖。
+- 新增基础包装块 `::element`（替代 `::class`）与 `::surface`；前者支持受控的
+  `tag` / `class` / `role` / `aria-*` / `data-mdpp-*`，后者提供经校验的底色、字色、
+  尺寸、圆角与紧凑模式。
+- `mdpp-cli/stdlib/` 通过 `include_dir!` 嵌入标准库模板（card / panel / main /
+  deprecated / grammar / example），项目 `templates/` 同名页优先覆盖；`render` 与
+  `build` 都自动使用。
 
 ### 正确性
 

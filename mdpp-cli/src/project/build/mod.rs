@@ -36,7 +36,7 @@ use crate::cli::options::Build;
 use crate::project::assets;
 use crate::project::site::{Missing, Page, Site, assets_href, output_of};
 use crate::project::{self, Project, ensure_dir, shown};
-use crate::render::context::template_pages;
+use crate::render::context::{template_pages, with_stdlib};
 use crate::render::page as shell;
 use crate::render::page::ExternalScript;
 
@@ -346,14 +346,15 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
 ///
 /// 写了却读不到就**报错** —— 那是一个笔误，而一个读不到的小图标只会静悄悄地
 /// 让浏览器画一个默认的。
-fn templates_of(project: &Project) -> Result<Option<mdpp::block::template::TemplatePages>, String> {
+fn templates_of(project: &Project) -> Result<mdpp::block::template::TemplatePages, String> {
     let dir = project.templates_dir();
-    if dir.is_dir() {
-        Ok(Some(template_pages(&dir)?))
+    let project_pages = if dir.is_dir() {
+        Some(template_pages(&dir)?)
     } else {
-        info!(dir = %dir.display(), "没有模板页目录");
-        Ok(None)
-    }
+        info!(dir = %dir.display(), "没有模板页目录，只用标准库");
+        None
+    };
+    Ok(with_stdlib(project_pages))
 }
 
 /// 读配置里附的那几个 CSS / JS
