@@ -35,9 +35,10 @@
 - 新增基础包装块 `::element`（替代 `::class`）与 `::surface`；前者支持受控的
   `tag` / `class` / `role` / `aria-*` / `data-mdpp-*`，后者提供经校验的底色、字色、
   尺寸、圆角与紧凑模式。
-- `mdpp-cli/stdlib/` 通过 `include_dir!` 嵌入标准库模板（card / panel / main /
-  deprecated / grammar / example），项目 `templates/` 同名页优先覆盖；`render` 与
-  `build` 都自动使用。
+- `mdpp/stdlib/` 通过 `include_dir!` 嵌入库自带的标准库模板；目前把原 Rust 实用块
+  `small` 迁成模板（`::small` 等价于 `::element class=small`），默认
+  `RenderContext` 已带上，项目 `templates/` 同名页优先覆盖。
+- 示例、文档站和 `mdpp init` 骨架里的模板仍属于各自项目，不进入库标准库。
 
 ### 正确性
 
