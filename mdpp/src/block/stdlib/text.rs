@@ -1,5 +1,5 @@
-//! 只写文字的块：`aside` / `banner` / `fields`，以及原样文本原语 `text`；
-//! `quote` / `title` / `signature` 已迁到标准库模板，见 [`crate::stdlib`]。
+//! 只写文字的块：`banner` / `fields`，以及原样文本原语 `text`；
+//! `aside` / `quote` / `title` / `signature` 已迁到标准库模板，见 [`crate::stdlib`]。
 //!
 //! 除 `fields` 与 `text` 外，内容都**照常按 markdown 解析** —— 子节点已经挂在
 //! `node.children` 上，渲染器只管 `fmt.contents(&node.children)`，所以块里能写链接、
@@ -36,42 +36,6 @@ pub(super) fn render_text(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 
     fmt.cr();
     fmt.text(text);
-    fmt.cr();
-}
-
-/// `::aside title="十四门桥"` —— 右侧的信息栏，**内容照常按 markdown 渲染**。
-///
-/// 用 `node.children`（已经解析好的内容）而不是原文：信息栏里也要能写链接、强调、列表。
-/// 它是一条**浮动**的栏：正文会绕着它走，这是信息栏该有的样子；窄屏上由样式取消浮动。
-///
-/// `align=` 决定位置：
-/// - 不写（或 `right`）：右侧浮动，正文绕着走（默认）
-/// - `center`：居中小框，不浮动，宽度随内容，正文不绕 —— 适合做维基式的「居中信息框」
-/// - `left`：左侧浮动
-pub(super) fn render_aside(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
-    let mut class = "aside".to_string();
-    let align = block.param("align").map(str::trim).map(str::to_lowercase);
-    match align.as_deref() {
-        None | Some("right") => {}
-        Some("center") => class.push_str(" aside--center"),
-        Some("left") => class.push_str(" aside--left"),
-        Some(_) => {
-            render_problem(block, fmt, "align= 只认 right / center / left");
-            return;
-        }
-    }
-
-    fmt.cr();
-    fmt.open("aside", &[("class", class)]);
-    if let Some(title) = block.param("title") {
-        fmt.open("p", &[("class", "aside__title".to_string())]);
-        fmt.text(title);
-        fmt.close("p");
-    }
-    fmt.cr();
-    fmt.contents(&node.children);
-    fmt.cr();
-    fmt.close("aside");
     fmt.cr();
 }
 
@@ -273,18 +237,6 @@ mod tests {
         assert!(bad.contains("template--problem"), "{bad}");
     }
 
-    /// 信息栏的内容照常按 markdown 解析 —— 改成输出原文就丢了强调与链接
-    #[test]
-    fn aside_renders_its_body_as_markdown() {
-        let html = render("::aside title=\"十四门桥\"\n  正文里的**强调**\n");
-        assert!(html.contains(r#"<aside class="aside">"#), "{html}");
-        assert!(html.contains("aside__title"), "{html}");
-        assert!(
-            html.contains("<strong>强调</strong>"),
-            "信息栏的内容仍按 markdown 解析：{html}"
-        );
-    }
-
     /// 逐行拆成标签与值；没有 `|` 的行整行当标签、值留空 —— 一个字都不丢
     #[test]
     fn fields_split_label_and_value() {
@@ -342,35 +294,6 @@ mod tests {
         let bad = render("::banner color=red\n  乱写\n");
         assert!(bad.contains("template--problem"), "{bad}");
         assert!(!bad.contains("style="), "不该拼出 style 属性：{bad}");
-    }
-
-    /// `::aside align=center`：不浮动，居中小框，宽度随内容
-    #[test]
-    fn aside_center_is_inline_block() {
-        let html = render("::aside title=中心 align=center\n  居中信息框\n");
-        assert!(
-            html.contains(r#"<aside class="aside aside--center">"#),
-            "{html}"
-        );
-        assert!(html.contains("居中信息框"), "{html}");
-    }
-
-    /// `::aside align=left`：左浮动
-    #[test]
-    fn aside_left_floats_left() {
-        let html = render("::aside title=左边 align=left\n  左侧信息框\n");
-        assert!(
-            html.contains(r#"<aside class="aside aside--left">"#),
-            "{html}"
-        );
-    }
-
-    /// `::aside align=` 认不出的值报错
-    #[test]
-    fn aside_align_rejects_bad_value() {
-        let html = render("::aside align=maybe\n  内容\n");
-        assert!(html.contains("template--problem"), "{html}");
-        assert!(html.contains("align="), "{html}");
     }
 
     /// `::banner mini`：变成行内块，不占整行

@@ -4,8 +4,9 @@
 //! 文件在编译期由 [`include_dir!`] 整个嵌进二进制，运行时不碰文件系统。
 //!
 //! 目前从原 Rust 实用块迁出来的是 `small` / `title` / `quote` / `signature` /
-//! `flatlist`。以后可迁移的基础块也放这里，外围标准库和项目模板都通过同样的
-//! [`TemplateSource`] 接口覆盖。
+//! `flatlist` / `aside` / `note` / `tip` / `warning` / `danger` / `error`；
+//! `problem` 是模板内部共用的诊断框。以后可迁移的基础块也放这里，外围标准库和
+//! 项目模板都通过同样的 [`TemplateSource`] 接口覆盖。
 //!
 //! 默认的 [`RenderContext`](crate::RenderContext) 已经带上这份来源；调用方用
 //! [`RenderContext::with_templates`](crate::RenderContext::with_templates) 叠加自己的
@@ -140,6 +141,78 @@ mod tests {
         let before = &nested[..nested.find("文字").expect("应当渲染出内容")];
         let depth = before.matches("<blockquote").count() - before.matches("</blockquote>").count();
         assert_eq!(depth, 2, "内容应当嵌在内层 blockquote 里：{nested}");
+    }
+
+    /// `aside` 的标题与正文都按 markdown 解析，`align` 用 `::if` 切类名
+    #[test]
+    fn aside_parses_title_and_body_as_markdown() {
+        let html =
+            crate::Mdpp::new().render("::aside title=\"十四**门**桥\"\n  正文里的**强调**\n");
+        assert!(html.contains(r#"<aside class="aside">"#), "{html}");
+        assert!(html.contains("aside__title"), "{html}");
+        assert!(html.contains("<strong>门</strong>"), "{html}");
+        assert!(html.contains("<strong>强调</strong>"), "{html}");
+
+        let center = crate::Mdpp::new().render("::aside align=center\n  居中\n");
+        assert!(
+            center.contains(r#"<aside class="aside aside--center">"#),
+            "{center}"
+        );
+        let left = crate::Mdpp::new().render("::aside align=left\n  左侧\n");
+        assert!(
+            left.contains(r#"<aside class="aside aside--left">"#),
+            "{left}"
+        );
+
+        let bad = crate::Mdpp::new().render("::aside align=maybe\n  内容\n");
+        assert!(bad.contains("template--problem"), "{bad}");
+        assert!(bad.contains("align="), "{bad}");
+    }
+
+    /// 五种提示框的类名、记号与默认标题都从标准库模板来
+    #[test]
+    fn callouts_use_the_standard_library_templates() {
+        for (name, class, mark, title) in [
+            ("note", "note", "ℹ", "说明"),
+            ("tip", "tip", "★", "建议"),
+            ("warning", "warning", "⚠", "注意"),
+            ("danger", "danger", "▲", "危险"),
+            ("error", "error", "✕", "错误"),
+        ] {
+            let html = crate::Mdpp::new().render(&format!("::{name}\n  正文一行\n"));
+            assert!(
+                html.contains(&format!("callout callout--{class}")),
+                "{name}: {html}"
+            );
+            assert!(html.contains(mark), "{name} 的记号丢了: {html}");
+            assert!(html.contains(title), "{name} 的默认标题丢了: {html}");
+            assert!(html.contains("aria-hidden=\"true\""), "{name}: {html}");
+        }
+    }
+
+    /// 提示框标题保持字面；正文按块解析；空正文仍然报出来
+    #[test]
+    fn callout_title_is_literal_and_empty_body_is_reported() {
+        let html = crate::Mdpp::new().render("::note title=**不是粗体**\n  第一段\n\n  - 甲\n");
+        assert!(html.contains("**不是粗体**"), "{html}");
+        assert!(!html.contains("<strong>不是粗体</strong>"), "{html}");
+        assert!(html.contains("<li>甲</li>"), "{html}");
+
+        let empty = crate::Mdpp::new().render("::danger\n");
+        assert!(empty.contains("template--problem"), "{empty}");
+        assert!(empty.contains("内容是空的"), "{empty}");
+    }
+
+    /// 提示框的自定义底色仍走 `surface` 的校验与字色对比
+    #[test]
+    fn callout_color_is_validated_by_surface() {
+        let html = crate::Mdpp::new().render("::note color=#0055a4\n  正文\n");
+        assert!(html.contains("background: #0055a4"), "{html}");
+        assert!(html.contains("color: #f5f5f5"), "{html}");
+
+        let bad = crate::Mdpp::new().render("::note color=red\n  正文\n");
+        assert!(bad.contains("template--problem"), "{bad}");
+        assert!(!bad.contains("style="), "{bad}");
     }
 
     /// 调用方模板叠在标准库上面，同名时调用方赢

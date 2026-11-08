@@ -5,8 +5,8 @@
 //!
 //! 渲染器按**块内容怎么处理**分成几组：
 //!
-//! - `text`：只写文字的块（`aside` / `banner` / `fields`）。内容**照常按 markdown
-//!   解析**，参数只管外框的样子；`quote` / `title` / `signature` 等已迁到标准库模板。
+//! - `text`：只写文字的块（`banner` / `fields`）。内容**照常按 markdown 解析**，
+//!   参数只管外框的样子；`aside` / `quote` / `title` / `signature` 等已迁到标准库模板。
 //! - `plain`：`text` 是原样文本原语，正文不解析 markdown，只做 HTML 转义。
 //! - `media`：把一个文件摆出来（`image` / `video` / `audio`）。三者共用一套 `src=`
 //!   校验、尺寸上限与图注规矩。
@@ -15,16 +15,15 @@
 //!   块正文，而是各节已解析好的子节点；`navbox` 的标签同时就是它的分组名。
 //! - `embeds`：把内容**原样写出去**的块（`code` / `mermaid` / `math` / `css` /
 //!   `html` / `js`），注册为 [`ContentMode::Raw`]，正文一个字符都不解析。
-//! - `callouts`：提示框（`note` / `tip` / `warning` / `danger` / `error`）。形状完全
-//!   一样，差别只是「哪一种」。
 //! - `control`：控制流（`if`）。按条件渲染 `[then]` / `[else]`，不产生自己的 DOM。
 //! - `wrapper`：基础包装（`element` / `surface`）。前者选标签、挂受控属性，后者提供
 //!   经校验的底色、字色、尺寸与紧凑模式。
 //!
+//! 提示框 `note` / `tip` / `warning` / `danger` / `error` 与 `aside` 已迁到标准库模板。
+//!
 //! 本文件另有三个多组共用的东西：`size_rule`（尺寸参数 → 一条 CSS 声明）、
 //! `normalize_hex`（`color=` 只认十六进制）与 `text_on`（底色 → 字色）。
 
-mod callouts;
 mod control;
 mod demo;
 mod embeds;
@@ -38,7 +37,6 @@ mod wrapper;
 
 use markdown_it::Node;
 
-use callouts::{render_danger, render_error, render_note, render_tip, render_warning};
 use control::render_if;
 use demo::render_demo;
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
@@ -47,13 +45,13 @@ use indent::render_indent;
 use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;
 use panels::{render_columns, render_tabs, render_theme};
-use text::{render_aside, render_banner, render_fields, render_text};
+use text::{render_banner, render_fields, render_text};
 use wrapper::{render_element, render_surface};
 
 use crate::registry::{Block, BlockRegistry, BlockSpec, ContentMode};
 
 /// 一条注册项：把函数指针接成渲染器。参数收**函数指针**而不是 trait 对象，是为了
-/// 下面那串 `spec("aside", Markdown, render_aside)` 读起来就是一句话，不必每次装箱。
+/// 下面那串 `spec("banner", Markdown, render_banner)` 读起来就是一句话，不必每次装箱。
 fn spec(
     name: &str,
     mode: ContentMode,
@@ -65,16 +63,15 @@ fn spec(
 /// 全部内置块的名字，按作者写下来的顺序。它与 [`register`] 里挂的那一批必须一致 ——
 /// `the_two_tables_agree` 盯着这件事。
 pub const NAMES: &[&str] = &[
-    "code", "aside", "fields", "banner", "tabs", "theme", "columns", "image", "video", "audio",
-    "css", "html", "js", "mermaid", "math", "demo", "note", "tip", "warning", "danger", "error",
-    "fold", "element", "if", "indent", "surface", "text", "navbox",
+    "code", "fields", "banner", "tabs", "theme", "columns", "image", "video", "audio", "css",
+    "html", "js", "mermaid", "math", "demo", "fold", "element", "if", "indent", "surface", "text",
+    "navbox",
 ];
 
 /// 把内置块灌进注册表。
 pub fn register(registry: &mut BlockRegistry) {
     registry
         .register(spec("code", ContentMode::Raw, render_code))
-        .register(spec("aside", ContentMode::Markdown, render_aside))
         .register(spec("fields", ContentMode::Raw, render_fields))
         .register(spec("banner", ContentMode::Markdown, render_banner))
         .register(spec("tabs", ContentMode::Sections, render_tabs))
@@ -89,11 +86,6 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("mermaid", ContentMode::Raw, render_mermaid))
         .register(spec("math", ContentMode::Raw, render_math))
         .register(spec("demo", ContentMode::Raw, render_demo))
-        .register(spec("note", ContentMode::Markdown, render_note))
-        .register(spec("tip", ContentMode::Markdown, render_tip))
-        .register(spec("warning", ContentMode::Markdown, render_warning))
-        .register(spec("danger", ContentMode::Markdown, render_danger))
-        .register(spec("error", ContentMode::Markdown, render_error))
         .register(spec("fold", ContentMode::Markdown, render_fold))
         .register(spec("element", ContentMode::Markdown, render_element))
         .register(spec("if", ContentMode::Sections, render_if))
@@ -273,7 +265,7 @@ mod tests {
             Some(ContentMode::Sections)
         );
         assert_eq!(
-            registry.get("aside").map(BlockSpec::mode),
+            registry.get("banner").map(BlockSpec::mode),
             Some(ContentMode::Markdown)
         );
         for name in [

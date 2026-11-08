@@ -45,8 +45,9 @@
 - `::element` 白名单补充 `details` / `summary` / `dl` / `dt` / `dd` / `time` / `mark`
   等安全结构标签；`a` / `img` / `video` 这类需要 URL 校验的标签仍不开放。
 - `mdpp/stdlib/` 通过 `include_dir!` 嵌入库自带的标准库模板；目前把原 Rust 实用块
-  `small` / `title` / `quote` / `signature` / `flatlist` 迁成模板，默认
-  `RenderContext` 已带上，项目 `templates/` 同名页优先覆盖。
+  `small` / `title` / `quote` / `signature` / `flatlist` / `aside` / `note` / `tip` /
+  `warning` / `danger` / `error` 迁成模板，默认 `RenderContext` 已带上，项目
+  `templates/` 同名页优先覆盖。
 - 示例、文档站和 `mdpp init` 骨架里的模板仍属于各自项目，不进入库标准库。
 
 ### 正确性

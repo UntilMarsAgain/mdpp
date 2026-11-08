@@ -1,0 +1,11 @@
+::element class="template template--problem"
+  ::element tag=p class=template__head
+    ::element tag=span class=template__badge
+      ::text
+        块的用法有问题
+    ::element tag=code class=template__name
+      ::text
+        {{?name}}
+  ::element tag=p class=template__why
+    ::text
+      {{?why}}

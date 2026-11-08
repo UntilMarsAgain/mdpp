@@ -1,0 +1,17 @@
+::if condition-exist={{@body}}
+  [then]
+  ::surface class="callout callout--danger {{?@class}}" color={{?@color}}
+    ::element tag=p class=callout__title
+      ::element tag=span class=callout__mark aria-hidden=true
+        ::text
+          ▲
+      ::if condition-exist={{@title}}
+        [then]
+        ::text
+          {{?title}}
+        [else]
+        ::text
+          危险
+    {{body}}
+  [else]
+  ::problem name=danger why="内容是空的：正文至少写一行，或用 title= 给个标题再补上正文"
