@@ -20,6 +20,10 @@ pub struct Render {
     #[arg(value_name = "文件", help_heading = "参数")]
     pub inputs: Vec<PathBuf>,
 
+    /// 把产物写到文件，而不是标准输出；已有文件会被覆盖
+    #[arg(short, long, value_name = "文件")]
+    pub output: Option<PathBuf>,
+
     /// 输出完整 HTML 文档（内联默认样式与脚本），而不是片段
     #[arg(short, long)]
     pub full: bool,
@@ -93,6 +97,10 @@ pub struct Render {
     /// 模板页目录；<目录>/<名字>.mdpp 是一页，::名字 从这里取
     #[arg(short = 'T', long, value_name = "目录")]
     pub template_dir: Option<PathBuf>,
+
+    /// 用户模板最多嵌套多少层；默认 64
+    #[arg(long, value_name = "N", default_value_t = mdpp::context::MAX_TEMPLATE_DEPTH)]
+    pub max_template_depth: usize,
 
     /// 列出内置块名后退出
     #[arg(short = 'L', long)]

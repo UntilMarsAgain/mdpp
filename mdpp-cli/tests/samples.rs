@@ -115,6 +115,8 @@ fn the_tour_visits_every_builtin_block() {
         ("banner", r#"class="banner"#),
         ("title", r#"class="title-block""#),
         ("tabs", r#"class="tabs__bar""#),
+        // 条件成立时 [then] 里的那句才会出现
+        ("if", "条件成立时出现。"),
         // 类名是 `theme__part theme__part--dark` 两个，所以只认后半截
         ("theme", "theme__part--dark"),
         // navbox：认「左分组名、右内容」那两列，而不只是它渲染出了东西

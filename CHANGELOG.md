@@ -16,6 +16,23 @@
 - 单份输入上限 32 MiB；预览服务器改用 `axum` + `tower-http`：请求解析、MIME、
   range、HEAD、目录索引与 `..` 防护交给库，SSE 仍由本库发。
 
+### 用户模板与条件
+
+- 用户模板调用头改为严格语法检查：等号两侧的空格一律忽略，重复参数、空参数名、
+  `@` 开头的参数名都会报 `template--problem`，不再退回普通段落或静默切错。
+- 新增 `{{@名字}}` 晚绑定引用：在块头分词之后从当前模板作用域取值，
+  值里有空格、引号、换行也不会破坏参数；`body` / `template` 是保留名。
+- 新增 `::if`：按 `condition-exist` / `condition-defined` / `condition-empty` /
+  `condition-equals` / `condition-truthy` 与 `condition-not` 选择 `[then]` /
+  `[else]` 分支。
+- 模板嵌套上限提高到 64 层，并可由调用方改：库用
+  `RenderContext::with_max_template_depth`，单文件模式用
+  `render --max-template-depth`，站点模式用 `mdpp.toml` 的
+  `max_template_depth`。`::demo` 等渲染期嵌套另有独立预算，不再能把进程栈打穿。
+- `::template:名字` 不进入库语法：它仍是普通段落，模板命名空间由调用方识别。
+- 模板目录不跟符号链接，模板文件沿用单份输入 32 MiB 上限；大小写只差一点的
+  同名模板直接报错，不再静悄悄互相覆盖。
+
 ### 正确性
 
 - 链接目标空格编码与 `[标签]` 分节改成**探针解析 + `srcmap`**：块引用/列表里
@@ -70,6 +87,8 @@
 
 ### 工程
 
+- `mdpp render` 新增 `-o, --output <文件>`：产物直接写文件并覆盖旧内容，不写时
+  仍走标准输出；输入在打开输出之前读取，输入输出同名也不会截断。
 - 渲染状态收拢成 `runtime/env.rs` 的 `RenderEnv`：上下文、注册表、资源收集器、
   变体作用域与层数从散落的线程局部读写变成一份明确的环境；其它模块只读这一份。
 - 第二个依赖环已断开：`RenderContext` 移到纯类型模块 `runtime/render_context.rs`，

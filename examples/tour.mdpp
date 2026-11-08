@@ -269,6 +269,16 @@
 ::video src=片子.mp4 width=480
 ::audio src=录音.mp3
 
+# 条件
+
+`::if` 按条件选 `[then]` 或 `[else]`。条件用命名测试，不做表达式：
+
+::if condition-exist=yes
+  [then]
+  条件成立时出现。
+  [else]
+  条件不成立时出现。
+
 # 用户块
 
 `::card` 与 `::panel` 不在注册表里，它们是**模板页**：
@@ -278,7 +288,7 @@
 
 带上模板目录才渲染得出来（见开头那条命令）。
 
-::card title="一个模板页" extra="（认不出来的参数原样留着）"
+::card title="一个模板页" extra="这段只在给了 extra 时出现"
   块正文会填进模板页的 {{body}}。
 
 ::panel title="另一个模板页"

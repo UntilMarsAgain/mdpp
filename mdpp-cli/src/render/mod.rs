@@ -1,6 +1,6 @@
-//! `mdpp render` —— 渲染文件，HTML 写到标准输出。
+//! `mdpp render` —— 渲染文件，HTML 写到标准输出或 `--output` 指定的文件。
 //!
-//! 这一趟是「一个进程一件事」的活：读进来、渲染、写到 stdout。它**不知道**有没有项目，
+//! 这一趟是「一个进程一件事」的活：读进来、渲染、写到出口。它**不知道**有没有项目，
 //! 也不想知道 —— 整站的事在 [`crate::project`]。
 
 pub mod context;
@@ -18,18 +18,33 @@ use tracing::{debug, info};
 /// 没给语言时的 `<html lang>`。`--lang` 这一版还没有，用配置里那一份（站点模式）
 pub const DEFAULT_LANG: &str = "zh-Hans";
 
-/// `mdpp render`：读输入 → 渲染 → 写 **stdout**。
+/// 产物出口：`--output` 给了就写文件，否则写标准输出。
+///
+/// 文件在**输入读完之后**才打开，所以 `mdpp render 甲.html -o 甲.html` 不会先
+/// 把输入截断。`File::create` 自带覆盖语义。
+fn output(options: &Render) -> Result<Box<dyn Write>, String> {
+    match &options.output {
+        Some(path) => {
+            let file = std::fs::File::create(path)
+                .map_err(|error| format!("写不了 {}：{error}", path.display()))?;
+            Ok(Box::new(file))
+        }
+        None => Ok(Box::new(std::io::stdout())),
+    }
+}
+
+/// `mdpp render`：读输入 → 渲染 → 写 **stdout** 或 `--output` 指定的文件。
 ///
 /// 这条通道的分工就是本命令的全部界面：产物（以及 `--list-blocks` 那份名单）走
-/// stdout，日志与 `--stats` 走 stderr —— 于是 `mdpp render 甲.md > 甲.html` 得到的
-/// 是一份干净 HTML，而「这次发生了什么」还看得见
+/// 标准输出或 `--output`，日志与 `--stats` 走 stderr —— 于是 `mdpp render 甲.md >
+/// 甲.html` 得到的是一份干净 HTML，而「这次发生了什么」还看得见
 pub fn run(options: &Render) -> Result<(), String> {
     if options.list_blocks {
-        let mut out = std::io::stdout().lock();
+        let mut out = output(options)?;
         for name in mdpp::builtin_blocks() {
             let _ = writeln!(out, "{name}");
         }
-        return Ok(());
+        return out.flush().map_err(|error| format!("写产物失败：{error}"));
     }
 
     let mut sources = read_sources(options)?;
@@ -56,7 +71,7 @@ pub fn run(options: &Render) -> Result<(), String> {
         _ => ExternalScript::Cdn,
     };
 
-    let mut out = std::io::stdout().lock();
+    let mut out = output(options)?;
     let mut total = Stats::default();
     let multiple = options.inputs.len() > 1;
 
@@ -120,7 +135,10 @@ fn build(options: &Render) -> Mdpp {
 
 /// 按选项拼出上下文（链接前缀 + 模板页目录）
 fn build_context(options: &Render) -> Result<RenderContext, String> {
-    let mut context = RenderContext::new();
+    if options.max_template_depth == 0 {
+        return Err("--max-template-depth 至少是 1".to_string());
+    }
+    let mut context = RenderContext::new().with_max_template_depth(options.max_template_depth);
     if let Some(resolver) = link_resolver(options.link_prefix.as_deref()) {
         context = context.with_links(resolver);
     }
@@ -280,6 +298,50 @@ mod tests {
 
         let css = read_all(&[a, b]).expect("读得动");
         assert_eq!(css, vec!["/* a */".to_string(), "/* b */".to_string()]);
+    }
+
+    /// `-o` 写文件并覆盖旧内容；标准输出这时不该再混进产物
+    #[test]
+    fn output_writes_and_overwrites_the_target_file() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let input = dir.path().join("正文.md");
+        let output = dir.path().join("产物.html");
+        std::fs::write(&input, "# 标题\n\n正文\n").expect("写得下");
+        std::fs::write(&output, "旧内容").expect("写得下");
+
+        let options = options_of(&[
+            "render",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+        run(&options).expect("渲染得动");
+
+        let html = std::fs::read_to_string(&output).expect("读得动");
+        assert!(html.contains("<h1"), "{html}");
+        assert!(!html.contains("旧内容"), "{html}");
+    }
+
+    /// 命令行给的模板嵌套上限要真的进上下文
+    #[test]
+    fn the_template_depth_option_lands_in_the_context() {
+        let context =
+            build_context(&options_of(&["render", "--max-template-depth", "8"])).expect("读得动");
+        assert_eq!(context.max_template_depth(), 8);
+        assert_eq!(
+            build_context(&options_of(&["render"]))
+                .expect("读得动")
+                .max_template_depth(),
+            mdpp::context::MAX_TEMPLATE_DEPTH
+        );
+    }
+
+    /// 模板嵌套 0 层没有意义：在出第一页之前就说
+    #[test]
+    fn a_zero_template_depth_is_refused() {
+        let message = build_context(&options_of(&["render", "--max-template-depth", "0"]))
+            .expect_err("0 该被拒绝");
+        assert!(message.contains("max-template-depth"), "{message}");
     }
 
     /// 读不到附件要说清是哪个文件，而不是笼统一句「读不了」

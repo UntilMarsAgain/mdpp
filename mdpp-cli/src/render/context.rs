@@ -72,19 +72,33 @@ pub fn template_pages(dir: &Path) -> Result<TemplatePages, String> {
     paths.sort();
 
     for path in paths {
+        // 与站点扫描同一条规矩：不跟符号链接。模板页是项目的一部分，
+        // 一条指向 `~/.ssh` 的链接不该因为一次 `build` 被读进产物。
+        let meta = std::fs::symlink_metadata(&path)
+            .map_err(|error| format!("读不了模板页 {}：{error}", path.display()))?;
+        if !meta.file_type().is_file() {
+            continue;
+        }
+
         let Some(stem) = path
             .file_stem()
             .map(|name| name.to_string_lossy().into_owned())
         else {
             continue;
         };
-        let text = std::fs::read_to_string(&path)
-            .map_err(|error| format!("读不了模板页 {}：{error}", path.display()))?;
+        // 与页面正文走同一个大小闸门：模板也是整份读进内存的
+        let text = crate::support::limits::read_text(&path)?;
         // 键存小写：库那边传来的 `name` 也是小写（`page_key` 归一过），
-        // 两边一致，`::卡片` 与 `::template:卡片` 才落到同一页
-        pages
-            .0
-            .insert(stem.to_lowercase(), TemplatePage::Ready(text));
+        // 两边一致，`::卡片` 与 `::template:卡片` 才落到同一页。
+        // 大小写只差一点的两份文件不能静悄悄互相覆盖。
+        let key = stem.to_lowercase();
+        if pages.0.contains_key(&key) {
+            return Err(format!(
+                "模板页名字重复：`{key}` 有多份（大小写不敏感，最后读到 {}）",
+                path.display()
+            ));
+        }
+        pages.0.insert(key, TemplatePage::Ready(text));
     }
 
     // 这一条发 `info`：装上订阅器的人（`--debug`）正好想知道「模板页到底进了几页」
@@ -203,5 +217,35 @@ mod tests {
     fn an_empty_directory_is_fine() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         assert!(template_pages(dir.path()).is_ok());
+    }
+
+    /// 大小写只差一点的两份模板不能静悄悄互相覆盖，谁赢要看文件系统脸色
+    #[test]
+    fn a_case_only_duplicate_is_refused() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        std::fs::write(dir.path().join("Card.mdpp"), "甲").expect("写得下");
+        std::fs::write(dir.path().join("card.mdpp"), "乙").expect("写得下");
+        let message = template_pages(dir.path()).unwrap_err();
+        assert!(message.contains("重复"), "{message}");
+        assert!(message.contains("card"), "{message}");
+    }
+
+    /// 模板页不是资源，也不该借符号链接去读项目外的东西
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_template_is_not_followed() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let outside = tempfile::tempdir().expect("造得出临时目录");
+        let target = outside.path().join("secret.mdpp");
+        std::fs::write(&target, "不该读进来").expect("写得下");
+        symlink(&target, dir.path().join("secret.mdpp")).expect("建得出链接");
+
+        let pages = template_pages(dir.path()).expect("读得动目录");
+        let context = RenderContext::new().with_templates(pages);
+        let html = Mdpp::new().render_with("::secret\n", &context);
+        assert!(html.contains("template--unknown"), "{html}");
+        assert!(!html.contains("不该读进来"), "{html}");
     }
 }

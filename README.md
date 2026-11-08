@@ -48,7 +48,7 @@
 </div>
 ```
 
-块一共 30 个，覆盖引用、提示框、信息栏、选项卡、深浅色主题、水平分栏、图片音视频、
+块一共 31 个，覆盖引用、提示框、条件渲染、信息栏、选项卡、深浅色主题、水平分栏、图片音视频、
 代码块、公式、mermaid 图、导航框、内联样式与原始 HTML。完整的巡览见
 [`examples/tour.mdpp`](examples/tour.mdpp)，块名清单见 `mdpp render --list-blocks`。
 
@@ -65,6 +65,7 @@ cargo build --release
 
 # 文件：一个能双击打开的整页，内联默认样式与脚本
 ./target/release/mdpp render --full 正文.md > 输出.html
+./target/release/mdpp render --full 正文.md -o 输出.html   # 直接写文件，覆盖旧文件
 
 # 项目
 mdpp init 我的站点          # 建骨架：mdpp.toml、pages/、templates/、build/
@@ -83,8 +84,9 @@ cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 `mdpp.toml` 的起点、`render` 的输入文件与 `--css` / `--js`、`init` 不给目录时的默认
 目标，都从它算 —— `mdpp -C 我的站点 build` 与 `cd 我的站点 && mdpp build` 一样。
 
-**产物走标准输出，其余消息走标准错误** —— 于是 `mdpp render 正文.md > 输出.html`
-出来的文件里只有 HTML。
+**产物默认走标准输出，其余消息走标准错误** —— 于是 `mdpp render 正文.md > 输出.html`
+出来的文件里只有 HTML。`-o, --output <文件>` 可以直接写文件，已有文件会被覆盖；
+输入会在打开输出之前读完，`render 甲.html -o 甲.html` 也不会截断输入。
 
 ### 项目
 
@@ -148,6 +150,7 @@ logo = "assets/icon.svg"                      # 顶栏里、站点名旁边那�
 override_dir = "override"                     # 覆盖层：build 后把这里的东西原样拷到产物里
 toc = "contents"                              # 目录页的名字（键）；空串就不生成目录页
 nav = ["首页", { "指南" = "指南/入门" }]        # 导航栏：顶栏下面那一行链接
+max_template_depth = 64                       # 用户模板最多嵌套层数
 ```
 
 **导航栏**：`nav` 给的那一行链接，顶栏下面、mkdocs-material 的 tabs 那个位置。
@@ -203,7 +206,8 @@ let html = mdpp::Mdpp::new().render("::note\n  这里可以写 **markdown**。\n
 
 `Mdpp` 是 `Send + Sync`：构建一次，可以被多个线程共享，每页各渲各的。需要
 内部链接就实现 `LinkResolver`，需要模板页就实现 `TemplateSource`，分别交给
-`RenderContext::with_links` / `with_templates`。
+`RenderContext::with_links` / `with_templates`。模板嵌套上限默认 64，需要改就用
+`RenderContext::with_max_template_depth`。
 
 要**不止填空**，有三条路：
 
@@ -233,6 +237,41 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
     AssetUse::Duplicate => {}
 }
 ```
+
+### 用户模板与 `::if`
+
+`templates/<名字>.mdpp` 是一页用户模板：正文里写 `::名字 参数=值` 就会把那一页
+填好再解析。模板正文里 `{{参数}}` / `{{body}}` 是**早绑定**文本插值；参数位置上的
+`{{@参数}}` 是**晚绑定**引用，留到块头分词之后再取值，所以值里有空格、引号、换行
+也不会破坏参数。
+
+模板调用的头按严格语法检查：等号两侧的空格一律忽略（`key=value`、`key = value`、
+`key= value` 同义）；同名参数、空参数名、以 `@` 开头的参数名会报错。`::template:名字`
+不再由库特殊处理：它是普通段落；命名空间若需要，由调用方自己识别。
+
+模板嵌套上限默认 64：`render --max-template-depth N` 改单文件模式，站点模式在
+`mdpp.toml` 里写 `max_template_depth = N`。
+
+```mdpp
+::if condition-exist={{@body}}
+  [then]
+  你好，{{body}}！
+  [else]
+  你好！
+```
+
+条件先支持这几个命名测试：
+
+- `condition-exist={{@名字}}`：存在且非空白；
+- `condition-defined={{@名字}}`：存在即可（裸 flag 也算）；
+- `condition-empty={{@名字}}`：不存在或空白；
+- `condition-equals={{@名字}} value=字面量`：去首尾空白后相等；
+- `condition-truthy={{@名字}}`：不是空串、`0`、`false`、`no`、`off`；
+- `condition-not`：反转最后结果。
+
+`[then]` 必填，`[else]` 可选；多个条件用嵌套 `::if`。模板里要把 `{{body}}`
+缩进到分支内容层，不要和 `[then]` 同列 —— 否则用户正文里的一行 `[else]` 会被
+外层分节误认。行内模板调用还没做，块级 `::名字` 是当前唯一入口。
 
 ### 变体组与延迟资源
 

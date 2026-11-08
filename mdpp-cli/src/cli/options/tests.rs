@@ -78,6 +78,34 @@ fn render_without_arguments_reads_standard_input() {
     assert!(!render.full);
 }
 
+/// 模板嵌套默认 64，也可以从命令行改
+#[test]
+fn template_depth_can_be_given_on_the_command_line() {
+    assert_eq!(render(&["render"]).max_template_depth, 64);
+    assert_eq!(
+        render(&["render", "--max-template-depth", "8"]).max_template_depth,
+        8
+    );
+}
+
+/// `-o` / `--output` 是同一个出口
+#[test]
+fn output_can_be_given_short_or_long() {
+    for args in [
+        vec!["render", "-o", "out.html"],
+        vec!["render", "--output", "out.html"],
+        vec!["render", "--output=out.html"],
+    ] {
+        let render = render(&args);
+        assert_eq!(
+            render.output.as_deref(),
+            Some(std::path::Path::new("out.html")),
+            "{args:?}"
+        );
+    }
+    assert!(render(&["render"]).output.is_none());
+}
+
 /// 位置参数按敲进去的次序收 —— 多文件时输出的段落次序，以及默认标题取的
 /// 「第一个文件名」，都指着这个次序
 #[test]

@@ -10,7 +10,8 @@
 //! - **必填**：`site_name`、`pages_dir`、`templates_dir`、`build_dir`，都不允许空串；
 //! - **可选**：`site_description`、`lang`、`base_url`、`repo_url`、`favicon`、`logo`、`footer`、`override_dir`，
 //!   不填写或写空串都等于不提供，各自的功能也就没有；
-//! - **有默认值**：`theme` 默认 `system`，`theme_color` 默认 `#2f6fd0`；
+//! - **有默认值**：`theme` 默认 `system`，`theme_color` 默认 `#2f6fd0`，
+//!   `max_template_depth` 默认 64；
 //! - **无功能**：`extra_css`、`extra_js`、`nav`、`toc`，不写就空/不生成。
 
 use std::collections::BTreeMap;
@@ -73,6 +74,10 @@ pub struct Config {
 
     /// 模板文件夹（必填）：`<目录>/<名字>.mdpp` 是一页，`::名字` 从这里取。
     pub templates_dir: PathBuf,
+
+    /// 用户模板最多嵌套多少层。不写就是 64；`0` 会让模板全部停在第一层。
+    #[serde(default = "default_max_template_depth")]
+    pub max_template_depth: usize,
 
     /// 站点输出文件夹（必填）：`mdpp build` 写在这里。
     pub build_dir: PathBuf,
@@ -155,6 +160,7 @@ impl Default for Config {
             footer: None,
             pages_dir: default_pages_dir(),
             templates_dir: default_templates_dir(),
+            max_template_depth: default_max_template_depth(),
             build_dir: default_site_dir(),
             override_dir: None,
             theme: default_theme(),
@@ -181,6 +187,10 @@ fn default_templates_dir() -> PathBuf {
 
 fn default_site_dir() -> PathBuf {
     PathBuf::from("build")
+}
+
+fn default_max_template_depth() -> usize {
+    mdpp::context::MAX_TEMPLATE_DEPTH
 }
 
 fn default_theme() -> String {
@@ -259,6 +269,9 @@ impl Config {
         }
         if self.build_dir.as_os_str().is_empty() {
             return Err("build_dir 不能为空".to_string());
+        }
+        if self.max_template_depth == 0 {
+            return Err("max_template_depth 至少是 1".to_string());
         }
 
         // 可选字段里，空串等于不填写：统一把空串当成 None（在使用时统一处理，
@@ -352,12 +365,30 @@ mod tests {
         assert_eq!(config.pages_dir, PathBuf::from("pages"));
         assert_eq!(config.templates_dir, PathBuf::from("templates"));
         assert_eq!(config.build_dir, PathBuf::from("build"));
+        assert_eq!(config.max_template_depth, 64);
         assert_eq!(config.theme, "system");
         assert_eq!(config.theme_color, "#2f6fd0");
         // 骨架里显式给了这几项
         assert_eq!(config.lang.as_deref(), Some("zh-Hans"));
         assert_eq!(config.footer.as_deref(), Some("底栏显示在这里"));
         assert_eq!(config.toc.as_deref(), Some("contents"));
+    }
+
+    /// 模板嵌套上限默认 64；写 0 是配置错误，不是「不限制」
+    #[test]
+    fn max_template_depth_defaults_to_64_and_refuses_zero() {
+        let base =
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n";
+        let mut config: Config = toml::from_str(base).expect("能解析");
+        config.normalize();
+        config.check().expect("默认值该是好配置");
+        assert_eq!(config.max_template_depth, 64);
+
+        let mut zero: Config =
+            toml::from_str(&format!("{base}max_template_depth = 0\n")).expect("结构上能解析");
+        zero.normalize();
+        let error = zero.check().expect_err("0 该被拒绝");
+        assert!(error.contains("max_template_depth"), "{error}");
     }
 
     /// 空文件不再是合法配置：四个必填项缺失，解析时就该说

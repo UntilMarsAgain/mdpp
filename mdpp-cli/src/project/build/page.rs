@@ -36,11 +36,13 @@ pub(super) fn render_page(
     assets_prefix: &str,
 ) -> Result<PageBody, String> {
     let source = crate::support::limits::read_text(&page.source)?;
-    let mut context = RenderContext::new().with_links(Arc::new(Links::for_page(
-        site.clone(),
-        page,
-        missing.clone(),
-    )));
+    let mut context = RenderContext::new()
+        .with_max_template_depth(project.config.max_template_depth)
+        .with_links(Arc::new(Links::for_page(
+            site.clone(),
+            page,
+            missing.clone(),
+        )));
     if let Some(templates) = templates {
         context = context.with_templates(templates.clone());
     }
