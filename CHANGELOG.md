@@ -20,11 +20,14 @@
 
 - 用户模板调用头改为严格语法检查：等号两侧的空格一律忽略，重复参数、空参数名、
   `@` 开头的参数名都会报 `template--problem`，不再退回普通段落或静默切错。
+- 模板占位符改为严格填空：`{{名字}}` 缺失时报 `template--problem`，`{{?名字}}`
+  缺失时填空串；不再像 MediaWiki 那样原样保留。
 - 新增 `{{@名字}}` 晚绑定引用：在块头分词之后从当前模板作用域取值，
-  值里有空格、引号、换行也不会破坏参数；`body` / `template` 是保留名。
+  值里有空格、引号、换行也不会破坏参数；`{{?@名字}}` 缺失时填空串，
+  `body` / `template` 是保留名。
 - 新增 `::if`：按 `condition-exist` / `condition-defined` / `condition-empty` /
   `condition-equals` / `condition-truthy` / `condition-yesno` 与 `condition-not`
-  选择 `[then]` / `[else]` 分支。`condition-yesno` 只认 `yes` / `on` / `true`。
+  选择 `[then]` / `[else]` 分支。`condition-yesno` 只认 `yes` / `on` / `true` / `1`。
 - 模板嵌套上限提高到 64 层，并可由调用方改：库用
   `RenderContext::with_max_template_depth`，单文件模式用
   `render --max-template-depth`，站点模式用 `mdpp.toml` 的

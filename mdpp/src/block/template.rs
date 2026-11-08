@@ -16,8 +16,6 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use crate::telemetry::debug;
-
 /// 模板页名的前缀。带不带它都行（见 [`page_key`]）。
 pub const TEMPLATE_PREFIX: &str = "template";
 
@@ -145,37 +143,50 @@ impl TemplateVars {
     }
 }
 
-/// 把参数值里的 `{{@名字}}` 换掉。**在分词之后做**，所以值里有空白也不会再被切开。
+/// 把参数值里的 `{{@名字}}` / `{{?@名字}}` 换掉。**在分词之后做**，所以值里有
+/// 空白也不会再被切开。
 ///
-/// 认不出的名字按空串处理（宽容模式）；严格模式由调用方另查。插入的值**不再扫一遍**，
+/// 必填引用缺失时返回错误；`?` 开头的可选引用缺失时填空串。插入的值**不再扫一遍**，
 /// 与 `{{}}` 的单趟替换一致 —— 否则参数里写 `{{@other}}` 会被误当成引用执行。
-pub(crate) fn resolve_refs(params: Vec<(String, String)>) -> Vec<(String, String)> {
+pub(crate) fn resolve_refs(params: Vec<(String, String)>) -> Result<Vec<(String, String)>, String> {
     params
         .into_iter()
-        .map(|(key, value)| (key, resolve_value(&value)))
+        .map(|(key, value)| resolve_value(&value).map(|value| (key, value)))
         .collect()
 }
 
-fn resolve_value(value: &str) -> String {
+fn resolve_value(value: &str) -> Result<String, String> {
     let mut out = String::with_capacity(value.len());
     let mut rest = value;
-    while let Some(start) = rest.find("{{@") {
+    while let Some(start) = rest.find("{{") {
         out.push_str(&rest[..start]);
-        let after = &rest[start + 3..];
+        let after = &rest[start + 2..];
         let Some(end) = after.find("}}") else {
-            // 没闭合：原样留着，让作者看见
-            out.push_str(&rest[start..]);
-            return out;
+            return Err(format!("参数里的占位符没有闭合：{}", &rest[start..]));
         };
-        let key = after[..end].trim();
-        match crate::context::template_var(key) {
-            Some(value) => out.push_str(&value),
-            None => debug!(name = key, "模板变量不存在，按空值处理"),
+        let raw = after[..end].trim();
+        let (raw, optional) = match raw.strip_prefix('?') {
+            Some(raw) => (raw.trim(), true),
+            None => (raw, false),
+        };
+        if let Some(name) = raw.strip_prefix('@') {
+            let name = name.trim();
+            if name.is_empty() {
+                return Err("参数引用的变量名不能为空".to_string());
+            }
+            match crate::context::template_var(name) {
+                Some(value) => out.push_str(&value),
+                None if optional => {}
+                None => return Err(format!("模板变量 `{name}` 不存在")),
+            }
+        } else {
+            // 不是晚绑定引用：保留原样，交给上层/作者自己看
+            out.push_str(&rest[start..start + 2 + end + 2]);
         }
         rest = &after[end + 2..];
     }
     out.push_str(rest);
-    out
+    Ok(out)
 }
 
 /// 模板调用头的严格语法检查。**只查写法，不查参数含义**。
@@ -400,8 +411,18 @@ mod tests {
         let params = resolve_refs(vec![
             ("a".into(), "{{@标题}}".into()),
             ("b".into(), "前 {{@body}} 后".into()),
-        ]);
+        ])
+        .expect("都找得到");
         assert_eq!(params[0].1, "{{@标题}}", "插入的值不该再展开一次");
         assert_eq!(params[1].1, "前 正文 后");
+
+        assert!(
+            resolve_refs(vec![("a".into(), "{{@没有}}".into())])
+                .expect_err("必填变量缺失该报错")
+                .contains("没有")
+        );
+        let optional =
+            resolve_refs(vec![("a".into(), "前 {{?@没有}} 后".into())]).expect("可选缺失");
+        assert_eq!(optional[0].1, "前  后");
     }
 }

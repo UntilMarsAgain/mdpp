@@ -1,7 +1,8 @@
 //! 用户块的「填空」与过滤。
 //!
-//! 三件事：`{{}}` 把参数与块内容填进模板（[`substitute`]）；CSS 收窄把用户写的样式关进
-//! **正文**（[`scope_css`]）；`::html` 的正文净化转发给 [`crate::block::html`]。
+//! 三件事：`{{}}` 把参数与块内容填进模板（[`substitute_checked`]；宽容版
+//! [`substitute`] 留给底层调用方）；CSS 收窄把用户写的样式关进 **正文**
+//! （[`scope_css`]）；`::html` 的正文净化转发给 [`crate::block::html`]。
 //!
 //! [`source_of`] 是这一层的枢纽：`{{}}`、CSS、HTML 三样都要先问它要正文，因为正文可能
 //! 来自 `src=` 指的模板页而不是块自己的内容。它是**唯一**一处「`src=` 指的是谁」的
@@ -10,10 +11,63 @@
 use crate::block::template::{self, TemplatePage};
 use crate::registry::Block;
 
-/// 把 `{{name}}` 换成参数值，`{{body}}` 换成块内容。
+/// 严格填空：`{{name}}` 没有对应参数就返回错误，`{{?name}}` 则是可选参数
+/// （缺失时填空串）。
 ///
-/// 认不出的名字**原样留着**，没有闭合的 `{{` 也原样留着 —— 让作者看见自己写错了，
-/// 比悄悄换成空串好。
+/// `{{@name}}` 是晚绑定引用，早填充这一层原样保留，交给参数阶段；写在正文里会
+/// 字面显示，正文插值要用 `{{name}}`。
+///
+/// 认不出的必填名字、没闭合的 `{{` 都返回错误，而不是像 [`substitute`] 那样原样留下。
+pub fn substitute_checked(text: &str, block: &Block, body: &str) -> Result<String, String> {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("{{") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let Some(end) = after.find("}}") else {
+            return Err(format!("占位符没有闭合：{}", &rest[start..]));
+        };
+        let raw = after[..end].trim();
+        let (key, optional) = match raw.strip_prefix('?') {
+            Some(key) => (key.trim(), true),
+            None => (raw, false),
+        };
+        if key.is_empty() {
+            return Err("占位符的名字不能为空".to_string());
+        }
+        if key.starts_with('@') {
+            // 晚绑定引用留给块头分词之后的解析；正文里写它会原样显示。
+            // 早填充这一层不替它猜作用域。
+            out.push_str(&rest[start..start + 2 + end + 2]);
+            rest = &after[end + 2..];
+            continue;
+        }
+        let value = if key == "body" {
+            Some(body.to_string())
+        } else {
+            block.param(key).map(str::to_string)
+        };
+        match value {
+            Some(value) => {
+                // 缩进按占位符在**原文**里的位置算：`rest` 是还没扫描的尾巴，
+                // 直接用 `start` 会把前面的换行漏掉，多行值就落回行首。
+                let at = text.len() - rest.len() + start;
+                out.push_str(&reindent(&value, line_indent(text, at)));
+            }
+            None if optional => {}
+            None => return Err(format!("模板参数 `{key}` 没有传入")),
+        }
+        rest = &after[end + 2..];
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
+/// 宽容填空：`{{name}}` 换成参数值，`{{body}}` 换成块内容。
+///
+/// 认不出的名字**原样留着**，没有闭合的 `{{` 也原样留着 —— 这是给底层调用方
+/// 保留的旧行为；模板展开与内置的 `::css` / `::js` / `::html` 走
+/// [`substitute_checked`]。
 pub fn substitute(text: &str, block: &Block, body: &str) -> String {
     // 核心扫描交给 [`substitute_placeholders`] —— 页外壳填占位符（`mdpp-cli/src/page.rs`）
     // 走的也是同一条路，两份各写一份的话，认不出的名字怎么处理迟早会对不上。

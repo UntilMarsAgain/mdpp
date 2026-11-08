@@ -2,7 +2,7 @@
 //!
 //! 这一层只放「不知道具体块名」的东西：
 //!
-//! - 填空：`{{param}}` / `{{body}}`；
+//! - 填空：`{{param}}` / `{{body}}`（缺失即报错），`{{?param}}` 可选；
 //! - 分节：把 `[标签]` 切出来的 `Section` 收成 `(标签, 节点)`；
 //! - 净化：HTML 白名单、CSS 收窄、`</style>` / `</script>` 防护；
 //! - 资源：把自定义 CSS / JS 交给页面（单页内联、站点外链）；在变体作用域里
@@ -51,7 +51,7 @@ pub use crate::block::Section;
 pub use crate::block::dispatch::{render_problem, render_unknown, sections};
 pub use crate::block::fill::{
     CONTENT_SCOPE, allows_js, escape_script_end, flag, sanitize_css, sanitize_html, scope_css,
-    source_of, substitute,
+    source_of, substitute, substitute_checked,
 };
 pub use crate::block::html::sanitize;
 pub use crate::engine::render_nested;

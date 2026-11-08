@@ -39,7 +39,13 @@ pub(super) fn render_js(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
             return;
         }
     };
-    let filled = fill::substitute(&source, block, &block.body);
+    let filled = match fill::substitute_checked(&source, block, &block.body) {
+        Ok(filled) => filled,
+        Err(why) => {
+            render_problem(block, fmt, &why);
+            return;
+        }
+    };
     let pol = if fill::flag(block, "once") {
         AssetPolicy::Once
     } else {
@@ -166,7 +172,14 @@ pub(super) fn render_css(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
             return;
         }
     };
-    let css = fill::sanitize_css(&fill::substitute(&source, block, &block.body));
+    let filled = match fill::substitute_checked(&source, block, &block.body) {
+        Ok(filled) => filled,
+        Err(why) => {
+            render_problem(block, fmt, &why);
+            return;
+        }
+    };
+    let css = fill::sanitize_css(&filled);
     // 收进正文：不然一条 `* { }` 就能把整个页面改掉
     let css = fill::scope_css(&css);
     write_css(fmt, use_asset(AssetKind::Css, css));
@@ -190,7 +203,13 @@ pub(super) fn render_html(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
             return;
         }
     };
-    let filled = fill::substitute(&source, block, &block.body);
+    let filled = match fill::substitute_checked(&source, block, &block.body) {
+        Ok(filled) => filled,
+        Err(why) => {
+            render_problem(block, fmt, &why);
+            return;
+        }
+    };
 
     // 写了 js：脚本提取成资源，其余 HTML 正常输出
     if fill::allows_js(block) {

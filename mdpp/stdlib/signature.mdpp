@@ -1,2 +1,2 @@
-::element class="signature {{@class}}"
+::element class="signature {{?@class}}"
   {{body}}

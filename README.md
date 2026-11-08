@@ -241,9 +241,11 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 ### 用户模板与 `::if`
 
 `templates/<名字>.mdpp` 是一页用户模板：正文里写 `::名字 参数=值` 就会把那一页
-填好再解析。模板正文里 `{{参数}}` / `{{body}}` 是**早绑定**文本插值；参数位置上的
+填好再解析。模板正文里 `{{参数}}` / `{{body}}` 是**早绑定**文本插值，缺了必填参数
+会报 `template--problem`；写成 `{{?参数}}` 就是可选参数，缺失时填空串。参数位置上的
 `{{@参数}}` 是**晚绑定**引用，留到块头分词之后再取值，所以值里有空格、引号、换行
-也不会破坏参数。
+也不会破坏参数；`{{?@参数}}` 是它的可选形式。正文里写 `{{@参数}}` 不会填充，正文
+插值要用 `{{参数}}`。
 
 模板调用的头按严格语法检查：等号两侧的空格一律忽略（`key=value`、`key = value`、
 `key= value` 同义）；同名参数、空参数名、以 `@` 开头的参数名会报错。`::template:名字`
@@ -275,7 +277,7 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 - `condition-empty={{@名字}}`：不存在或空白；
 - `condition-equals={{@名字}} value=字面量`：去首尾空白后相等；
 - `condition-truthy={{@名字}}`：不是空串、`0`、`false`、`no`、`off`；
-- `condition-yesno={{@名字}}`：去空白、忽略大小写后是 `yes` / `on` / `true`；
+- `condition-yesno={{@名字}}`：去空白、忽略大小写后是 `yes` / `on` / `true` / `1`；
 - `condition-not`：反转最后结果。
 
 `[then]` 必填，`[else]` 可选；多个条件用嵌套 `::if`。模板里要把 `{{body}}`

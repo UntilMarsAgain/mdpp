@@ -58,10 +58,20 @@ impl BlockRule for BlockScanner {
 
         // `::if` 的条件要保留 `{{@名字}}` 到渲染时再查：只有在那里才能区分
         // 「变量不存在」与「变量存在但为空」。其它块在分词之后就可以把晚绑定值填进去。
+        let raw_params = params.clone();
         let params = if name == "if" {
             params
         } else {
-            template::resolve_refs(params)
+            match template::resolve_refs(params) {
+                Ok(params) => params,
+                Err(why) => {
+                    let (body, next) = collect_body(state, start, marker_indent);
+                    return Some((
+                        expand::header_problem(&name, raw_params, body, &why),
+                        next - start,
+                    ));
+                }
+            }
         };
 
         let (body, next) = collect_body(state, start, marker_indent);
