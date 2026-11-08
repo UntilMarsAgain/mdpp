@@ -1,7 +1,7 @@
-::element tag=blockquote class="quote {{@class}}"
+::element tag=blockquote class="quote {{?@class}}"
   {{body}}
 
   ::if condition-defined={{@origin}}
     [then]
       ::element tag=p class=quote__origin inline=on
-        — {{origin}}
+        — {{?origin}}

@@ -66,6 +66,50 @@ fn unknown_or_unclosed_placeholders_stay_visible() {
     assert_eq!(substitute("{{unclosed", &item, ""), "{{unclosed");
 }
 
+/// 严格填空：必填缺失报错，`?` 开头缺失填空串，正文里的 `@` 引用也报错
+#[test]
+fn checked_fill_separates_required_optional_and_late_refs() {
+    let item = block("x", &[("color", "红")], "块内容");
+    assert_eq!(
+        substitute_checked("{{color}} / {{body}}", &item, "块内容"),
+        Ok("红 / 块内容".to_string())
+    );
+
+    let missing = substitute_checked("前 {{missing}} 后", &item, "").unwrap_err();
+    assert!(missing.contains("missing"), "{missing}");
+
+    assert_eq!(
+        substitute_checked("前 {{?missing}} 后", &item, ""),
+        Ok("前  后".to_string())
+    );
+    assert_eq!(
+        substitute_checked("{{?body}}", &item, "块内容"),
+        Ok("块内容".to_string())
+    );
+
+    // 晚绑定引用留给块头阶段；正文里写它会原样显示
+    assert_eq!(
+        substitute_checked("{{@body}}", &item, "块内容"),
+        Ok("{{@body}}".to_string())
+    );
+
+    let unclosed = substitute_checked("{{missing", &item, "").unwrap_err();
+    assert!(unclosed.contains("没有闭合"), "{unclosed}");
+}
+
+/// 前面有晚绑定引用时，多行值仍要按占位符在**原文**里的行首缩进对齐
+#[test]
+fn a_late_ref_before_a_multiline_value_does_not_steal_the_indent() {
+    let item = block("x", &[], "甲\n乙");
+    let filled = substitute_checked(
+        "::element class=\"x {{?@class}}\"\n  {{body}}\n",
+        &item,
+        "甲\n乙",
+    )
+    .expect("都可选/存在");
+    assert!(filled.contains("\n  甲\n  乙"), "{filled}");
+}
+
 /// 没写 `src=` 时，正文就是块自己带的那段 —— 枢纽的这条默认岔路先得走对
 #[test]
 fn source_is_the_block_body_when_there_is_no_src() {

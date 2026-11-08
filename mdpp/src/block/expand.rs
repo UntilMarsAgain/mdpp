@@ -70,7 +70,12 @@ pub(crate) fn expand_user_block(
     ));
     let _scope = context::enter_template_vars(Arc::clone(&vars));
 
-    let filled = fill::substitute(&source, &block, &body);
+    let filled = match fill::substitute_checked(&source, &block, &body) {
+        Ok(filled) => filled,
+        Err(why) => {
+            return reported_node("模板参数缺失", "template--problem", name, &why);
+        }
+    };
 
     let md = state.md;
     let mut parsed = context::deeper(|| crate::parse::markdown::parse_markdown(md, &filled));
@@ -306,6 +311,19 @@ mod tests {
         let context = RenderContext::new().with_templates(Arc::new(pages));
         let html = Mdpp::new().render_with("::外\n  你好 世界\n", &context);
         assert!(html.contains("IN=[你好 世界]"), "{html}");
+    }
+
+    /// 模板参数缺失时报出来，`{{?名字}}` 则按空串填 —— 不再原样留下一段 `{{...}}`
+    #[test]
+    fn a_missing_template_parameter_is_reported_unless_it_is_optional() {
+        let required = render("卡片", TemplatePage::Ready("标题：{{title}}".into()));
+        assert!(required.contains("template--problem"), "{required}");
+        assert!(required.contains("title"), "{required}");
+
+        let optional = render("卡片", TemplatePage::Ready("标题：{{?title}}".into()));
+        assert!(!optional.contains("template--problem"), "{optional}");
+        assert!(optional.contains("标题："), "{optional}");
+        assert!(!optional.contains("{{"), "{optional}");
     }
 
     /// 正文是多行、模板里的 `{{body}}` 又缩进着：填完的每一行都得落在那份缩进里，

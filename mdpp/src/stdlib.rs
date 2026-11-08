@@ -116,6 +116,32 @@ mod tests {
         assert_eq!(flatlist.matches("<li>").count(), 2, "{flatlist}");
     }
 
+    /// `title` 的 `text=` 当正文、`color=` 当字色；可选参数缺失不该报错
+    #[test]
+    fn title_uses_text_and_optional_color() {
+        let html = crate::Mdpp::new().render("::title text=\"**重**的标题\" color=#123456\n");
+        assert!(html.contains("color: #123456"), "{html}");
+        assert!(html.contains("<strong>重</strong>"), "{html}");
+        assert!(!html.contains("模板参数"), "{html}");
+
+        let bad = crate::Mdpp::new().render("::title text=x color=红色\n");
+        assert!(bad.contains("template--problem"), "{bad}");
+    }
+
+    /// `quote` 没写 `origin` 就不输出署名；嵌套时内容落在**内层**引用里
+    #[test]
+    fn quote_omits_an_absent_origin_and_keeps_nesting() {
+        let plain = crate::Mdpp::new().render("::quote\n  只引用\n");
+        assert!(plain.contains("<blockquote"), "{plain}");
+        assert!(!plain.contains("quote__origin"), "{plain}");
+
+        let nested = crate::Mdpp::new().render("::quote\n  ::quote origin=内层\n    文字\n");
+        assert_eq!(nested.matches("<blockquote").count(), 2, "{nested}");
+        let before = &nested[..nested.find("文字").expect("应当渲染出内容")];
+        let depth = before.matches("<blockquote").count() - before.matches("</blockquote>").count();
+        assert_eq!(depth, 2, "内容应当嵌在内层 blockquote 里：{nested}");
+    }
+
     /// 调用方模板叠在标准库上面，同名时调用方赢
     #[test]
     fn caller_templates_override_the_standard_library() {
