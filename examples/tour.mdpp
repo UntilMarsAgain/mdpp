@@ -130,32 +130,35 @@
 
 ::tabs
   [读法一]
-  照着念。
+    照着念。
 
-  第二节里照样能写列表：
+    第二节里照样能写列表：
 
-  - 甲
-  - 乙
+    - 甲
+    - 乙
   [读法二]
-  自己试。
+    自己试。
 
 ::theme
+  [both]
+    两种主题下都显示这一段。
+
   [light]
-  浅色下显示这一段。
-  ::css
-    .theme-only { background: #eaf1fb; }
-  ::js
-    console.log("浅色主题脚本");
-  ::html js
-    <script>console.log("浅色 HTML 脚本");</script>
+    浅色下显示这一段。
+    ::css
+      .theme-only { background: #eaf1fb; }
+    ::js
+      console.log("浅色主题脚本");
+    ::html js
+      <script>console.log("浅色 HTML 脚本");</script>
   [dark]
-  深色下显示这一段。
-  ::css
-    .theme-only { background: #16283f; }
-  ::js
-    console.log("深色主题脚本");
-  ::html js
-    <script>console.log("深色 HTML 脚本");</script>
+    深色下显示这一段。
+    ::css
+      .theme-only { background: #16283f; }
+    ::js
+      console.log("深色主题脚本");
+    ::html js
+      <script>console.log("深色 HTML 脚本");</script>
 
 下面两节的 `::css` / `::js` / `::html js` 不会直接写进 `<style>`/`<script>`，
 而是被放进带 `data-theme` 的占位容器，由页面脚本按当前主题选择性注入。
@@ -165,10 +168,10 @@
 
 ::columns
   [写法]
-  `::quote text=…` 开一块引用。
+    `::quote text=…` 开一块引用。
 
   [效果]
-  > 渲染出来的那一段。
+    > 渲染出来的那一段。
 
 # 导航框
 
@@ -182,21 +185,21 @@
 
 ::navbox title=桥梁 state=collapsed
   [above]
-  何为方针 · 方针列表
+    何为方针 · 方针列表
 
   [header]
-  按什么分
+    按什么分
 
   [分类]
-  * [[拱桥]]
-  * [[梁桥]]
+    * [[拱桥]]
+    * [[梁桥]]
 
   [材料]
-  * [[石桥]]
-  * [[木桥]]
+    * [[石桥]]
+    * [[木桥]]
 
   [below]
-  诉求文明，因时而变
+    诉求文明，因时而变
 
 分组名可以重复 —— 同一个标签在每个 `[header]` 下面各写一次是正常的。
 
@@ -293,9 +296,25 @@
 
 ::if condition-exist=yes
   [then]
-  条件成立时出现。
+    条件成立时出现。
   [else]
-  条件不成立时出现。
+    条件不成立时出现。
+
+# 模板遍历
+
+`::each` 把一段模板套在分节上重复渲染。`[__template__]` 的正文必须缩进；后面
+同列的 `[标签]` 是数据。模板里的 `{{@item.label}}` / `{{@item.body}}` 是当前这一节。
+
+::each
+  [__template__]
+    ::element tag=span class=each-demo inline=on
+      {{@item.label}}：{{@item.body}}
+
+  [__data__]
+    [甲]
+      第一节
+    [乙]
+      第二节
 
 # 用户块
 

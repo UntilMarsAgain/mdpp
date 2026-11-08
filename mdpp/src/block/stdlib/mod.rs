@@ -12,6 +12,7 @@
 //!   校验、尺寸上限与图注规矩。
 //! - `columns`：按 `[标签]` 分节、几栏同时摆出来的 `columns`。
 //! - `disclose`：一份正文 + 布尔状态的原生折叠原语，`fold` 由它加模板实现。
+//! - `each`：把一段模板套在分节上重复渲染，类名与结构全由模板片段决定。
 //! - `variants`：N 份正文 + 选中状态的变体组原语，`theme` / `tabs` 由它加模板实现。
 //! - `navbox`：按 `[标签]` 分组的导航框；标签同时就是分组名。
 //! - `embeds`：把内容**原样写出去**的块（`code` / `mermaid` / `math` / `css` /
@@ -30,6 +31,7 @@ mod columns;
 mod control;
 mod demo;
 mod disclose;
+mod each;
 mod embeds;
 mod indent;
 mod media;
@@ -44,6 +46,7 @@ use columns::render_columns;
 use control::render_if;
 use demo::render_demo;
 use disclose::render_disclose;
+use each::render_each;
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
 use indent::render_indent;
 use media::{render_audio, render_image, render_video};
@@ -68,7 +71,8 @@ fn spec(
 /// `the_two_tables_agree` 盯着这件事。
 pub const NAMES: &[&str] = &[
     "code", "fields", "columns", "image", "video", "audio", "css", "html", "js", "mermaid", "math",
-    "demo", "disclose", "element", "if", "indent", "surface", "text", "navbox", "variants",
+    "demo", "disclose", "each", "element", "if", "indent", "surface", "text", "navbox",
+    "variants",
 ];
 
 /// 把内置块灌进注册表。
@@ -87,6 +91,7 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("math", ContentMode::Raw, render_math))
         .register(spec("demo", ContentMode::Raw, render_demo))
         .register(spec("disclose", ContentMode::Markdown, render_disclose))
+        .register(spec("each", ContentMode::Sections, render_each))
         .register(spec("element", ContentMode::Markdown, render_element))
         .register(spec("if", ContentMode::Sections, render_if))
         .register(spec("indent", ContentMode::Markdown, render_indent))
@@ -228,6 +233,10 @@ mod tests {
                 "variants" => format!("::{name} control=choice\n  [甲]\n    正文一行\n"),
                 // 折叠原语要一个标题；正文不能为空
                 "disclose" => format!("::{name} title=更多\n  正文一行\n"),
+                // each 要模板节与至少一条数据
+                "each" => format!(
+                    "::{name}\n  [__template__]\n    {{{{@item.body}}}}\n  [__data__]\n    [甲]\n      正文一行\n"
+                ),
                 // element 需要 class= 参数，indent 需要 indent= 参数
                 "element" => format!("::{name} class=foo\n  内容\n"),
                 // if 至少要一节 [then]；用字面量条件，不依赖模板作用域
@@ -265,6 +274,10 @@ mod tests {
         );
         assert_eq!(
             registry.get("if").map(BlockSpec::mode),
+            Some(ContentMode::Sections)
+        );
+        assert_eq!(
+            registry.get("each").map(BlockSpec::mode),
             Some(ContentMode::Sections)
         );
         assert_eq!(

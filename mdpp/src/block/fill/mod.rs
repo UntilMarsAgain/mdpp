@@ -161,6 +161,65 @@ fn reindent(value: &str, indent: &str) -> String {
     out
 }
 
+/// 解析模板文本里的晚绑定引用：`{{@名字}}` / `{{?@名字}}`。
+///
+/// `item_prefix` 是 `each` 当前项的名字（`item`、`col` …）。给了它时：
+///
+/// - `{{@item.xxx}}` 必须从**当前项**取，缺了就是错误；
+/// - 别的 `{{@名字}}` 先从外层作用域取（模板参数、`@body` 等）；
+/// - 外层也没有、但名字带 `.` 的，原样留下给内层 `each`；
+/// - 外层也没有、名字不带 `.` 的，按缺参数处理。
+///
+/// 插入的值**不再扫第二遍**，与早绑定填空一致；多行值按占位符所在行的缩进补缩进。
+pub(crate) fn resolve_late_refs(text: &str, item_prefix: Option<&str>) -> Result<String, String> {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("{{") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let Some(end) = after.find("}}") else {
+            return Err(format!("占位符没有闭合：{}", &rest[start..]));
+        };
+        let raw = after[..end].trim();
+        let (raw, optional) = match raw.strip_prefix('?') {
+            Some(raw) => (raw.trim(), true),
+            None => (raw, false),
+        };
+        let Some(name) = raw.strip_prefix('@') else {
+            // 不是晚绑定：原样留回，交给早绑定那一趟或作者自己
+            out.push_str(&rest[start..start + 2 + end + 2]);
+            rest = &after[end + 2..];
+            continue;
+        };
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("模板变量名不能为空".to_string());
+        }
+        let is_item = item_prefix.is_some_and(|prefix| {
+            name.strip_prefix(prefix)
+                .is_some_and(|rest| rest.starts_with('.'))
+        });
+        match crate::context::template_var(name) {
+            Some(value) => {
+                let at = text.len() - rest.len() + start;
+                out.push_str(&reindent(&value, line_indent(text, at)));
+            }
+            None if item_prefix.is_some() && name.contains('.') && !is_item => {
+                // 留给内层 each：外层只认自己的前缀
+                out.push_str(&rest[start..start + 2 + end + 2]);
+            }
+            None if optional => {}
+            None if is_item => {
+                return Err(format!("当前项没有 `{name}` 这个变量"));
+            }
+            None => return Err(format!("模板变量 `{name}` 不存在")),
+        }
+        rest = &after[end + 2..];
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
 /// 这一块要处理的**内容**：没写 `src=` 就是块内容本身，写了就是模板页的正文。
 ///
 /// 取不到时返回 `Err(原因)`：**「没有这一页」和「有，但此刻读不出来」要分得开** ——

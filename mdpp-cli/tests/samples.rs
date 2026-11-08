@@ -117,6 +117,7 @@ fn the_tour_visits_every_builtin_block() {
         ("surface", r#"class="surface""#),
         ("text", "**不解析**"),
         ("title", "title-block"),
+        ("each", "each-demo"),
         ("tabs", r#"class="tabs__bar""#),
         // 条件成立时 [then] 里的那句才会出现
         ("if", "条件成立时出现。"),
