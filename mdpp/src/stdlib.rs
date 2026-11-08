@@ -4,9 +4,10 @@
 //! 文件在编译期由 [`include_dir!`] 整个嵌进二进制，运行时不碰文件系统。
 //!
 //! 目前从原 Rust 实用块迁出来的是 `small` / `title` / `quote` / `signature` /
-//! `flatlist` / `banner` / `aside` / `note` / `tip` / `warning` / `danger` / `error`；
-//! `problem` 是模板内部共用的诊断框。以后可迁移的基础块也放这里，外围标准库和
-//! 项目模板都通过同样的 [`TemplateSource`] 接口覆盖。
+//! `flatlist` / `banner` / `aside` / `note` / `tip` / `warning` / `danger` / `error` /
+//! `fold` / `theme` / `tabs`；`callout` 是提示框共用的底模板，`problem` 是模板内部
+//! 共用的诊断框。以后可迁移的基础块也放这里，外围标准库和项目模板都通过同样的
+//! [`TemplateSource`] 接口覆盖。
 //!
 //! 默认的 [`RenderContext`](crate::RenderContext) 已经带上这份来源；调用方用
 //! [`RenderContext::with_templates`](crate::RenderContext::with_templates) 叠加自己的
@@ -257,6 +258,115 @@ mod tests {
         let bad = crate::Mdpp::new().render("::note color=red\n  正文\n");
         assert!(bad.contains("template--problem"), "{bad}");
         assert!(!bad.contains("style="), "{bad}");
+    }
+
+    /// `fold` 现在是 `disclose` 上面的一层模板：默认标题、open、color 都还在
+    #[test]
+    fn fold_uses_the_disclose_primitive() {
+        let default = crate::Mdpp::new().render("::fold\n  折起来的内容\n");
+        assert!(default.contains(r#"<details class="fold">"#), "{default}");
+        assert!(
+            default.contains(r#"<summary class="fold--custom">更多</summary>"#),
+            "{default}"
+        );
+        assert!(default.contains("折起来的内容"), "{default}");
+
+        let open = crate::Mdpp::new().render("::fold open=on title=草稿\n  **加粗**\n");
+        assert!(
+            open.contains("<details class=\"fold\" open=\"\">"),
+            "{open}"
+        );
+        assert!(open.contains("<strong>加粗</strong>"), "{open}");
+
+        let colored = crate::Mdpp::new().render("::fold color=#0055a4 title=深蓝\n  正文\n");
+        assert!(
+            colored.contains(
+                r#"<summary class="fold--custom" style="background: #0055a4; color: #f5f5f5;">"#
+            ),
+            "{colored}"
+        );
+
+        let bad = crate::Mdpp::new().render("::fold color=red title=乱写\n  正文\n");
+        assert!(bad.contains("template--problem"), "{bad}");
+        assert!(
+            !bad.contains("<details"),
+            "坏颜色不该留下半个 details：{bad}"
+        );
+
+        let empty = crate::Mdpp::new().render("::fold\n");
+        assert!(empty.contains("template--problem"), "{empty}");
+        assert!(empty.contains("折起来的那一块"), "{empty}");
+
+        // 正文仍是 Markdown 模式：一行 `[注]` 只是普通文字，不是新的一节
+        let bracket = crate::Mdpp::new().render("::fold\n  [注] 不是标签\n");
+        assert!(bracket.contains("[注] 不是标签"), "{bracket}");
+        assert!(!bracket.contains("template--problem"), "{bracket}");
+    }
+
+    /// `theme` / `tabs` 现在是 `variants` 上面的一层模板
+    #[test]
+    fn theme_and_tabs_use_the_variants_primitive() {
+        let tabs = crate::Mdpp::new().render("::tabs\n  [北岸]\n  走北路\n  [南岸]\n  走南路\n");
+        assert!(tabs.contains(r#"class="tabs__bar""#), "{tabs}");
+        assert!(
+            tabs.contains(r#"class="tabs__tab tabs__tab--on""#),
+            "{tabs}"
+        );
+        assert!(tabs.contains(r#"class="tabs__panel""#), "{tabs}");
+        assert!(tabs.contains("data-mdpp-option=\"0\""), "{tabs}");
+        assert!(tabs.contains("hidden"), "{tabs}");
+
+        let theme = crate::Mdpp::new().render("::theme\n  [light]\n  浅色\n  [dark]\n  深色\n");
+        assert!(theme.contains(r#"class="theme""#), "{theme}");
+        assert!(theme.contains("theme__part theme__part--light"), "{theme}");
+        assert!(theme.contains("theme__part theme__part--dark"), "{theme}");
+        assert!(theme.contains("data-mdpp-control=\"theme\""), "{theme}");
+
+        let bad = crate::Mdpp::new().render("::theme\n  [blue]\n  没有这个主题\n");
+        assert!(bad.contains("template--problem"), "{bad}");
+        assert!(
+            !bad.contains("class=\"theme\""),
+            "坏标签不该留下半个容器：{bad}"
+        );
+    }
+
+    /// 提示框可以用 `collapsible` 变成 `disclose`；不写仍是原来的静态形状
+    #[test]
+    fn callouts_can_fold_with_disclose() {
+        let plain = crate::Mdpp::new().render("::note\n  普通提示\n");
+        assert!(!plain.contains("<details"), "{plain}");
+        assert!(plain.contains(r#"<p class="callout__title">"#), "{plain}");
+
+        let open = crate::Mdpp::new().render("::note collapsible\n  可折叠提示\n");
+        assert!(
+            open.contains(r#"<details class="callout__details" open="">"#),
+            "{open}"
+        );
+        assert!(
+            open.contains(r#"<summary class="callout__title">"#),
+            "{open}"
+        );
+        assert!(open.contains("可折叠提示"), "{open}");
+
+        let closed = crate::Mdpp::new().render("::tip collapsible=closed title=提示\n  内容\n");
+        assert!(closed.contains("<details"), "{closed}");
+        assert!(!closed.contains(" open=\"\""), "{closed}");
+        assert!(closed.contains(">提示</summary>"), "{closed}");
+
+        let off = crate::Mdpp::new().render("::warning collapsible=off\n  还是静态\n");
+        assert!(!off.contains("<details"), "{off}");
+        assert!(off.contains(r#"<p class="callout__title">"#), "{off}");
+
+        let bad = crate::Mdpp::new().render("::danger collapsible=maybe\n  内容\n");
+        assert!(bad.contains("template--problem"), "{bad}");
+
+        // 折叠分支也只有一份正文：标题 id 不该因为另一条分支被数两遍
+        let heading = crate::Mdpp::new().render("::note collapsible\n  # 标题\n");
+        assert_eq!(
+            heading.matches(r#"id="标题""#).count(),
+            1,
+            "折叠提示框里的标题不该被数两遍：{heading}"
+        );
     }
 
     /// 调用方模板叠在标准库上面，同名时调用方赢

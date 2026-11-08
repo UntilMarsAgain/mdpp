@@ -87,6 +87,16 @@
 ::error
   已经出错了。
 
+提示框也能折叠：写 `collapsible` 是展开的，`collapsible=closed` 默认折着；
+不写或写 `collapsible=off` 就是上面那种静态形状。折叠后的标题就是原生
+`<summary>`，没有脚本也能点开。
+
+::note collapsible
+  点标题可以折起来，再点展开。
+
+::tip collapsible=closed title=先折着
+  默认是折起来的，点标题才看得到这一段。
+
 # 折叠
 
 默认折叠，点标题展开；不写 `title=` 就叫「更多」。用 HTML 原生的
