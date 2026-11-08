@@ -10,10 +10,13 @@ use crate::render::page::NavLink;
 use mdpp::{Mdpp, RenderContext};
 
 use super::nav::toc_body;
+use super::toc;
 
 pub(super) struct PageBody {
     pub(super) title: String,
     pub(super) html: String,
+    /// 侧边目录的 HTML；这页没有可链接的标题时是空串。只进站点外壳
+    pub(super) sidebar: String,
     pub(super) assets: Vec<mdpp::Asset>,
     pub(super) wanted: Vec<assets::Wanted>,
     pub(super) absent: Vec<String>,
@@ -60,6 +63,7 @@ pub(super) fn render_page(
     );
     Ok(PageBody {
         title: document_title(project, &source, page.stem()),
+        sidebar: toc::sidebar(&scan.html),
         html: scan.html,
         assets: rendered.assets,
         wanted: scan.wanted,
@@ -76,6 +80,8 @@ pub(super) fn generated_body(project: &Project, site: &Site, page: &Page) -> Pag
     PageBody {
         title: document_title(project, "", page.stem()),
         html: toc_body(site, &project.config.site_name, &page.key),
+        // 目录页的正文是一份站点清单，不是「这一页的章节」——没有侧边目录
+        sidebar: String::new(),
         assets: Vec::new(),
         wanted: Vec::new(),
         absent: Vec::new(),

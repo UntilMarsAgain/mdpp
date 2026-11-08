@@ -23,7 +23,7 @@
 //!
 //! ## 模板里的占位符
 //!
-//! 双花括号包着名字，一共十个：
+//! 双花括号包着名字，一共十一个：
 //!
 //! | 占位符 | 填什么 |
 //! |---|---|
@@ -35,6 +35,7 @@
 //! | `{{styles}}` | 样式：要么一段内联的 `<style>`，要么一串 `<link>` |
 //! | `{{scripts}}` | 脚本：要么一段内联的 `<script>`，要么一串 `<script src>` |
 //! | `{{bar}}` | 顶上那一条（**含导航栏**），**连标签一起**；站点名与导航都没有就没有 |
+//! | `{{toc}}` | 侧边目录，**连标签一起**；只给站点模式，单文件页面与无标题的页面都是空 |
 //! | `{{foot}}` | 底下那一条，**连标签一起**；`copyright` 空着就是整段没有 |
 //! | `{{body}}` | 正文（已渲染的 HTML 片段） |
 //!
@@ -209,6 +210,9 @@ pub struct Page<'a> {
     pub favicon: Option<&'a str>,
     /// 正文（已渲染的 HTML 片段）
     pub body: &'a str,
+    /// 侧边目录的 HTML（**连标签一起**）。站点模式由 `build` 从正文标题里生成；
+    /// `render --full` 给空串，于是单文件页面不带侧边栏
+    pub toc: &'a str,
     /// `--css` / `extra_css` 附的那些，接在默认的**后面**
     pub extra_css: &'a [String],
     /// `--js` / `extra_js` 附的那些，接在默认的**后面**
@@ -324,6 +328,13 @@ pub fn document(page: &Page) -> String {
         None => String::new(),
     };
 
+    // 侧边目录只在站点那一路出场：单文件页面没有「整站」这一层，也就没有
+    // 侧边栏的位置。判据仍然是资源怎么进页面，而不是调用方记不记得传空串。
+    let toc = match page.assets {
+        Assets::Inline => "",
+        Assets::Linked(_) => page.toc,
+    };
+
     fill(
         template(),
         &[
@@ -335,6 +346,7 @@ pub fn document(page: &Page) -> String {
             ("meta", &meta(&page.chrome, &page.canonical)),
             ("scripts", &scripts),
             ("bar", &top_bar(&page.chrome)),
+            ("toc", toc),
             ("foot", &bottom_bar(&page.chrome)),
             // 正文排最后：它是 HTML，不该被当成还能填占位符的模板
             ("body", page.body),

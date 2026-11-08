@@ -26,6 +26,7 @@ mod files;
 mod nav;
 mod page;
 mod report;
+mod toc;
 
 pub use report::{Built, report};
 
@@ -288,6 +289,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
                 .map(|name| format!("{assets_prefix}/{name}"))
                 .as_deref(),
             body: &body_html,
+            toc: &body.sidebar,
             extra_css: &extra_css,
             extra_js: &extra_js,
             assets: shell::Assets::Linked(assets_prefix.clone()),

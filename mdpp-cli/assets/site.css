@@ -37,7 +37,36 @@
 }
 
 .mdpp-main {
+  /* 宽屏是「侧边目录 + 正文」两列；没有目录时只剩正文，flex 会让它自己占满 */
+  display: flex;
+  align-items: flex-start;
+  gap: 1.75rem;
   padding: 1.5rem 1.5rem 3rem;
+}
+
+/* 正文那一格可以缩小（`min-width: 0`）：宽表、长代码块才不会把整页撑出横向滚动 */
+.mdpp-main > .mdpp-content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* 侧边目录那一列。`sticky` 让长页面里的目录跟着走；顶栏自己也是 `sticky`，
+ * 所以往下滚时从这里让开一段 —— 顶栏高度随有没有导航、折没折行而变，6.5rem
+ * 是两者都放得下的那一档。 */
+.mdpp-main > .mdpp-toc--wide {
+  flex: 0 0 14rem;
+  position: sticky;
+  top: 6.5rem;
+  max-height: calc(100vh - 7.5rem);
+  overflow-y: auto;
+}
+
+/* 窄屏：目录收成正文上面那个 details 折叠入口，两列改成一列 */
+@media (max-width: 60rem) {
+  .mdpp-main {
+    flex-direction: column;
+    gap: 1rem;
+  }
 }
 
 /* ---- 顶栏 ------------------------------------------------------------- */
@@ -273,6 +302,7 @@ body {
   }
 
   .mdpp-main {
+    display: block;
     padding: 0;
   }
 

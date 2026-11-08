@@ -100,6 +100,8 @@ pub fn run(options: &Render) -> Result<(), String> {
                 canonical: page::Canonical::default(),
                 favicon: None,
                 body: &html,
+                // 单篇没有站点，也就没有侧边目录
+                toc: "",
                 extra_css: &extra_css,
                 extra_js: &extra_js,
                 // 一个文件就是整个页面：样式与脚本全内联，拷走还能看
