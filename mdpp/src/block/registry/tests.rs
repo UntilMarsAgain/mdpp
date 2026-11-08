@@ -34,6 +34,15 @@ fn quotes_protect_spaces_and_escapes() {
     );
 }
 
+/// 冒号不是块名的一部分：`::template:卡片` 与 `::a:b` 一样是普通段落
+#[test]
+fn a_colon_in_a_name_is_not_a_block() {
+    assert!(Block::parse_header("::template:卡片 title=甲").is_none());
+    assert!(Block::parse_header("::Template:卡片").is_none());
+    assert!(Block::parse_header("::a:b").is_none());
+    assert!(Block::parse_header("::帮助:入门").is_none());
+}
+
 /// 认不出的头一律退回普通段落 —— 宁可当普通文字，也不要猜作者想要什么
 #[test]
 fn lines_that_are_not_headers_are_rejected() {
@@ -81,6 +90,56 @@ fn spaces_around_the_equals_are_fine() {
             ("a".to_string(), "1".to_string()),
             ("b".to_string(), "2".to_string()),
             ("c".to_string(), "3".to_string())
+        ]
+    );
+}
+
+/// 等号一边贴一边空也认 —— 空白只是排版，不该改变参数的意思
+#[test]
+fn spaces_on_either_side_of_the_equals_are_ignored() {
+    let (_, params) =
+        Block::parse_header("::note a= 1 b =2 c= \"含 空格\" d =\"含 空格\" e=\"\" f=\"\"")
+            .unwrap();
+    assert_eq!(
+        params,
+        vec![
+            ("a".to_string(), "1".to_string()),
+            ("b".to_string(), "2".to_string()),
+            ("c".to_string(), "含 空格".to_string()),
+            ("d".to_string(), "含 空格".to_string()),
+            ("e".to_string(), String::new()),
+            ("f".to_string(), String::new()),
+        ]
+    );
+}
+
+/// 等号后带空格时，值里即使有 `=` 也还是值；只有像 `b=` 这样的下一个键才切开
+#[test]
+fn a_spaced_value_may_contain_equals_but_a_following_key_stays_a_key() {
+    let (_, params) = Block::parse_header("::note a= x=y b= c=\"z=\" d= \"v=\" f=\"\"").unwrap();
+    assert_eq!(
+        params,
+        vec![
+            ("a".to_string(), "x=y".to_string()),
+            ("b".to_string(), String::new()),
+            ("c".to_string(), "z=".to_string()),
+            ("d".to_string(), "v=".to_string()),
+            ("f".to_string(), String::new()),
+        ]
+    );
+}
+
+/// 两个空值参数相邻时，前一个的 `=` 不该把后一个键吃掉
+#[test]
+fn adjacent_empty_values_keep_their_own_keys() {
+    let (_, params) = Block::parse_header("::note a=\"\" b=\"\" c= d=\"\"").unwrap();
+    assert_eq!(
+        params,
+        vec![
+            ("a".to_string(), String::new()),
+            ("b".to_string(), String::new()),
+            ("c".to_string(), String::new()),
+            ("d".to_string(), String::new()),
         ]
     );
 }

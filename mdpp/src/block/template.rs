@@ -9,8 +9,14 @@
 //! [`page_key`]：`甲`、`template:甲`（大小写与首尾空白都宽松）指同一页。传进
 //! [`TemplateSource::page`] 的 `name` 已归一过（**小写**、剥掉了前缀），所以最简单的
 //! 实现是「拿它当键查一下」。
+//!
+//! 注意：这里的 `template:` 只是**页面名**的写法（`src=`、诊断链接用），不是块语法；
+//! `::template:甲` 在扫描器里仍然是普通段落。块名不能含冒号，命名空间归调用方识别。
 
+use std::collections::HashSet;
 use std::sync::Arc;
+
+use crate::telemetry::debug;
 
 /// 模板页名的前缀。带不带它都行（见 [`page_key`]）。
 pub const TEMPLATE_PREFIX: &str = "template";
@@ -96,6 +102,185 @@ pub fn page_for(name: &str) -> Option<TemplatePage> {
     crate::context::templates()?.page(&key)
 }
 
+/// 展开一层模板时保留的变量：正文、参数与模板名。
+///
+/// 这是 `{{@名字}}` 的来源。`{{名字}}` 是**早绑定**文本插值，`{{@名字}}` 是
+/// **晚绑定**参数引用：前者在模板文本替换时就没了，后者留到参数分词之后再取值，
+/// 所以值里有空格、引号、换行也不会破坏块头。
+#[derive(Debug, Clone)]
+pub(crate) struct TemplateVars {
+    pub(crate) name: String,
+    pub(crate) body: String,
+    pub(crate) params: Vec<(String, String)>,
+    pub(crate) parent: Option<Arc<TemplateVars>>,
+}
+
+impl TemplateVars {
+    pub(crate) fn new(
+        name: &str,
+        params: Vec<(String, String)>,
+        body: String,
+        parent: Option<Arc<TemplateVars>>,
+    ) -> Self {
+        TemplateVars {
+            name: name.to_string(),
+            body,
+            params,
+            parent,
+        }
+    }
+
+    /// 取一个变量；`body` / `template` 是保留名，参数同名时也不行。
+    pub(crate) fn lookup(&self, key: &str) -> Option<&str> {
+        match key {
+            "body" => Some(&self.body),
+            "template" => Some(&self.name),
+            _ => self
+                .params
+                .iter()
+                .find(|(name, _)| name == key)
+                .map(|(_, value)| value.as_str())
+                .or_else(|| self.parent.as_ref().and_then(|parent| parent.lookup(key))),
+        }
+    }
+}
+
+/// 把参数值里的 `{{@名字}}` 换掉。**在分词之后做**，所以值里有空白也不会再被切开。
+///
+/// 认不出的名字按空串处理（宽容模式）；严格模式由调用方另查。插入的值**不再扫一遍**，
+/// 与 `{{}}` 的单趟替换一致 —— 否则参数里写 `{{@other}}` 会被误当成引用执行。
+pub(crate) fn resolve_refs(params: Vec<(String, String)>) -> Vec<(String, String)> {
+    params
+        .into_iter()
+        .map(|(key, value)| (key, resolve_value(&value)))
+        .collect()
+}
+
+fn resolve_value(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(start) = rest.find("{{@") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 3..];
+        let Some(end) = after.find("}}") else {
+            // 没闭合：原样留着，让作者看见
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        let key = after[..end].trim();
+        match crate::context::template_var(key) {
+            Some(value) => out.push_str(&value),
+            None => debug!(name = key, "模板变量不存在，按空值处理"),
+        }
+        rest = &after[end + 2..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// 模板调用头的严格语法检查。**只查写法，不查参数含义**。
+///
+/// 普通内置块仍走宽松解析；模板调用（以及 `::if`）在解析成功之后再过这里：
+///
+/// - 等号两侧的空格一律忽略（`key=value` / `key = value` / `key= value` 同义）；
+/// - 参数名不能为空、不能含空白/控制字符/`:`/`=`，不能以 `@` 开头；
+/// - 同名参数只能出现一次。
+///
+/// 返回的那句话是给作者看的，调用方放进 `template--problem` 框。
+pub(crate) fn check_header(
+    name: &str,
+    line: &str,
+    params: &[(String, String)],
+) -> Result<(), String> {
+    let Some(tokens) = crate::registry::Block::header_tokens(line) else {
+        return Err("模板调用的头里有没闭合的引号。".to_string());
+    };
+    if tokens.is_empty() {
+        return Err("模板调用的名字是空的。".to_string());
+    }
+
+    let mut seen: HashSet<&str> = HashSet::new();
+    for (key, _) in params {
+        if key.is_empty() {
+            return Err("模板调用的参数名不能为空。".to_string());
+        }
+        if key == "=" {
+            return Err("模板调用的参数里出现了单独的 `=`；等号两边都要有东西。".to_string());
+        }
+        if key.starts_with('@') {
+            return Err(format!(
+                "模板调用的参数名 `{key}` 不能以 `@` 开头：`@` 保留给 `{{@名字}}`。"
+            ));
+        }
+        if key
+            .chars()
+            .any(|ch| ch.is_whitespace() || ch.is_control() || matches!(ch, ':' | '='))
+        {
+            return Err(format!(
+                "模板调用的参数名 `{key}` 不能含空白、控制字符、`:` 或 `=`。"
+            ));
+        }
+        if !seen.insert(key) {
+            return Err(format!("模板调用的参数 `{key}` 写了两次。"));
+        }
+    }
+
+    // `name` 只用于把话说全；名字的合法性由 `parse_header` 保证。
+    if name.is_empty() {
+        return Err("模板调用的名字是空的。".to_string());
+    }
+    Ok(())
+}
+
+/// 一个**看起来像模板调用、但头解析失败**的行：`(名字, 原因)`。
+///
+/// 只在名字能捞出来时返回。调用方再查这个名字是不是模板；不是就仍按普通段落走，
+/// 不改变 `::` 行在普通正文里的宽松行为。
+pub(crate) fn malformed_header(line: &str) -> Option<(String, String)> {
+    let name = loose_name(line)?;
+    let why = if crate::registry::Block::header_tokens(line).is_none() {
+        "模板调用的头里有没闭合的引号（或引号里的转义不完整）。".to_string()
+    } else {
+        "模板调用的名字无效：名字不能含 `=` 或 `:`。".to_string()
+    };
+    Some((name, why))
+}
+
+/// 从头行里尽量捞出名字：引号没闭合时也尽量取到第一个名字。
+fn loose_name(line: &str) -> Option<String> {
+    let rest = line.trim_start().strip_prefix("::")?.trim_start();
+    let first = rest.chars().next()?;
+    if matches!(first, '"' | '\'') {
+        let mut name = String::new();
+        let mut escaped = false;
+        for ch in rest[1..].chars() {
+            if escaped {
+                name.push(ch);
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' {
+                escaped = true;
+                continue;
+            }
+            if ch == first {
+                let name = name.trim();
+                return (!name.is_empty()).then(|| name.to_string());
+            }
+            name.push(ch);
+        }
+        // 引号一直没闭合：取到第一个空白为止，至少别把整行都当名字
+        let end = rest[1..]
+            .find(char::is_whitespace)
+            .map_or(rest.len(), |at| at + 1);
+        let name = rest[1..end].trim();
+        return (!name.is_empty()).then(|| name.to_string());
+    }
+    let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+    let name = rest[..end].trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +341,67 @@ mod tests {
     #[test]
     fn the_display_name_is_always_prefixed() {
         assert_eq!(display_name("卡片"), "template:卡片");
+    }
+
+    fn checked(line: &str) -> Result<(), String> {
+        let (name, params) = crate::registry::Block::parse_header(line).expect("头该解析得动");
+        check_header(&name, line, &params)
+    }
+
+    /// 等号两侧的空格全部忽略；规范写法与宽松写法都放行
+    #[test]
+    fn strict_headers_accept_spaces_around_equals() {
+        for line in [
+            r#"::卡片 title=甲 flag e="" f="" 标题="含 空格" a=1 b=2"#,
+            r#"::卡片 title = "含 空格" color = #0af"#,
+            r#"::卡片 title= "含 空格" color= #0af"#,
+            r#"::卡片 title ="含 空格" color ="红色""#,
+            r#"::卡片 condition-exist={{@body}} condition-not"#,
+        ] {
+            assert!(checked(line).is_ok(), "{line:?}：{:?}", checked(line));
+        }
+    }
+
+    /// 重复键、空键、`@` 键仍然在这里停下
+    #[test]
+    fn strict_headers_reject_the_real_misuses() {
+        for line in [
+            "::卡片 =x",
+            "::卡片 title=1 title=2",
+            r#"::卡片 "带 空格"=值"#,
+            "::卡片 @ref=值",
+        ] {
+            let error = checked(line).expect_err(line);
+            assert!(!error.is_empty(), "{line}");
+        }
+    }
+
+    /// 头里有没闭合的引号时也要捞得出名字，才能知道该不该报模板错误
+    #[test]
+    fn a_broken_header_still_yields_a_name() {
+        let (name, why) = malformed_header(r#"::卡片 title="没关上"#).expect("捞得出名字");
+        assert_eq!(name, "卡片");
+        assert!(why.contains("引号"), "{why}");
+
+        let (name, _) = malformed_header(r#"::"两 个词" title=甲"#).expect("引号名字也要认");
+        assert_eq!(name, "两 个词");
+    }
+
+    /// 晚绑定引用只替换 `{{@...}}`，且插入的值不再扫第二遍
+    #[test]
+    fn late_refs_are_replaced_once() {
+        let vars = Arc::new(TemplateVars::new(
+            "卡片",
+            vec![("标题".into(), "{{@标题}}".into())],
+            "正文".into(),
+            None,
+        ));
+        let _guard = crate::context::enter_template_vars(vars);
+        let params = resolve_refs(vec![
+            ("a".into(), "{{@标题}}".into()),
+            ("b".into(), "前 {{@body}} 后".into()),
+        ]);
+        assert_eq!(params[0].1, "{{@标题}}", "插入的值不该再展开一次");
+        assert_eq!(params[1].1, "前 正文 后");
     }
 }

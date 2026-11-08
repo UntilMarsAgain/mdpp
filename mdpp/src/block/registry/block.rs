@@ -1,4 +1,4 @@
-use super::tokenize::{pairs, tokenize};
+use super::tokenize::{pairs, tokenize, tokenize_meta};
 
 /// 块内容怎么处理。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -34,17 +34,30 @@ pub struct Block {
 impl Block {
     /// 解析头一行：`::名字 key=value …`。不是头就返回 `None`。
     ///
-    /// 名字必须紧跟 `::`，且不能含 `=` / `:`（那两个字符属于参数与「目标前缀」）。
-    /// 认出一个坏块比退回普通段落更糟。
+    /// 名字必须紧跟 `::`，且不能含 `=` / `:`。`::template:卡片` 不在这里特殊处理：
+    /// 它是普通段落；模板命名空间归调用方识别。
+    ///
+    /// **宽松**：认不出的头一律返回 `None`，由调用方决定是普通段落还是报错。
+    /// 模板调用要走严格检查时用内部的 `header_tokens` 与 `template::check_header`，
+    /// 不要在公共解析器里改变普通块的行为。
     pub fn parse_header(line: &str) -> Option<(String, Vec<(String, String)>)> {
         let rest = line.trim_start().strip_prefix("::")?;
-        let tokens = tokenize(rest)?;
-        let name = tokens.first()?;
-        if name.is_empty() || name.contains('=') || name.contains(':') {
+        let tokens = tokenize_meta(rest)?;
+        let name = &tokens.first()?.text;
+        if !valid_name(name) {
             return None;
         }
         let params = pairs(&tokens[1..]);
         Some((name.clone(), params))
+    }
+
+    /// 头行切成 token（名字也在里面）。**不校验名字**，交给调用方判断这是不是一块。
+    ///
+    /// 模板调用的严格检查要拿它看等号两侧的空格、重复参数名这些 [`Block`]
+    /// 已经无从得知的写法。
+    pub(crate) fn header_tokens(line: &str) -> Option<Vec<String>> {
+        let rest = line.trim_start().strip_prefix("::")?;
+        tokenize(rest)
     }
 
     /// 取一个参数
@@ -60,4 +73,10 @@ impl Block {
     pub fn has(&self, key: &str) -> bool {
         self.params.iter().any(|(name, _)| name == key)
     }
+}
+
+/// 块名：不能为空，不能含 `=` 或 `:`。`::template:卡片` 是**普通段落**，
+/// 模板命名空间是否识别由调用方自己决定。
+fn valid_name(name: &str) -> bool {
+    !name.is_empty() && !name.contains('=') && !name.contains(':')
 }

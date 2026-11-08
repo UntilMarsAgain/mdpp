@@ -1,35 +1,83 @@
+/// 一个头 token。除了文字，还记两件 `pairs` 需要的事：
+///
+/// - `unquoted_equals`：引号外的 `=` 有几个（`key="a=b"` 只有分隔符那一个）；
+/// - `ends_with_unquoted_equals`：最后一个字符是不是引号外的 `=`。
+///
+/// 有了它们，`f=""`、`key="a="`、`key= value`、`a="" b=""` 才不会互相混淆。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Token {
+    pub(super) text: String,
+    pub(super) unquoted_equals: usize,
+    pub(super) ends_with_unquoted_equals: bool,
+}
+
 /// 把头里的 token 收成 `key=value` 参数。
 ///
-/// 两种写法都认：
+/// 等号两侧的空格**一律忽略**：`key=value`、`key = value`、`key= value`、
+/// `key ="value"` 是同一个意思。切分按**第一个** `=` 来，所以 `key="a=b"` 的值
+/// 就是 `a=b`。
 ///
-/// - `key=value`（等号贴着）—— 按**第一个**切：`key="a=b"` 的值就是 `a=b`；
-/// - `key = value`（等号两侧留白）—— 两边的空白本来就被 [`tokenize`] 吃掉了，
-///   所以这里只需要把落单的 `=` 与它前后两个 token 拼回去。
-///
-/// 第二种是**必须**认的，不是顺手加的：`key = value` 会被切成 `key` / `=` / `value`
-/// 三个 token，而不带 `=` 的 token 算「开关式参数」，于是 `key` 静悄悄变成一个空值、
-/// 值整个丢掉 —— 写的人看到的是「参数没生效」，查不到是哪个字被吃掉了。
-pub(super) fn pairs(tokens: &[String]) -> Vec<(String, String)> {
+/// 只有一个歧义要特别处理：`a="" b=""` 里 `a=` 后面那个 `b=` 是**下一个参数**，
+/// 不是值。未加引号、里面又带 `=` 的 token 按「像另一个键」处理；真要把 `a=b`
+/// 当值，请加引号。
+pub(super) fn pairs(tokens: &[Token]) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::new();
     let mut index = 0;
     while let Some(token) = tokens.get(index) {
-        // `key = value`：等号是**下一个** token
-        if tokens.get(index + 1).is_some_and(|next| next == "=") {
+        // `key = value`：等号是**下一个** token（`tokenize` 已经吃掉了空白）
+        if tokens.get(index + 1).is_some_and(|next| next.text == "=") {
             // 再往后没有 token 时给空串：`key =` 是空值，不是「参数没给」
-            let value = tokens.get(index + 2).cloned().unwrap_or_default();
-            out.push((token.clone(), value));
+            let value = tokens
+                .get(index + 2)
+                .map(|next| next.text.clone())
+                .unwrap_or_default();
+            out.push((token.text.clone(), value));
             index += 3;
             continue;
         }
-        // 落单的 `=`：没有键可配，它自己就是个开关式参数
-        if token == "=" {
-            out.push((token.clone(), String::new()));
+
+        // `key= value` / `key= "value"`：等号贴在键上，值在下一个 token。
+        if token.text.len() > 1
+            && token.unquoted_equals == 1
+            && token.ends_with_unquoted_equals
+            && !token.text.starts_with('=')
+        {
+            let key = token.text[..token.text.len() - 1].to_string();
+            if let Some(next) = tokens.get(index + 1) {
+                // 文字以 `=` 结尾、而且那个 `=` 在引号外的下一个 token，更像
+                // `b=""` 这样的新键；`a=b` 与引号里的 `"x="` 仍然算值。
+                let looks_like_key = next.text.ends_with('=') && next.unquoted_equals > 0;
+                if !looks_like_key && next.text != "=" {
+                    out.push((key, next.text.clone()));
+                    index += 2;
+                    continue;
+                }
+            }
+            out.push((key, String::new()));
             index += 1;
             continue;
         }
-        match token.split_once('=') {
+
+        // `key =value` / `key ="value"`：等号贴在值上，键是前一个 token。
+        if token.unquoted_equals == 0 {
+            if let Some(next) = tokens.get(index + 1) {
+                if next.text.len() > 1 && next.text.starts_with('=') {
+                    out.push((token.text.clone(), next.text[1..].to_string()));
+                    index += 2;
+                    continue;
+                }
+            }
+        }
+
+        // 落单的 `=`：没有键可配，它自己就是个开关式参数
+        if token.text == "=" {
+            out.push((token.text.clone(), String::new()));
+            index += 1;
+            continue;
+        }
+        match token.text.split_once('=') {
             Some((key, value)) => out.push((key.to_string(), value.to_string())),
-            None => out.push((token.clone(), String::new())),
+            None => out.push((token.text.clone(), String::new())),
         }
         index += 1;
     }
@@ -43,15 +91,26 @@ pub(super) fn pairs(tokens: &[String]) -> Vec<(String, String)> {
 ///
 /// 引号没有配对就整行走不通：返回 `None`，这一行退回普通段落。
 pub fn tokenize(line: &str) -> Option<Vec<String>> {
+    tokenize_meta(line).map(|tokens| tokens.into_iter().map(|token| token.text).collect())
+}
+
+/// 与 [`tokenize`] 同一条扫描，但保留「这个 token 里出现过引号」这一位。
+///
+/// `pairs` 需要它来判断 `a="" b=""` 里的 `b=` 是下一个键而不是 `a` 的值；
+/// 公共的 [`tokenize`] 不需要，保持原来的 `Vec<String>` 形状。
+pub(super) fn tokenize_meta(line: &str) -> Option<Vec<Token>> {
     let mut tokens = Vec::new();
     let mut current = String::new();
     let mut started = false;
+    let mut unquoted_equals = 0usize;
+    let mut last_unquoted_equals = false;
     let mut quote: Option<char> = None;
     let mut chars = line.chars();
 
     while let Some(ch) = chars.next() {
         match quote {
             Some(closing) => {
+                last_unquoted_equals = false;
                 if ch == '\\' {
                     match chars.next() {
                         Some('\\') => current.push('\\'),
@@ -74,16 +133,30 @@ pub fn tokenize(line: &str) -> Option<Vec<String>> {
                     quote = Some(ch);
                     // `""` 是一个空值的 token，不是没有 token
                     started = true;
+                    last_unquoted_equals = false;
                 }
                 ch if ch.is_whitespace() => {
                     if started {
-                        tokens.push(std::mem::take(&mut current));
+                        tokens.push(Token {
+                            text: std::mem::take(&mut current),
+                            unquoted_equals,
+                            ends_with_unquoted_equals: last_unquoted_equals,
+                        });
                         started = false;
+                        unquoted_equals = 0;
+                        last_unquoted_equals = false;
                     }
+                }
+                '=' => {
+                    current.push(ch);
+                    started = true;
+                    unquoted_equals += 1;
+                    last_unquoted_equals = true;
                 }
                 ch => {
                     current.push(ch);
                     started = true;
+                    last_unquoted_equals = false;
                 }
             },
         }
@@ -93,7 +166,11 @@ pub fn tokenize(line: &str) -> Option<Vec<String>> {
         return None;
     }
     if started {
-        tokens.push(current);
+        tokens.push(Token {
+            text: current,
+            unquoted_equals,
+            ends_with_unquoted_equals: last_unquoted_equals,
+        });
     }
     Some(tokens)
 }

@@ -16,12 +16,14 @@
 //!   `html` / `js`），注册为 [`ContentMode::Raw`]，正文一个字符都不解析。
 //! - `callouts`：提示框（`note` / `tip` / `warning` / `danger` / `error`）。形状完全
 //!   一样，差别只是「哪一种」。
+//! - `control`：控制流（`if`）。按条件渲染 `[then]` / `[else]`，不产生自己的 DOM。
 //!
 //! 本文件另有三个多组共用的东西：`size_rule`（尺寸参数 → 一条 CSS 声明）、
 //! `normalize_hex`（`color=` 只认十六进制）与 `text_on`（底色 → 字色）。
 
 mod callouts;
 mod class;
+mod control;
 mod demo;
 mod embeds;
 mod flatlist;
@@ -36,6 +38,7 @@ use markdown_it::Node;
 
 use callouts::{render_danger, render_error, render_note, render_tip, render_warning};
 use class::render_class;
+use control::render_if;
 use demo::render_demo;
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
 use flatlist::render_flatlist;
@@ -92,6 +95,7 @@ pub const NAMES: &[&str] = &[
     "fold",
     "flatlist",
     "class",
+    "if",
     "indent",
     "navbox",
 ];
@@ -127,6 +131,7 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("fold", ContentMode::Markdown, render_fold))
         .register(spec("flatlist", ContentMode::Markdown, render_flatlist))
         .register(spec("class", ContentMode::Markdown, render_class))
+        .register(spec("if", ContentMode::Sections, render_if))
         .register(spec("indent", ContentMode::Markdown, render_indent))
         .register(spec("navbox", ContentMode::Sections, render_navbox));
 }
@@ -265,6 +270,8 @@ mod tests {
                 "flatlist" => format!("::{name}\n  * 正文\n"),
                 // class 需要 class= 参数，indent 需要 indent= 参数
                 "class" => format!("::{name} class=foo\n  内容\n"),
+                // if 至少要一节 [then]；用字面量条件，不依赖模板作用域
+                "if" => format!("::{name} condition-exist=yes\n  [then]\n  内容\n"),
                 "indent" => format!("::{name} indent=1\n  内容\n"),
                 // navbox 要一个标题与一行分组，否则那个样子是「用法有问题」的框
                 "navbox" => format!("::{name} title=某导航框\n  [分类]\n  甲\n"),
@@ -292,6 +299,10 @@ mod tests {
         );
         assert_eq!(
             registry.get("columns").map(BlockSpec::mode),
+            Some(ContentMode::Sections)
+        );
+        assert_eq!(
+            registry.get("if").map(BlockSpec::mode),
             Some(ContentMode::Sections)
         );
         assert_eq!(
