@@ -13,7 +13,7 @@ use markdown_it::Node;
 use markdown_it::parser::block::{BlockRule, BlockState};
 
 use crate::block::dispatch::BlockNode;
-use crate::block::{Section, expand};
+use crate::block::{Section, expand, template};
 use crate::raw::raw_zones;
 use crate::registry::{self as reg, Block, ContentMode};
 
@@ -28,41 +28,43 @@ impl BlockRule for BlockScanner {
         if marker_indent < 0 {
             return None;
         }
-        let (name, params) = Block::parse_header(state.get_line(start))?;
+        let line = state.get_line(start);
 
-        // (相对块头的缩进, 行文本)：缩进要留着，块内容的层级靠它
-        // ---- 块边界在这里定规则 ----
-        //
-        // 三条规则：更深算块内；不更深即结束；**空行不直接结束**，要往后看一行 ——
-        // 后面还有更深的内容，这个空行才算块内。
-        let mut body_lines: Vec<(usize, &str)> = Vec::new();
-        let mut line = start + 1;
-        while line < state.line_max {
-            // 空行的 `line_indent` 是 0 而不是 -1，必须用 `is_empty` 单独判
-            let blank = state.is_empty(line) || state.line_indent(line) < 0;
-            if blank {
-                // 空行：只有后面还有更深的内容时才算块内，否则它属于块外
-                let next = (line + 1..state.line_max).find(|candidate| {
-                    !state.is_empty(*candidate) && state.line_indent(*candidate) >= 0
-                });
-                match next {
-                    Some(next) if state.line_indent(next) > marker_indent => {
-                        body_lines.push((0, ""));
-                        line += 1;
-                        continue;
-                    }
-                    _ => break,
-                }
-            }
-            if state.line_indent(line) <= marker_indent {
-                break;
-            }
-            let indent = state.line_indent(line).max(0) as usize;
-            body_lines.push((indent, state.get_line(line)));
-            line += 1;
+        // 头解析失败：普通块继续按段落回退；只有名字看起来是模板（或 `::if`）
+        // 时才把错误摆出来。模板调用的宽松回退正是这次要修掉的静默失败。
+        let Some((name, params)) = Block::parse_header(line) else {
+            return malformed_template_block(state, start, marker_indent, line);
+        };
+
+        let spec = reg::lookup(&name);
+        // 名字撞上内置块时按内置块算；内置块的头仍走原来的宽松回退。
+        let template_page = if spec.is_none() {
+            template::page_for(&name)
+        } else {
+            None
+        };
+        let is_template = template_page.is_some();
+        let strict = is_template || name == "if";
+
+        // 模板调用（以及新的 `::if`）在解析参数之前先把写法查一遍：
+        // `key= value` / 重复键 / 空键这些静默切错的写法在这里停下。
+        if strict && let Err(why) = template::check_header(&name, line, &params) {
+            let (body, next) = collect_body(state, start, marker_indent);
+            return Some((
+                expand::header_problem(&name, params, body, &why),
+                next - start,
+            ));
         }
 
-        let body = rebuild_body(&body_lines);
+        // `::if` 的条件要保留 `{{@名字}}` 到渲染时再查：只有在那里才能区分
+        // 「变量不存在」与「变量存在但为空」。其它块在分词之后就可以把晚绑定值填进去。
+        let params = if name == "if" {
+            params
+        } else {
+            template::resolve_refs(params)
+        };
+
+        let (body, next) = collect_body(state, start, marker_indent);
         // `text=…` 给了就以它为准（`::banner` 那种一条横条，正文与参数二选一）。
         // 它也要能写 markdown，所以和块内容走同一条路。
         //
@@ -74,20 +76,17 @@ impl BlockRule for BlockScanner {
             None => body.clone(),
         };
 
-        let spec = reg::lookup(&name);
-
         // **用户自定义块**：名字不在注册表里，就去模板页里找同名的一页。找得到就把那一页
         // 的正文填好参数、当这一块的内容解析 —— 模板里照样能写 markdown、能嵌别的块。
         //
         // 内置的优先：名字撞上时按内置的算（不然 `::quote` 会被某个同名页顶掉）。
         let Some(spec) = spec else {
-            if let Some(node) =
-                expand::expand_user_block(&name, params.clone(), body.clone(), state)
-            {
-                return Some((node, line - start));
-            }
-            let block = Block { name, params, body };
-            return Some((Node::new(BlockNode(block)), line - start));
+            let Some(page) = template_page else {
+                let block = Block { name, params, body };
+                return Some((Node::new(BlockNode(block)), next - start));
+            };
+            let node = expand::expand_user_block(&name, params, body, page, state);
+            return Some((node, next - start));
         };
 
         let block = Block { name, params, body };
@@ -122,8 +121,72 @@ impl BlockRule for BlockScanner {
                 node.children = std::mem::take(&mut parsed.children);
             }
         }
-        Some((node, line - start))
+        Some((node, next - start))
     }
+}
+
+/// 把块内容收成 `(body, 下一行)`。
+///
+/// 模板头写坏时也要走这里：不消费块内容的话，正文会被 markdown 当成块外的一段，
+/// 错误框和内容就分家了。
+fn collect_body(state: &BlockState, start: usize, marker_indent: i32) -> (String, usize) {
+    // (相对块头的缩进, 行文本)：缩进要留着，块内容的层级靠它
+    // ---- 块边界在这里定规则 ----
+    //
+    // 三条规则：更深算块内；不更深即结束；**空行不直接结束**，要往后看一行 ——
+    // 后面还有更深的内容，这个空行才算块内。
+    let mut body_lines: Vec<(usize, &str)> = Vec::new();
+    let mut line = start + 1;
+    while line < state.line_max {
+        // 空行的 `line_indent` 是 0 而不是 -1，必须用 `is_empty` 单独判
+        let blank = state.is_empty(line) || state.line_indent(line) < 0;
+        if blank {
+            // 空行：只有后面还有更深的内容时才算块内，否则它属于块外
+            let next = (line + 1..state.line_max).find(|candidate| {
+                !state.is_empty(*candidate) && state.line_indent(*candidate) >= 0
+            });
+            match next {
+                Some(next) if state.line_indent(next) > marker_indent => {
+                    body_lines.push((0, ""));
+                    line += 1;
+                    continue;
+                }
+                _ => break,
+            }
+        }
+        if state.line_indent(line) <= marker_indent {
+            break;
+        }
+        let indent = state.line_indent(line).max(0) as usize;
+        body_lines.push((indent, state.get_line(line)));
+        line += 1;
+    }
+    (rebuild_body(&body_lines), line)
+}
+
+/// 头写坏、但名字指向模板（或 `::if`）：收下正文，报「用法有问题」。
+fn malformed_template_block(
+    state: &BlockState,
+    start: usize,
+    marker_indent: i32,
+    line: &str,
+) -> Option<(Node, usize)> {
+    let (name, why) = template::malformed_header(line)?;
+    // `template:卡片` 这类带冒号的名字不是库的模板语法：它是普通段落。
+    // 命名空间归调用方识别，这里不替它猜。
+    if name.contains(':') {
+        return None;
+    }
+    let builtin = reg::lookup(&name).is_some();
+    let is_template = !builtin && template::page_for(&name).is_some();
+    if !(is_template || name == "if") {
+        return None;
+    }
+    let (body, next) = collect_body(state, start, marker_indent);
+    Some((
+        expand::header_problem(&name, Vec::new(), body, &why),
+        next - start,
+    ))
 }
 
 /// 拼回块内容：`(相对块头的缩进, 行文本)` → 去掉公共缩进后的文本。
@@ -226,7 +289,12 @@ fn section_label(line: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
     use super::split_sections;
+    use crate::RenderContext;
+    use crate::block::template::{TemplatePage, TemplateSource};
     use crate::engine::Mdpp;
 
     // 这一组测的是**块边界怎么划**，所以占位名必须挑一个**不在注册表里**的：注册表
@@ -325,6 +393,71 @@ mod tests {
         let html = render("::note\n  正文\n");
         assert!(html.contains("callout"), "{html}");
         assert!(!html.contains("template--unknown"), "{html}");
+    }
+
+    /// 模板调用的头写坏了要**报错**，不能退回普通段落；正文仍收在错误框里
+    #[test]
+    fn a_template_call_with_a_bad_header_is_reported() {
+        #[derive(Debug, Default)]
+        struct Pages(HashMap<String, TemplatePage>);
+        impl TemplateSource for Pages {
+            fn page(&self, name: &str) -> Option<TemplatePage> {
+                self.0.get(name).cloned()
+            }
+        }
+
+        let mut pages = Pages::default();
+        pages.0.insert(
+            "卡片".to_string(),
+            TemplatePage::Ready("CARD=[{{title}}]".to_string()),
+        );
+        let context = RenderContext::new().with_templates(Arc::new(pages));
+        let mdpp = Mdpp::new();
+
+        for source in [
+            "::卡片 title=\"没关上\n  正文\n",
+            "::卡片 title=1 title=2\n  正文\n",
+            "::卡片 =x\n  正文\n",
+        ] {
+            let html = mdpp.render_with(source, &context);
+            assert!(html.contains("template--problem"), "{source:?}：{html}");
+            assert!(!html.contains("<p>::卡片"), "{source:?}：{html}");
+            assert!(html.contains("正文"), "正文不该被吞：{source:?}：{html}");
+        }
+    }
+
+    /// 引号名字、`template:` 前缀、`key = value` 这些正常写法照旧可用
+    #[test]
+    fn a_template_call_with_a_canonical_header_still_works() {
+        #[derive(Debug, Default)]
+        struct Pages(HashMap<String, TemplatePage>);
+        impl TemplateSource for Pages {
+            fn page(&self, name: &str) -> Option<TemplatePage> {
+                self.0.get(name).cloned()
+            }
+        }
+
+        let mut pages = Pages::default();
+        pages.0.insert(
+            "卡片".to_string(),
+            TemplatePage::Ready("CARD=[{{title}}]".to_string()),
+        );
+        let context = RenderContext::new().with_templates(Arc::new(pages));
+        let mdpp = Mdpp::new();
+
+        for source in [
+            "::卡片 title = \"甲 乙\"\n",
+            "::卡片 title= \"甲 乙\"\n",
+            "::卡片 title =\"甲 乙\"\n",
+        ] {
+            let html = mdpp.render_with(source, &context);
+            assert!(html.contains("CARD=[甲 乙]"), "{source:?}：{html}");
+        }
+
+        // `template:` 不是库的语法：这一行仍是普通段落，和 `::卡片` 是两样东西
+        let prefixed = mdpp.render_with("::template:卡片 title=\"前缀\"\n", &context);
+        assert!(!prefixed.contains("CARD="), "{prefixed}");
+        assert!(prefixed.contains("::template:卡片"), "{prefixed}");
     }
 
     /// **围栏代码块里的 `[标签]` 不是标签。**

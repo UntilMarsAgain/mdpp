@@ -23,6 +23,7 @@ use std::sync::atomic::AtomicUsize;
 
 use super::render_context::RenderContext;
 use crate::block::registry::table::BlockRegistry;
+use crate::block::template::TemplateVars;
 use crate::runtime::asset::Sink;
 
 /// 「在渲染途中再渲染一段 markdown」的能力。
@@ -56,6 +57,11 @@ pub(crate) struct RenderEnv {
     pub(crate) variant_seq: Arc<AtomicUsize>,
     /// 模板展开层数
     pub(crate) depth: usize,
+    /// 当前模板作用域（`{{@名字}}` 的来源）；嵌套模板通过 `parent` 串起来
+    pub(crate) template_vars: Option<Arc<TemplateVars>>,
+    /// 在渲染途中再调 `render_nested` 的层数。它与 `depth` 分开：
+    /// `depth` 数模板展开，`render_depth` 数 `::demo` / `<markdown>` 这类渲染期嵌套。
+    pub(crate) render_depth: usize,
 }
 
 impl Default for RenderEnv {
@@ -68,6 +74,8 @@ impl Default for RenderEnv {
             variant: None,
             variant_seq: sequence(),
             depth: 0,
+            template_vars: None,
+            render_depth: 0,
         }
     }
 }

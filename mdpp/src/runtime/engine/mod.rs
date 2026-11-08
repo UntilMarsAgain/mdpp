@@ -46,6 +46,13 @@ use crate::registry::BlockRegistry;
 
 use self::render::{render_node_parts, render_parts};
 
+/// 渲染期嵌套（`::demo`、`<markdown>`、`::navbox` 的单元格）最多套这么多层。
+///
+/// 它与模板展开的 `MAX_TEMPLATE_DEPTH` 分开：模板展开数的是「模板套模板」，
+/// 这里数的是「渲染里再渲染」。两者都不数，`::demo` 里套一个会展开自己的模板
+/// 就能绕过模板深度保护，把进程栈打穿。
+const MAX_RENDER_DEPTH: usize = 16;
+
 /// 当次渲染里再渲染一段 markdown —— **沿用同一份上下文与注册表**。
 ///
 /// 不在渲染中时返回空串（而不是 panic）：净化器可以被单独调用，那一次没有
@@ -53,13 +60,33 @@ use self::render::{render_node_parts, render_parts};
 pub fn render_nested(source: &str) -> String {
     // 取出来再调：里面那次渲染会重新装一份自己的状态，不能占着借用
     let taken = crate::env::with(|env| env.nested.take()).flatten();
-    let out = match &taken {
-        Some(run) => run(source),
-        None => String::new(),
+    let Some(run) = taken else {
+        return String::new();
     };
-    if let Some(run) = taken {
-        crate::env::with(|env| env.nested = Some(run));
-    }
+
+    let exceeded = crate::env::with(|env| {
+        if env.render_depth >= MAX_RENDER_DEPTH {
+            true
+        } else {
+            env.render_depth += 1;
+            false
+        }
+    })
+    .unwrap_or(false);
+
+    let out = if exceeded {
+        format!(
+            "<div class=\"template template--problem\"><p class=\"template__why\">\
+             嵌套渲染超过 {MAX_RENDER_DEPTH} 层（是不是自己嵌自己？）</p></div>"
+        )
+    } else {
+        let out = run(source);
+        // 只有真的进过一层才退一层；超限那一次没有加，不能把外层的数也扣掉
+        crate::env::with(|env| env.render_depth = env.render_depth.saturating_sub(1));
+        out
+    };
+
+    crate::env::with(|env| env.nested = Some(run));
     out
 }
 
@@ -171,6 +198,8 @@ impl Mdpp {
             variant: None,
             variant_seq: crate::env::sequence(),
             depth: 0,
+            template_vars: None,
+            render_depth: 0,
         };
         let _guard = crate::env::enter(env);
         parse_markdown(&self.parser, source)

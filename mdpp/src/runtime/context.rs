@@ -20,14 +20,19 @@
 
 use std::sync::Arc;
 
-use crate::block::template::TemplatePages;
+use crate::block::template::{TemplatePages, TemplateVars};
 use crate::link::LinkResolver;
 
 pub use super::render_context::RenderContext;
 
-/// 用户模板最多套这么多层（再多就当是转圈了）。超限时给的是一句说明而不是硬展开
-/// —— 见 [`crate::block::expand`]。
-pub const MAX_TEMPLATE_DEPTH: usize = 12;
+/// 用户模板的**默认**嵌套上限。超限时给的是一句说明而不是硬展开 —— 见
+/// [`crate::block::expand`]。调用方可以通过
+/// [`RenderContext::with_max_template_depth`](crate::RenderContext::with_max_template_depth)
+/// 改；命令行与站点配置也各有一个入口。
+///
+/// 64 而不是更小：嵌套 navbox 这类「同名块里再放同名块」是正当用法，不能把递归
+/// 本身当错误。
+pub const MAX_TEMPLATE_DEPTH: usize = super::render_context::DEFAULT_MAX_TEMPLATE_DEPTH;
 
 /// 取当次渲染的上下文副本。渲染规则在回调里用这个问「现在用的是哪个解析器」。
 pub fn current() -> Option<RenderContext> {
@@ -44,13 +49,73 @@ pub fn templates() -> Option<TemplatePages> {
     crate::env::with(|env| env.context.templates().cloned()).flatten()
 }
 
+/// 当前模板作用域（最内层）。
+pub(crate) fn template_vars() -> Option<Arc<TemplateVars>> {
+    crate::env::with(|env| env.template_vars.clone()).flatten()
+}
+
+/// 取一个模板变量。存在但为空也返回 `Some("")` —— `condition-defined` 靠这个
+/// 与「变量根本不存在」区分开。
+pub(crate) fn template_var(name: &str) -> Option<String> {
+    crate::env::with(|env| {
+        env.template_vars
+            .as_ref()
+            .and_then(|vars| vars.lookup(name))
+            .map(str::to_string)
+    })
+    .flatten()
+}
+
+/// 进入一层模板作用域；出栈时还原外层作用域。
+pub(crate) struct TemplateVarsGuard {
+    previous: Option<Arc<TemplateVars>>,
+    had_state: bool,
+}
+
+impl Drop for TemplateVarsGuard {
+    fn drop(&mut self) {
+        if self.had_state {
+            let previous = self.previous.take();
+            crate::env::with(|env| env.template_vars = previous);
+        } else {
+            crate::env::set(None);
+        }
+    }
+}
+
+/// 装上模板作用域，返回用完自动还原的守卫。
+pub(crate) fn enter_template_vars(vars: Arc<TemplateVars>) -> TemplateVarsGuard {
+    let mut pending = Some(vars);
+    let mut previous = None;
+    let had_state = crate::env::with(|env| {
+        previous = env.template_vars.replace(pending.take().expect("只取一次"));
+    })
+    .is_some();
+    if !had_state {
+        crate::env::set(Some(crate::env::RenderEnv {
+            template_vars: pending,
+            ..Default::default()
+        }));
+    }
+    TemplateVarsGuard {
+        previous,
+        had_state,
+    }
+}
+
+/// 当次渲染的模板嵌套上限（没有上下文时用默认值）。
+pub(crate) fn max_template_depth() -> usize {
+    crate::env::with(|env| env.context.max_template_depth()).unwrap_or(MAX_TEMPLATE_DEPTH)
+}
+
 /// 现在展开到第几层
 pub fn depth() -> usize {
     crate::env::with(|env| env.depth).unwrap_or(0)
 }
 
 /// 深一层地做一件事（用完还原）。用户模板可以嵌用户模板 —— 一个转圈的模板（甲嵌乙、
-/// 乙嵌甲）会一直展开下去，所以每展开一层记一笔，超过 [`MAX_TEMPLATE_DEPTH`] 就不展开。
+/// 乙嵌甲）会一直展开下去，所以每展开一层记一笔；超过当次
+/// [`RenderContext`](crate::RenderContext) 给的上限就不展开。
 pub fn deeper<T>(run: impl FnOnce() -> T) -> T {
     let existed = crate::env::with(|env| env.depth += 1).is_some();
     if !existed {
