@@ -1,4 +1,4 @@
-//! 两个基础包装块：`::surface` 与 `::element`。
+//! 三个基础包装块：`::surface`、`::element` 与 `::style-vars`。
 //!
 //! - `::surface` 是**只负责样式值的盒子**：颜色、字色、高度、缩进、圆角、紧凑模式
 //!   都经过校验；动态颜色与字色对比不可能由纯文本模板算出来，所以这一层留在 Rust。
@@ -8,8 +8,11 @@
 //!   这里的 `text=` 是**字色**（`auto` 或十六进制），不是正文替换；扫描器对
 //!   `surface` 不走 `text=` 那条正文捷径。
 //! - `::element` 是 `::class` 的替代品：可以选标签、挂 class、`role`、`aria-*` 与
-//!   `data-mdpp-*`，但不开放 `style` / `id` / 任意属性。模板需要结构时用它，不需要
-//!   为了一个类名再写一个 `::class`。
+//!   `data-mdpp-*`，并支持 `scope` / `colspan` / `rowspan` / `hidden` / `type`
+//!   这几样表格与按钮需要的受控属性；不开放 `style` / `id` / 任意属性。
+//! - `::style-vars` 是带受控 CSS 自定义属性的盒子：只接受 `--名字`，值只认
+//!   十六进制颜色与尺寸；`--名字-bg` 会自动补一个按亮度算出的 `--名字-fg`。
+//!   需要结构时用它，不需要为了一个颜色变量再写一个 Rust 块。
 //!
 //! 两者都只包内容，不改变内容本身的 markdown 解析。
 
@@ -245,6 +248,221 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
 }
 
 /// `::element tag=div|auto class=... role=... aria-*=... data-mdpp-*=... [inline=on]`
+/// `::style-vars` 里的一个声明。
+struct StyleVar {
+    name: String,
+    value: String,
+}
+
+fn css_var_name(name: &str) -> bool {
+    name.strip_prefix("--").is_some_and(|rest| {
+        !rest.is_empty()
+            && rest
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
+    })
+}
+
+/// 尺寸值：数字 + 白名单单位。与 `size_rule` 同一条安全边界。
+fn css_size(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    let digits: String = trimmed
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit() || *ch == '.')
+        .collect();
+    if digits.is_empty() || digits.parse::<f64>().is_err() {
+        return None;
+    }
+    let unit = &trimmed[digits.len()..];
+    if !matches!(unit, "" | "px" | "%" | "em" | "rem" | "vh" | "vw") {
+        return None;
+    }
+    Some(format!("{digits}{unit}"))
+}
+
+/// 自定义属性的值：颜色或尺寸；`-bg` / `-fg` 另有色彩配对规则。
+fn style_value(name: &str, value: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(format!("`::style-vars` 的 `{name}` 不能为空"));
+    }
+    if name.ends_with("-bg") {
+        return normalize_hex(value)
+            .ok_or_else(|| format!("`::style-vars` 的 `{name}` 只认 #rgb / #rrggbb"));
+    }
+    if name.ends_with("-fg") {
+        if value.eq_ignore_ascii_case("auto") {
+            return Ok("auto".to_string());
+        }
+        return normalize_hex(value)
+            .ok_or_else(|| format!("`::style-vars` 的 `{name}` 只认 #rgb / #rrggbb 或 auto"));
+    }
+    normalize_hex(value)
+        .or_else(|| css_size(value))
+        .ok_or_else(|| {
+            format!("`::style-vars` 的 `{name}` 只认 #rgb / #rrggbb 或数字加 px / % / em / rem / vh / vw")
+        })
+}
+
+fn fg_name(bg: &str) -> Option<String> {
+    bg.strip_suffix("-bg").map(|prefix| format!("{prefix}-fg"))
+}
+
+fn bg_name(fg: &str) -> Option<String> {
+    fg.strip_suffix("-fg").map(|prefix| format!("{prefix}-bg"))
+}
+
+/// 解析 `--名字=值` 的声明，并补出 `--名字-fg`。
+fn style_vars(block: &Block) -> Result<Vec<(String, String)>, String> {
+    let mut vars: Vec<StyleVar> = Vec::new();
+    let mut backgrounds: HashSet<String> = HashSet::new();
+    let mut foregrounds: HashSet<String> = HashSet::new();
+    let mut seen = HashSet::new();
+
+    for (key, value) in &block.params {
+        let Some(name) = key.strip_prefix("--") else {
+            continue;
+        };
+        if !seen.insert(key.as_str()) {
+            return Err(format!("`::style-vars` 的参数 `{key}` 写了两次"));
+        }
+        if !css_var_name(key) {
+            return Err(format!(
+                "`::style-vars` 的变量名要写成 --名字，只能含字母、数字、-、_：`{key}`"
+            ));
+        }
+        let value = style_value(key, value)?;
+        if name.ends_with("-bg") {
+            backgrounds.insert(key.clone());
+        }
+        if name.ends_with("-fg") {
+            foregrounds.insert(key.clone());
+        }
+        vars.push(StyleVar {
+            name: key.clone(),
+            value,
+        });
+    }
+
+    // `-fg=auto` 必须找得到对应的 `-bg`；先整批检查，避免写到一半才发现
+    for var in &vars {
+        if var.value != "auto" {
+            continue;
+        }
+        let Some(bg) = bg_name(&var.name) else {
+            return Err(format!(
+                "`::style-vars` 的 `{}` 写了 auto，但它不是 --名字-fg",
+                var.name
+            ));
+        };
+        if !backgrounds.contains(&bg) {
+            return Err(format!(
+                "`::style-vars` 的 `{}` 写了 auto，但没有对应的 `{bg}`",
+                var.name
+            ));
+        }
+    }
+
+    let mut out = Vec::new();
+    for var in vars {
+        if var.value == "auto" {
+            let bg = bg_name(&var.name).expect("上面已经检查过");
+            let Some(background) = block.param(&bg) else {
+                unreachable!("backgrounds 里已有它");
+            };
+            let Some(hex) = normalize_hex(background) else {
+                unreachable!("-bg 的值已经校验过");
+            };
+            out.push((var.name, text_on(&hex).to_string()));
+            continue;
+        }
+        let auto_fg =
+            var.name.ends_with("-bg") && !foregrounds.contains(&fg_name(&var.name).unwrap());
+        let auto_value = auto_fg.then(|| text_on(&var.value).to_string());
+        out.push((var.name.clone(), var.value));
+        if let (Some(fg), Some(value)) = (fg_name(&var.name), auto_value) {
+            out.push((fg, value));
+        }
+    }
+    Ok(out)
+}
+
+/// `::style-vars tag=div --demo-bg=#0055a4 class=...`
+pub(super) fn render_style_vars(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
+    if node.children.is_empty() {
+        render_problem(block, fmt, "内容是空的：::style-vars 要包裹点东西");
+        return;
+    }
+
+    let tag = match tag_of(block, ELEMENT_TAGS) {
+        Ok(tag) => tag,
+        Err(why) => {
+            render_problem(block, fmt, &why);
+            return;
+        }
+    };
+    let inline = fill::flag(block, "inline");
+
+    let vars = match style_vars(block) {
+        Ok(vars) => vars,
+        Err(why) => {
+            render_problem(block, fmt, &why);
+            return;
+        }
+    };
+    let style: String = vars
+        .iter()
+        .map(|(name, value)| format!("{name}: {value};"))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    let mut attrs: Vec<(&str, String)> = Vec::new();
+    let mut seen = HashSet::new();
+    for (key, value) in &block.params {
+        if !seen.insert(key.as_str()) {
+            render_problem(
+                block,
+                fmt,
+                &format!("`::style-vars` 的参数 `{key}` 写了两次"),
+            );
+            return;
+        }
+        match key.as_str() {
+            "tag" | "inline" => {}
+            "class" => {
+                if !value.trim().is_empty() {
+                    attrs.push(("class", value.trim().to_string()));
+                }
+            }
+            "role" => attrs.push(("role", value.clone())),
+            key if key.starts_with("aria-") => attrs.push((key, value.clone())),
+            key if key.starts_with("data-mdpp-") => attrs.push((key, value.clone())),
+            key if key.starts_with("--") => {}
+            _ => {
+                render_problem(
+                    block,
+                    fmt,
+                    &format!(
+                        "`::style-vars` 不认参数 `{key}`：只允许 tag / class / inline / role / aria-* / data-mdpp-* / --变量"
+                    ),
+                );
+                return;
+            }
+        }
+    }
+    if !style.is_empty() {
+        attrs.push(("style", style));
+    }
+
+    fmt.cr();
+    fmt.open(tag, &attrs);
+    fmt.cr();
+    contents(node, fmt, inline);
+    fmt.cr();
+    fmt.close(tag);
+    fmt.cr();
+}
+
 pub(super) fn render_element(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     if node.children.is_empty() {
         render_problem(block, fmt, "内容是空的：::element 要包裹点东西");
@@ -276,6 +494,62 @@ pub(super) fn render_element(block: &Block, node: &Node, fmt: &mut dyn Renderer)
                 }
             }
             "role" => attrs.push(("role", value.clone())),
+            "scope" => {
+                let value = value.trim();
+                if tag != "th" || !matches!(value, "row" | "col" | "rowgroup" | "colgroup") {
+                    render_problem(
+                        block,
+                        fmt,
+                        "`::element` 的 scope= 只认 th 上的 row / col / rowgroup / colgroup",
+                    );
+                    return;
+                }
+                attrs.push(("scope", value.to_string()));
+            }
+            "colspan" | "rowspan" => {
+                if !matches!(tag, "td" | "th") {
+                    render_problem(
+                        block,
+                        fmt,
+                        "`::element` 的 colspan= / rowspan= 只能用在 td / th 上",
+                    );
+                    return;
+                }
+                let Some(number) = value
+                    .trim()
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|n| *n > 0 && *n <= 1000)
+                else {
+                    render_problem(
+                        block,
+                        fmt,
+                        "`::element` 的 colspan= / rowspan= 只认 1 到 1000 的整数",
+                    );
+                    return;
+                };
+                attrs.push((key, number.to_string()));
+            }
+            "hidden" => match on_off(Some(value), false) {
+                Ok(true) => attrs.push(("hidden", String::new())),
+                Ok(false) => {}
+                Err(()) => {
+                    render_problem(block, fmt, "`::element` 的 hidden= 只认 on / off");
+                    return;
+                }
+            },
+            "type" => {
+                let value = value.trim().to_lowercase();
+                if tag != "button" || !matches!(value.as_str(), "button" | "submit" | "reset") {
+                    render_problem(
+                        block,
+                        fmt,
+                        "`::element` 的 type= 只认 button 标签上的 button / submit / reset",
+                    );
+                    return;
+                }
+                attrs.push(("type", value));
+            }
             key if key.starts_with("aria-") || key.starts_with("data-mdpp-") => {
                 attrs.push((key, value.clone()));
             }
@@ -284,7 +558,7 @@ pub(super) fn render_element(block: &Block, node: &Node, fmt: &mut dyn Renderer)
                     block,
                     fmt,
                     &format!(
-                        "`::element` 不认参数 `{key}`：只允许 tag / class / inline / role / aria-* / data-mdpp-*"
+                        "`::element` 不认参数 `{key}`：只允许 tag / class / inline / role / aria-* / data-mdpp-* / scope / colspan / rowspan / hidden / type"
                     ),
                 );
                 return;
@@ -546,6 +820,95 @@ mod tests {
                 html.contains("template--problem"),
                 "tag={tag} 不该放行：{html}"
             );
+        }
+    }
+
+    /// 表格与按钮需要的受控属性：只在该标签上放行，值也要校验
+    #[test]
+    fn element_carries_table_and_button_attributes() {
+        let html = render(
+            "::element tag=td colspan=2 rowspan=3 hidden=on
+  格
+",
+        );
+        assert!(
+            html.contains(r#"<td colspan="2" rowspan="3" hidden="">"#),
+            "{html}"
+        );
+
+        let th = render(
+            "::element tag=th scope=row
+  行头
+",
+        );
+        assert!(th.contains(r#"<th scope="row">"#), "{th}");
+
+        let button = render(
+            "::element tag=button type=button
+  按钮
+",
+        );
+        assert!(button.contains(r#"<button type="button">"#), "{button}");
+
+        let off = render(
+            "::element tag=div hidden=off
+  正文
+",
+        );
+        assert!(!off.contains("hidden"), "{off}");
+    }
+
+    /// 属性放错标签或值不合法都报错
+    #[test]
+    fn element_refuses_misplaced_table_and_button_attributes() {
+        for source in [
+            "::element tag=div colspan=2\n  正文\n",
+            "::element tag=div scope=row\n  正文\n",
+            "::element tag=div type=button\n  正文\n",
+            "::element tag=td colspan=0\n  正文\n",
+            "::element tag=td scope=bad\n  正文\n",
+            "::element tag=div hidden=也许\n  正文\n",
+        ] {
+            let html = render(source);
+            assert!(html.contains("template--problem"), "{source:?}: {html}");
+        }
+    }
+
+    /// `style-vars` 只落受控自定义属性；`-bg` 自动补 `-fg`
+    #[test]
+    fn style_vars_validate_and_auto_pick_text_colour() {
+        let auto = render("::style-vars --demo-bg=#0055a4\n  正文\n");
+        assert!(auto.contains("--demo-bg: #0055a4;"), "{auto}");
+        assert!(auto.contains("--demo-fg: #f5f5f5;"), "{auto}");
+
+        let explicit = render(
+            "::style-vars --demo-bg=#0055a4 --demo-fg=#000 --gap=1.5rem tag=div class=box data-mdpp-state=expanded\n  正文\n",
+        );
+        assert!(explicit.contains("--demo-bg: #0055a4;"), "{explicit}");
+        assert!(explicit.contains("--demo-fg: #000000;"), "{explicit}");
+        assert!(explicit.contains("--gap: 1.5rem;"), "{explicit}");
+        assert!(explicit.contains(r#"class="box""#), "{explicit}");
+        assert!(
+            explicit.contains(r#"data-mdpp-state="expanded""#),
+            "{explicit}"
+        );
+        assert!(!explicit.contains("--demo-fg: #f5f5f5"), "{explicit}");
+    }
+
+    /// 颜色与尺寸之外的值、缺失的 auto 背景、未知参数都拒绝
+    #[test]
+    fn style_vars_refuse_unsafe_values() {
+        for source in [
+            "::style-vars --demo=red\n  正文\n",
+            "::style-vars --demo-bg=2px\n  正文\n",
+            "::style-vars --demo-fg=auto\n  正文\n",
+            "::style-vars --demo=url(//x)\n  正文\n",
+            "::style-vars color=red\n  正文\n",
+            "::style-vars --demo-bg=#fff --demo-bg=#000\n  正文\n",
+            "::style-vars --demo-bg=#fff\n",
+        ] {
+            let html = render(source);
+            assert!(html.contains("template--problem"), "{source:?}: {html}");
         }
     }
 

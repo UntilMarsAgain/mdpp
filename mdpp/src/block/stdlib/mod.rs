@@ -18,8 +18,10 @@
 //!   `html` / `js`），注册为 [`ContentMode::Raw`]，正文一个字符都不解析。
 //! - `control`：控制流（`if`）。按条件渲染 `[then]` / `[else]`，不产生自己的 DOM。
 //! - `include`：`noinclude` / `includeonly` —— 页面直接渲染与模板引入两种语境。
-//! - `wrapper`：基础包装（`element` / `surface`）。前者选标签、挂受控属性，后者提供
-//!   经校验的底色、字色、尺寸与紧凑模式。
+//! - `inline`：把正文按行内 markdown 渲染，不产生外层元素。
+//! - `style-vars`：带受控 CSS 自定义属性的盒子；`--名字-bg` 自动补字色。
+//! - `wrapper`：基础包装（`element` / `surface` / `style-vars`）。`element` 选标签、挂
+//!   受控属性，`surface` 管单个盒子的外观，`style-vars` 管受控 CSS 自定义属性。
 //!
 //! `columns`、`fields`、`fold`、`theme`、`tabs`、`banner`、提示框 `note` / `tip` /
 //! `warning` / `danger` / `error` 与 `aside` 已迁到标准库模板。
@@ -33,6 +35,7 @@ mod disclose;
 mod each;
 mod embeds;
 mod include;
+mod inline;
 mod media;
 mod navbox;
 mod rows;
@@ -48,12 +51,13 @@ use disclose::render_disclose;
 use each::render_each;
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
 use include::{render_includeonly, render_noinclude};
+use inline::render_inline;
 use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;
 use rows::render_rows;
 use text::render_text;
 use variants::render_variants;
-use wrapper::{render_element, render_surface};
+use wrapper::{render_element, render_style_vars, render_surface};
 
 use crate::registry::{Block, BlockRegistry, BlockSpec, ContentMode};
 
@@ -86,7 +90,9 @@ pub const NAMES: &[&str] = &[
     "element",
     "if",
     "includeonly",
+    "inline",
     "noinclude",
+    "style-vars",
     "surface",
     "text",
     "navbox",
@@ -115,7 +121,9 @@ pub fn register(registry: &mut BlockRegistry) {
             ContentMode::Markdown,
             render_includeonly,
         ))
+        .register(spec("inline", ContentMode::Raw, render_inline))
         .register(spec("noinclude", ContentMode::Markdown, render_noinclude))
+        .register(spec("style-vars", ContentMode::Markdown, render_style_vars))
         .register(spec("surface", ContentMode::Markdown, render_surface))
         .register(spec("text", ContentMode::Raw, render_text))
         .register(spec("navbox", ContentMode::Sections, render_navbox))
@@ -265,6 +273,9 @@ mod tests {
                 "element" => format!("::{name} class=foo\n  内容\n"),
                 // includeonly 在页面直接渲染时是空输出，但不算用法问题
                 "includeonly" | "noinclude" => format!("::{name}\n  正文一行\n"),
+                "inline" => format!("::{name}\n  正文一行\n"),
+                // style-vars 要一个颜色变量与正文
+                "style-vars" => format!("::{name} --demo-bg=#0055a4\n  正文一行\n"),
                 // if 至少要一节 [then]；用字面量条件，不依赖模板作用域
                 "if" => format!("::{name} condition-exist=yes\n  [then]\n    内容\n"),
                 // surface 包一层带 class 的盒子
@@ -309,7 +320,9 @@ mod tests {
             registry.get("disclose").map(BlockSpec::mode),
             Some(ContentMode::Markdown)
         );
-        for name in ["code", "math", "html", "css", "js", "mermaid", "text"] {
+        for name in [
+            "code", "math", "html", "css", "js", "mermaid", "inline", "text",
+        ] {
             assert_eq!(
                 registry.get(name).map(BlockSpec::mode),
                 Some(ContentMode::Raw),

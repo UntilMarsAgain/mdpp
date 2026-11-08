@@ -55,7 +55,16 @@
   生成按钮栏与 `hidden` 面板，每节的 `::css` / `::js` 按选项延迟挂载；`theme` /
   `tabs` 现在是它上面的两层标准库模板。类名、按钮文字与默认标题全部由模板给。
 - `columns` / `fields` / `fold` / `theme` / `tabs` / `indent` 从 Rust 内置块迁成标准库
-  模板；新增 `disclose` / `variants` / `each` / `rows` 四个原语，内置块最终是 21 个。
+  模板；新增 `disclose` / `variants` / `each` / `rows` / `inline` / `style-vars` 六个
+  原语，内置块最终是 23 个。
+- 新增行内渲染原语 `::inline`：只取单段行内 HTML，不产生 `<p>`，可用于标题、
+  标签和组名。
+- 新增 `::style-vars`：只接受 `--名字` 形式的 CSS 自定义属性，值限定为颜色与尺寸；
+  `--名字-bg` 自动按亮度补 `--名字-fg`，并与 `::surface` 的单盒子外观分工。
+- `::element` 增加受控的 `scope` / `colspan` / `rowspan` / `hidden` / `type`，并保留
+  `aria-*` / `data-mdpp-*` 白名单。
+- `::each` 增加 `min=` / `max=` / `nonempty` / `check`，可以在模板顶部做预检，
+  不输出内容。
 - 新增 `::noinclude` / `::includeonly`：按当前有没有模板作用域判断，页面直接渲染时
   只输出 `noinclude`，作为模板引入时只输出 `includeonly`；两者都是透明的 Markdown
   容器，参数会报用法问题。

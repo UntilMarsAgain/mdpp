@@ -47,6 +47,9 @@
 //! - `only=甲,乙`：只遍历这些标签；
 //! - `skip=above,below`：跳过这些标签；
 //! - `required`：过滤后一节不剩就报用法问题；
+//! - `min=` / `max=`：过滤后的节数范围；
+//! - `nonempty`：每一节的正文都不能为空；
+//! - `check`：只做上面的校验，不渲染模板；
 //! - `name=` / `empty-why=`：诊断框里显示的名字与空列表时的那句话。
 //!
 //! `each` 自己不产生外层 DOM，类名和结构全部由模板片段决定。
@@ -63,13 +66,27 @@ use crate::context;
 use crate::registry::Block;
 
 /// `::each` 认的全部参数。
-const PARAMS: &[&str] = &["as", "only", "skip", "required", "name", "empty-why"];
+const PARAMS: &[&str] = &[
+    "as",
+    "only",
+    "skip",
+    "required",
+    "min",
+    "max",
+    "nonempty",
+    "check",
+    "name",
+    "empty-why",
+];
 
 struct Params<'a> {
     as_name: &'a str,
     only: Option<&'a str>,
     skip: Option<&'a str>,
-    required: bool,
+    min: usize,
+    max: Option<usize>,
+    nonempty: bool,
+    check: bool,
     name: &'a str,
     empty_why: &'a str,
 }
@@ -92,6 +109,10 @@ fn parse(block: &Block) -> Result<Params<'_>, String> {
     let mut only = None;
     let mut skip = None;
     let mut required = false;
+    let mut min = 0usize;
+    let mut max = None;
+    let mut nonempty = false;
+    let mut check = false;
     let mut name = "each";
     let mut empty_why = "没有可遍历的分节";
 
@@ -114,6 +135,21 @@ fn parse(block: &Block) -> Result<Params<'_>, String> {
             "only" => only = present(value),
             "skip" => skip = present(value),
             "required" => required = fill::flag(block, "required"),
+            "min" | "max" => {
+                let Some(value) = present(value) else {
+                    return Err(format!("`::each` 的 {key}= 不能为空"));
+                };
+                let Some(number) = value.parse::<usize>().ok() else {
+                    return Err(format!("`::each` 的 {key}= 只认非负整数"));
+                };
+                if key == "min" {
+                    min = number;
+                } else {
+                    max = Some(number);
+                }
+            }
+            "nonempty" => nonempty = fill::flag(block, "nonempty"),
+            "check" => check = fill::flag(block, "check"),
             "name" => name = present(value).unwrap_or("each"),
             "empty-why" => empty_why = present(value).unwrap_or("没有可遍历的分节"),
             other => {
@@ -125,11 +161,23 @@ fn parse(block: &Block) -> Result<Params<'_>, String> {
         }
     }
 
+    if required && min == 0 {
+        min = 1;
+    }
+    if let Some(max) = max
+        && min > max
+    {
+        return Err(format!("`::each` 的 min= 不能大于 max=：{min} > {max}"));
+    }
+
     Ok(Params {
         as_name,
         only,
         skip,
-        required,
+        min,
+        max,
+        nonempty,
+        check,
         name,
         empty_why,
     })
@@ -176,7 +224,7 @@ pub(super) fn render_each(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
             return;
         }
     };
-    if template.trim().is_empty() {
+    if template.trim().is_empty() && !params.check {
         render_problem(
             &named(block, params.name),
             fmt,
@@ -200,10 +248,31 @@ pub(super) fn render_each(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         .iter()
         .filter(|item| keep(&item.label, &params))
         .collect();
-    if items.is_empty() {
-        if params.required {
-            render_problem(&named(block, params.name), fmt, params.empty_why);
-        }
+    if items.len() < params.min {
+        render_problem(&named(block, params.name), fmt, params.empty_why);
+        return;
+    }
+    if let Some(max) = params.max
+        && items.len() > max
+    {
+        render_problem(
+            &named(block, params.name),
+            fmt,
+            &format!("`::each` 最多允许 {max} 节，这里是 {} 节", items.len()),
+        );
+        return;
+    }
+    if params.nonempty
+        && let Some(item) = items.iter().find(|item| item.body.trim().is_empty())
+    {
+        render_problem(
+            &named(block, params.name),
+            fmt,
+            &format!("`::each` 的 [{}] 是空的：这一节不能没有正文", item.label),
+        );
+        return;
+    }
+    if params.check || items.is_empty() {
         return;
     }
 
@@ -396,5 +465,25 @@ mod tests {
         let html = render_page("空", template, "::空\n");
         assert!(html.contains("template--problem"), "{html}");
         assert!(html.contains("没有数据"), "{html}");
+    }
+    /// `check` 只校验不输出；`max` / `min` / `nonempty` 都在写 DOM 前拦住
+    #[test]
+    fn check_validates_counts_and_empty_bodies_without_rendering() {
+        let check = "::each only=above max=1 check\n  [__template__]\n  [__data__]\n    {{body}}\n";
+        let ok = render_page("查", check, "::查\n  [above]\n    一行\n");
+        assert!(!ok.contains("template--problem"), "{ok}");
+        assert!(!ok.contains("一行"), "{ok}");
+
+        let too_many = render_page("查", check, "::查\n  [above]\n    一\n  [above]\n    二\n");
+        assert!(too_many.contains("template--problem"), "{too_many}");
+
+        let nonempty =
+            "::each only=header nonempty check\n  [__template__]\n  [__data__]\n    {{body}}\n";
+        let empty = render_page("查", nonempty, "::查\n  [header]\n\n  [header]\n    有字\n");
+        assert!(empty.contains("template--problem"), "{empty}");
+
+        let at_least = "::each skip=above,below,header min=1 check\n  [__template__]\n  [__data__]\n    {{body}}\n";
+        let none = render_page("查", at_least, "::查\n  [header]\n  只有通栏\n");
+        assert!(none.contains("template--problem"), "{none}");
     }
 }
