@@ -5,13 +5,13 @@
 //!
 //! 渲染器按**块内容怎么处理**分成几组：
 //!
-//! - `text`：`fields` 是逐行拆出来的属性表；`text` 是原样文本原语，正文不解析
-//!   markdown，只做 HTML 转义。`banner` / `aside` / `quote` / `title` / `signature`
-//!   等已迁到标准库模板。
+//! - `text`：原样文本原语，正文不解析 markdown，只做 HTML 转义。`fields` /
+//!   `banner` / `aside` / `quote` / `title` / `signature` 等已迁到标准库模板。
 //! - `media`：把一个文件摆出来（`image` / `video` / `audio`）。三者共用一套 `src=`
 //!   校验、尺寸上限与图注规矩。
 //! - `disclose`：一份正文 + 布尔状态的原生折叠原语，`fold` 由它加模板实现。
 //! - `each`：把一段模板套在分节上重复渲染，类名与结构全由模板片段决定。
+//! - `rows`：把一段模板套在「每行若干格」的原始行上，`fields` 用它做两列表格。
 //! - `variants`：N 份正文 + 选中状态的变体组原语，`theme` / `tabs` 由它加模板实现。
 //! - `navbox`：按 `[标签]` 分组的导航框；标签同时就是分组名。
 //! - `embeds`：把内容**原样写出去**的块（`code` / `mermaid` / `math` / `css` /
@@ -20,8 +20,8 @@
 //! - `wrapper`：基础包装（`element` / `surface`）。前者选标签、挂受控属性，后者提供
 //!   经校验的底色、字色、尺寸与紧凑模式。
 //!
-//! `columns`、`indent`、`fold`、`theme`、`tabs`、`banner`、提示框 `note` / `tip` /
-//! `warning` / `danger` / `error` 与 `aside` 已迁到标准库模板。
+//! `columns`、`fields`、`indent`、`fold`、`theme`、`tabs`、`banner`、提示框 `note` /
+//! `tip` / `warning` / `danger` / `error` 与 `aside` 已迁到标准库模板。
 //!
 //! 本文件另有三个多组共用的东西：`size_rule`（尺寸参数 → 一条 CSS 声明）、
 //! `normalize_hex`（`color=` 只认十六进制）与 `text_on`（底色 → 字色）。
@@ -33,6 +33,7 @@ mod each;
 mod embeds;
 mod media;
 mod navbox;
+mod rows;
 mod text;
 mod variants;
 mod wrapper;
@@ -46,7 +47,8 @@ use each::render_each;
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
 use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;
-use text::{render_fields, render_text};
+use rows::render_rows;
+use text::render_text;
 use variants::render_variants;
 use wrapper::{render_element, render_surface};
 
@@ -65,7 +67,7 @@ fn spec(
 /// 全部内置块的名字，按作者写下来的顺序。它与 [`register`] 里挂的那一批必须一致 ——
 /// `the_two_tables_agree` 盯着这件事。
 pub const NAMES: &[&str] = &[
-    "code", "fields", "image", "video", "audio", "css", "html", "js", "mermaid", "math",
+    "code", "rows", "image", "video", "audio", "css", "html", "js", "mermaid", "math",
     "demo", "disclose", "each", "element", "if", "surface", "text", "navbox", "variants",
 ];
 
@@ -73,7 +75,6 @@ pub const NAMES: &[&str] = &[
 pub fn register(registry: &mut BlockRegistry) {
     registry
         .register(spec("code", ContentMode::Raw, render_code))
-        .register(spec("fields", ContentMode::Raw, render_fields))
         .register(spec("image", ContentMode::Raw, render_image))
         .register(spec("video", ContentMode::Raw, render_video))
         .register(spec("audio", ContentMode::Raw, render_audio))
@@ -90,6 +91,7 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("surface", ContentMode::Markdown, render_surface))
         .register(spec("text", ContentMode::Raw, render_text))
         .register(spec("navbox", ContentMode::Sections, render_navbox))
+        .register(spec("rows", ContentMode::Sections, render_rows))
         .register(spec("variants", ContentMode::Sections, render_variants));
 }
 
@@ -227,6 +229,10 @@ mod tests {
                 "each" => format!(
                     "::{name}\n  [__template__]\n    {{{{@item.body}}}}\n  [__data__]\n    [甲]\n      正文一行\n"
                 ),
+                // rows 要模板节与至少一行数据
+                "rows" => format!(
+                    "::{name}\n  [__template__]\n    ::text\n      {{{{@row.0}}}}\n  [__data__]\n    甲|乙\n"
+                ),
                 // element 需要 class= 参数
                 "element" => format!("::{name} class=foo\n  内容\n"),
                 // if 至少要一节 [then]；用字面量条件，不依赖模板作用域
@@ -266,12 +272,14 @@ mod tests {
             Some(ContentMode::Sections)
         );
         assert_eq!(
+            registry.get("rows").map(BlockSpec::mode),
+            Some(ContentMode::Sections)
+        );
+        assert_eq!(
             registry.get("disclose").map(BlockSpec::mode),
             Some(ContentMode::Markdown)
         );
-        for name in [
-            "code", "math", "html", "css", "js", "mermaid", "fields", "text",
-        ] {
+        for name in ["code", "math", "html", "css", "js", "mermaid", "text"] {
             assert_eq!(
                 registry.get(name).map(BlockSpec::mode),
                 Some(ContentMode::Raw),

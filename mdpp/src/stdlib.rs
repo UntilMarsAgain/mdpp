@@ -5,7 +5,7 @@
 //!
 //! 目前从原 Rust 实用块迁出来的是 `small` / `title` / `quote` / `signature` /
 //! `flatlist` / `banner` / `aside` / `note` / `tip` / `warning` / `danger` / `error` /
-//! `fold` / `theme` / `tabs`；`callout` 是提示框共用的底模板，`problem` 是模板内部
+//! `columns` / `fields` / `fold` / `theme` / `tabs` / `indent`；`callout` 是提示框共用的底模板，`problem` 是模板内部
 //! 共用的诊断框。以后可迁移的基础块也放这里，外围标准库和项目模板都通过同样的
 //! [`TemplateSource`] 接口覆盖。
 //!
@@ -306,7 +306,8 @@ mod tests {
     /// `theme` / `tabs` 现在是 `variants` 上面的一层模板
     #[test]
     fn theme_and_tabs_use_the_variants_primitive() {
-        let tabs = crate::Mdpp::new().render("::tabs\n  [北岸]\n  走北路\n  [南岸]\n  走南路\n");
+        let tabs =
+            crate::Mdpp::new().render("::tabs\n  [北岸]\n    走北路\n  [南岸]\n    走南路\n");
         assert!(tabs.contains(r#"class="tabs__bar""#), "{tabs}");
         assert!(
             tabs.contains(r#"class="tabs__tab tabs__tab--on""#),
@@ -316,18 +317,90 @@ mod tests {
         assert!(tabs.contains("data-mdpp-option=\"0\""), "{tabs}");
         assert!(tabs.contains("hidden"), "{tabs}");
 
-        let theme = crate::Mdpp::new().render("::theme\n  [light]\n  浅色\n  [dark]\n  深色\n");
+        let theme = crate::Mdpp::new().render("::theme\n  [light]\n    浅色\n  [dark]\n    深色\n");
         assert!(theme.contains(r#"class="theme""#), "{theme}");
         assert!(theme.contains("theme__part theme__part--light"), "{theme}");
         assert!(theme.contains("theme__part theme__part--dark"), "{theme}");
         assert!(theme.contains("data-mdpp-control=\"theme\""), "{theme}");
 
-        let bad = crate::Mdpp::new().render("::theme\n  [blue]\n  没有这个主题\n");
+        let bad = crate::Mdpp::new().render("::theme\n  [blue]\n    没有这个主题\n");
         assert!(bad.contains("template--problem"), "{bad}");
         assert!(
             !bad.contains("class=\"theme\""),
             "坏标签不该留下半个容器：{bad}"
         );
+    }
+
+    /// `indent` 是 `surface indent=` 上面的一层模板：比例回到 CSS 的 `.indent`
+    #[test]
+    fn indent_uses_surface_and_the_css_variable() {
+        let html = crate::Mdpp::new().render("::indent indent=2\n  这里有**加粗**\n");
+        assert!(html.contains(r#"class="indent""#), "{html}");
+        assert!(html.contains("--mdpp-indent: 2;"), "{html}");
+        assert!(html.contains("<strong>加粗</strong>"), "{html}");
+
+        let boxed = crate::Mdpp::new().render("::indent indent=1 class=box\n  内容\n");
+        assert!(boxed.contains(r#"class="indent box""#), "{boxed}");
+        assert!(boxed.contains("--mdpp-indent: 1;"), "{boxed}");
+
+        let missing = crate::Mdpp::new().render("::indent\n  内容\n");
+        assert!(missing.contains("template--problem"), "{missing}");
+        assert!(missing.contains("indent= 缺失"), "{missing}");
+
+        let bad = crate::Mdpp::new().render("::indent indent=也许\n  内容\n");
+        assert!(bad.contains("template--problem"), "{bad}");
+
+        let empty = crate::Mdpp::new().render("::indent indent=1\n");
+        assert!(empty.contains("template--problem"), "{empty}");
+    }
+
+    /// `fields` 是 `rows max=2` 上面的一层表格模板
+    #[test]
+    fn fields_use_the_rows_template() {
+        let html = crate::Mdpp::new()
+            .render("::fields\n  地址 | 福建省某村\n  分类 | 古建筑\n  备注\n  公式 | 甲|乙\n\n");
+        assert!(html.contains(r#"<table class="fields">"#), "{html}");
+        assert!(
+            html.contains("地址") && html.contains("福建省某村"),
+            "{html}"
+        );
+        assert!(html.contains("备注"), "{html}");
+        assert_eq!(html.matches("<td>").count(), 4, "{html}");
+        // max=2：第一道 | 之后的内容都留在值里
+        assert!(html.contains("甲|乙"), "{html}");
+        assert!(!html.contains("template--problem"), "{html}");
+
+        let classed = crate::Mdpp::new().render("::fields class=attrs\n  甲 | 乙\n");
+        assert!(classed.contains(r#"class="fields attrs""#), "{classed}");
+
+        let empty = crate::Mdpp::new().render("::fields\n");
+        assert!(empty.contains(r#"<table class="fields">"#), "{empty}");
+        assert!(!empty.contains("template--problem"), "{empty}");
+    }
+
+    /// `columns` 现在是 `each` 上面的一层模板：栏头由 `labels=off` 关掉
+    #[test]
+    fn columns_use_the_each_template() {
+        let html =
+            crate::Mdpp::new().render("::columns\n  [写法]\n    这边写\n  [效果]\n    那边看\n");
+        assert_eq!(html.matches("class=\"columns__col\"").count(), 2, "{html}");
+        assert!(html.contains("columns__head"), "{html}");
+        assert!(html.contains("写法") && html.contains("效果"), "{html}");
+        assert!(html.contains("这边写") && html.contains("那边看"), "{html}");
+
+        let rich = crate::Mdpp::new().render("::columns\n  [一]\n    **加粗**\n");
+        assert!(rich.contains("<strong>加粗</strong>"), "{rich}");
+
+        let bare = crate::Mdpp::new().render("::columns labels=off\n  [一]\n    内容\n");
+        assert!(!bare.contains("columns__head"), "{bare}");
+        assert!(bare.contains("内容"), "{bare}");
+
+        let empty = crate::Mdpp::new().render("::columns\n");
+        assert!(empty.contains("template--problem"), "{empty}");
+        assert!(empty.contains("分栏是空的"), "{empty}");
+
+        let stray = crate::Mdpp::new().render("::columns\n  没写标签\n  [一]\n    正文\n");
+        assert!(stray.contains("template--problem"), "{stray}");
     }
 
     /// 提示框可以用 `collapsible` 变成 `disclose`；不写仍是原来的静态形状

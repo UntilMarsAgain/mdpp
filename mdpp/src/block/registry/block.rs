@@ -78,7 +78,35 @@ impl Block {
         self.params.iter().any(|(name, _)| name == key)
     }
 
+    /// 把正文逐行拆成单元格行。
+    ///
+    /// 空行跳过；每行按 `|` 拆成任意多格，单元格两边去空白。没有 `|` 的行是
+    /// 只有一格的行。值是**原文**，不解析 markdown —— 行表格的呈现由模板决定。
+    ///
+    /// 需要「只拆前 N 刀、剩下的 `|` 留在最后一格」时用 `Block::rows_limited`。
+    pub fn rows(&self) -> Vec<Vec<String>> {
+        self.rows_limited(None)
+    }
 
+    /// [`Block::rows`] 的限量版：`Some(n)` 时每行最多 `n` 格，第 `n` 格保留
+    /// 剩下的 `|`。`n` 必须大于 0（调用方负责校验）。
+    pub(crate) fn rows_limited(&self, max: Option<usize>) -> Vec<Vec<String>> {
+        self.body
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(|line| match max {
+                Some(max) => line
+                    .splitn(max, '|')
+                    .map(|cell| cell.trim().to_string())
+                    .collect(),
+                None => line
+                    .split('|')
+                    .map(|cell| cell.trim().to_string())
+                    .collect(),
+            })
+            .collect()
+    }
 }
 
 /// 块名：不能为空，不能含 `=` 或 `:`。`::template:卡片` 是**普通段落**，
