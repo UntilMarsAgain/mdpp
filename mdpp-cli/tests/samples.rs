@@ -115,7 +115,7 @@ fn the_tour_visits_every_builtin_block() {
         ("banner", r#"class="banner"#),
         ("element", r#"class="highlight""#),
         ("surface", r#"class="surface""#),
-        ("title", r#"class="title-block""#),
+        ("title", "title-block"),
         ("tabs", r#"class="tabs__bar""#),
         // 条件成立时 [then] 里的那句才会出现
         ("if", "条件成立时出现。"),
@@ -131,6 +131,7 @@ fn the_tour_visits_every_builtin_block() {
         ("audio", "<audio "),
         ("css", "<style>"),
         ("html", r#"class="card""#),
+        ("flatlist", "flatlist hlist"),
         ("js", "<script"),
         ("mermaid", r#"class="mermaid""#),
         ("math", "math--display"),

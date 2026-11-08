@@ -5,8 +5,8 @@
 //!
 //! 渲染器按**块内容怎么处理**分成五组：
 //!
-//! - `text`：只写文字的块（`quote` / `aside` / `title` …）。内容**照常按 markdown
-//!   解析**，参数只管外框的样子。
+//! - `text`：只写文字的块（`aside` / `banner` / `fields`）。内容**照常按 markdown
+//!   解析**，参数只管外框的样子；`quote` / `title` / `signature` 等已迁到标准库模板。
 //! - `media`：把一个文件摆出来（`image` / `video` / `audio`）。三者共用一套 `src=`
 //!   校验、尺寸上限与图注规矩。
 //! - `panels`：**按 `[标签]` 分节**的块（`tabs` / `theme` / `columns` / `navbox`）。
@@ -27,7 +27,6 @@ mod callouts;
 mod control;
 mod demo;
 mod embeds;
-mod flatlist;
 mod fold;
 mod indent;
 mod media;
@@ -42,21 +41,18 @@ use callouts::{render_danger, render_error, render_note, render_tip, render_warn
 use control::render_if;
 use demo::render_demo;
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
-use flatlist::render_flatlist;
 use fold::render_fold;
 use indent::render_indent;
 use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;
 use panels::{render_columns, render_tabs, render_theme};
-use text::{
-    render_aside, render_banner, render_fields, render_quote, render_signature, render_title,
-};
+use text::{render_aside, render_banner, render_fields};
 use wrapper::{render_element, render_surface};
 
 use crate::registry::{Block, BlockRegistry, BlockSpec, ContentMode};
 
 /// 一条注册项：把函数指针接成渲染器。参数收**函数指针**而不是 trait 对象，是为了
-/// 下面那串 `spec("quote", Markdown, render_quote)` 读起来就是一句话，不必每次装箱。
+/// 下面那串 `spec("aside", Markdown, render_aside)` 读起来就是一句话，不必每次装箱。
 fn spec(
     name: &str,
     mode: ContentMode,
@@ -68,48 +64,18 @@ fn spec(
 /// 全部内置块的名字，按作者写下来的顺序。它与 [`register`] 里挂的那一批必须一致 ——
 /// `the_two_tables_agree` 盯着这件事。
 pub const NAMES: &[&str] = &[
-    "quote",
-    "code",
-    "aside",
-    "fields",
-    "banner",
-    "title",
-    "tabs",
-    "theme",
-    "columns",
-    "image",
-    "video",
-    "audio",
-    "css",
-    "html",
-    "js",
-    "mermaid",
-    "math",
-    "demo",
-    "signature",
-    "note",
-    "tip",
-    "warning",
-    "danger",
-    "error",
-    "fold",
-    "flatlist",
-    "element",
-    "if",
-    "indent",
-    "surface",
-    "navbox",
+    "code", "aside", "fields", "banner", "tabs", "theme", "columns", "image", "video", "audio",
+    "css", "html", "js", "mermaid", "math", "demo", "note", "tip", "warning", "danger", "error",
+    "fold", "element", "if", "indent", "surface", "navbox",
 ];
 
 /// 把内置块灌进注册表。
 pub fn register(registry: &mut BlockRegistry) {
     registry
-        .register(spec("quote", ContentMode::Markdown, render_quote))
         .register(spec("code", ContentMode::Raw, render_code))
         .register(spec("aside", ContentMode::Markdown, render_aside))
         .register(spec("fields", ContentMode::Raw, render_fields))
         .register(spec("banner", ContentMode::Markdown, render_banner))
-        .register(spec("title", ContentMode::Markdown, render_title))
         .register(spec("tabs", ContentMode::Sections, render_tabs))
         .register(spec("theme", ContentMode::Sections, render_theme))
         .register(spec("columns", ContentMode::Sections, render_columns))
@@ -122,14 +88,12 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("mermaid", ContentMode::Raw, render_mermaid))
         .register(spec("math", ContentMode::Raw, render_math))
         .register(spec("demo", ContentMode::Raw, render_demo))
-        .register(spec("signature", ContentMode::Markdown, render_signature))
         .register(spec("note", ContentMode::Markdown, render_note))
         .register(spec("tip", ContentMode::Markdown, render_tip))
         .register(spec("warning", ContentMode::Markdown, render_warning))
         .register(spec("danger", ContentMode::Markdown, render_danger))
         .register(spec("error", ContentMode::Markdown, render_error))
         .register(spec("fold", ContentMode::Markdown, render_fold))
-        .register(spec("flatlist", ContentMode::Markdown, render_flatlist))
         .register(spec("element", ContentMode::Markdown, render_element))
         .register(spec("if", ContentMode::Sections, render_if))
         .register(spec("indent", ContentMode::Markdown, render_indent))
@@ -267,8 +231,6 @@ mod tests {
                 "theme" => format!("::{name}\n  [light]\n  正文一行\n"),
                 // 分栏与选项卡一样，每节都得有 [标签]，标签前不许有正文
                 "columns" => format!("::{name}\n  [甲]\n  正文一行\n"),
-                // flatlist 内容直接是列表，不分节，不需要 [标签]
-                "flatlist" => format!("::{name}\n  * 正文\n"),
                 // element 需要 class= 参数，indent 需要 indent= 参数
                 "element" => format!("::{name} class=foo\n  内容\n"),
                 // if 至少要一节 [then]；用字面量条件，不依赖模板作用域
@@ -309,7 +271,7 @@ mod tests {
             Some(ContentMode::Sections)
         );
         assert_eq!(
-            registry.get("quote").map(BlockSpec::mode),
+            registry.get("aside").map(BlockSpec::mode),
             Some(ContentMode::Markdown)
         );
         for name in ["code", "math", "html", "css", "js", "mermaid", "fields"] {

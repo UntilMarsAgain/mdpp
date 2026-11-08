@@ -3,9 +3,9 @@
 //! 这里放的是**库自己的**模板，不是项目里的 `templates/`，也不是文档站用的模板。
 //! 文件在编译期由 [`include_dir!`] 整个嵌进二进制，运行时不碰文件系统。
 //!
-//! 目前只有从原 Rust 实用块迁出来的 `small`：它等价于
-//! `::element class=small`。以后可迁移的基础块也放这里，外围标准库和项目模板
-//! 都通过同样的 [`TemplateSource`] 接口覆盖。
+//! 目前从原 Rust 实用块迁出来的是 `small` / `title` / `quote` / `signature` /
+//! `flatlist`。以后可迁移的基础块也放这里，外围标准库和项目模板都通过同样的
+//! [`TemplateSource`] 接口覆盖。
 //!
 //! 默认的 [`RenderContext`](crate::RenderContext) 已经带上这份来源；调用方用
 //! [`RenderContext::with_templates`](crate::RenderContext::with_templates) 叠加自己的
@@ -85,6 +85,35 @@ mod tests {
         let html = crate::Mdpp::new().render("::small class=note\n  小字 **加粗**\n");
         assert!(html.contains(r#"<div class="small note">"#), "{html}");
         assert!(html.contains("<strong>加粗</strong>"), "{html}");
+    }
+
+    /// 从 Rust 迁出来的基础块都能通过标准库模板工作
+    #[test]
+    fn migrated_basic_blocks_use_the_standard_library() {
+        let mdpp = crate::Mdpp::new();
+
+        let title = mdpp.render("::title\n  卷首的题名\n");
+        assert!(title.contains("title-block"), "{title}");
+        assert!(title.contains("卷首的题名"), "{title}");
+
+        let quote = mdpp.render("::quote origin=某人\n  引用内容\n");
+        assert!(quote.contains(r#"<blockquote class="quote">"#), "{quote}");
+        assert!(quote.contains("quote__origin"), "{quote}");
+        assert!(quote.contains("— 某人"), "{quote}");
+
+        let signature = mdpp.render("::signature\n  甲  \n  2026 年秋\n");
+        assert!(
+            signature.contains(r#"<div class="signature">"#),
+            "{signature}"
+        );
+        assert!(signature.contains("2026 年秋"), "{signature}");
+
+        let flatlist = mdpp.render("::flatlist\n  * 甲\n  * 乙\n");
+        assert!(
+            flatlist.contains(r#"<div class="flatlist hlist">"#),
+            "{flatlist}"
+        );
+        assert_eq!(flatlist.matches("<li>").count(), 2, "{flatlist}");
     }
 
     /// 调用方模板叠在标准库上面，同名时调用方赢

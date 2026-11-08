@@ -12,10 +12,12 @@
 
 use std::collections::HashSet;
 
+use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::{Node, Renderer};
 
 use super::super::dispatch::render_problem;
 use super::{hex_why, normalize_hex, size_rule, text_on};
+use crate::block::fill;
 use crate::registry::Block;
 
 /// `::surface` 可用的标签。样式盒子是块级容器，`span` 留给行内用法。
@@ -34,6 +36,7 @@ const ELEMENT_TAGS: &[&str] = &[
     "main",
     "figure",
     "figcaption",
+    "blockquote",
     "button",
     "table",
     "thead",
@@ -50,7 +53,7 @@ const ELEMENT_TAGS: &[&str] = &[
     "code",
 ];
 
-/// `::surface color=#0055a4 text=auto rounded=on height=120px mini=off class=...`
+/// `::surface color=#0055a4 text=auto rounded=on height=120px mini=off class=... [inline=on]`
 pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     if node.children.is_empty() {
         render_problem(block, fmt, "内容是空的：::surface 要包裹点东西");
@@ -142,7 +145,9 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
 
     if let Err(why) = only_params(
         block,
-        &["color", "text", "rounded", "height", "mini", "class", "tag"],
+        &[
+            "color", "text", "rounded", "height", "mini", "class", "tag", "inline",
+        ],
     ) {
         render_problem(block, fmt, &why);
         return;
@@ -162,13 +167,13 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
     fmt.cr();
     fmt.open(tag, &attrs);
     fmt.cr();
-    fmt.contents(&node.children);
+    contents(node, fmt, fill::flag(block, "inline"));
     fmt.cr();
     fmt.close(tag);
     fmt.cr();
 }
 
-/// `::element tag=div class=... role=... aria-*=... data-mdpp-*=...`
+/// `::element tag=div class=... role=... aria-*=... data-mdpp-*=... [inline=on]`
 pub(super) fn render_element(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     if node.children.is_empty() {
         render_problem(block, fmt, "内容是空的：::element 要包裹点东西");
@@ -187,7 +192,7 @@ pub(super) fn render_element(block: &Block, node: &Node, fmt: &mut dyn Renderer)
     let mut seen = HashSet::new();
     for (key, value) in &block.params {
         match key.as_str() {
-            "tag" => {}
+            "tag" | "inline" => {}
             "class" => {
                 if !value.trim().is_empty() {
                     attrs.push(("class", value.trim().to_string()));
@@ -202,7 +207,7 @@ pub(super) fn render_element(block: &Block, node: &Node, fmt: &mut dyn Renderer)
                     block,
                     fmt,
                     &format!(
-                        "`::element` 不认参数 `{key}`：只允许 tag / class / role / aria-* / data-mdpp-*"
+                        "`::element` 不认参数 `{key}`：只允许 tag / class / inline / role / aria-* / data-mdpp-*"
                     ),
                 );
                 return;
@@ -217,10 +222,22 @@ pub(super) fn render_element(block: &Block, node: &Node, fmt: &mut dyn Renderer)
     fmt.cr();
     fmt.open(tag, &attrs);
     fmt.cr();
-    fmt.contents(&node.children);
+    contents(node, fmt, fill::flag(block, "inline"));
     fmt.cr();
     fmt.close(tag);
     fmt.cr();
+}
+
+/// `inline=on` 时把单段正文直接写进行内，避免 `<p>` 里再套 `<p>`。
+fn contents(node: &Node, fmt: &mut dyn Renderer, inline: bool) {
+    if inline
+        && let [only] = node.children.as_slice()
+        && only.is::<Paragraph>()
+    {
+        fmt.contents(&only.children);
+    } else {
+        fmt.contents(&node.children);
+    }
 }
 
 /// 解析 `tag=`；没有就用 `div`，不在白名单里就报错。
@@ -331,6 +348,20 @@ mod tests {
             let html = render(source);
             assert!(html.contains("template--problem"), "{source:?}：{html}");
         }
+    }
+
+    /// `inline=on` 只把单段正文拆成行内，避免 `<p>` 套 `<p>`
+    #[test]
+    fn inline_unwraps_a_single_paragraph() {
+        let element = render("::element tag=p inline=on\n  文字\n");
+        assert!(element.contains("<p>"), "{element}");
+        assert!(element.contains("文字"), "{element}");
+        assert!(!element.contains("<p><p>"), "{element}");
+        assert_eq!(element.matches("<p>").count(), 1, "{element}");
+
+        let surface = render("::surface inline=on\n  文字\n");
+        assert!(surface.contains("surface"), "{surface}");
+        assert!(surface.contains("文字"), "{surface}");
     }
 
     /// 两者都保持内容按 markdown 解析
