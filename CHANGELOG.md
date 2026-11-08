@@ -38,6 +38,12 @@
 - 新增基础包装块 `::element`（替代 `::class`）与 `::surface`；前者支持受控的
   `tag` / `class` / `role` / `aria-*` / `data-mdpp-*`，后者提供经校验的底色、字色、
   尺寸、圆角与紧凑模式。
+- `::surface` 的 class 改为调用者拥有：写了 `class=` 就按原样使用，不再自动追加
+  `surface` 或 `surface--*`；高度、圆角、`mini` 改为行内样式。需要按参数有无切换
+  类名时由模板写 `::if`。
+- 新增原样文本原语 `::text`：正文不解析 markdown，只做 HTML 转义。
+- `::element` 白名单补充 `details` / `summary` / `dl` / `dt` / `dd` / `time` / `mark`
+  等安全结构标签；`a` / `img` / `video` 这类需要 URL 校验的标签仍不开放。
 - `mdpp/stdlib/` 通过 `include_dir!` 嵌入库自带的标准库模板；目前把原 Rust 实用块
   `small` / `title` / `quote` / `signature` / `flatlist` 迁成模板，默认
   `RenderContext` 已带上，项目 `templates/` 同名页优先覆盖。

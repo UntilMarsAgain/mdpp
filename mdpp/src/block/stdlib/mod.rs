@@ -3,10 +3,11 @@
 //! **有什么块只写在这一个文件** —— 名字在 [`NAMES`]、挂载在 [`register`]，两者由
 //! `the_two_tables_agree` 盯着。加一个块 = 写一个渲染器 + 在两处各加一行。
 //!
-//! 渲染器按**块内容怎么处理**分成五组：
+//! 渲染器按**块内容怎么处理**分成几组：
 //!
 //! - `text`：只写文字的块（`aside` / `banner` / `fields`）。内容**照常按 markdown
 //!   解析**，参数只管外框的样子；`quote` / `title` / `signature` 等已迁到标准库模板。
+//! - `plain`：`text` 是原样文本原语，正文不解析 markdown，只做 HTML 转义。
 //! - `media`：把一个文件摆出来（`image` / `video` / `audio`）。三者共用一套 `src=`
 //!   校验、尺寸上限与图注规矩。
 //! - `panels`：**按 `[标签]` 分节**的块（`tabs` / `theme` / `columns` / `navbox`）。
@@ -46,7 +47,7 @@ use indent::render_indent;
 use media::{render_audio, render_image, render_video};
 use navbox::render_navbox;
 use panels::{render_columns, render_tabs, render_theme};
-use text::{render_aside, render_banner, render_fields};
+use text::{render_aside, render_banner, render_fields, render_text};
 use wrapper::{render_element, render_surface};
 
 use crate::registry::{Block, BlockRegistry, BlockSpec, ContentMode};
@@ -66,7 +67,7 @@ fn spec(
 pub const NAMES: &[&str] = &[
     "code", "aside", "fields", "banner", "tabs", "theme", "columns", "image", "video", "audio",
     "css", "html", "js", "mermaid", "math", "demo", "note", "tip", "warning", "danger", "error",
-    "fold", "element", "if", "indent", "surface", "navbox",
+    "fold", "element", "if", "indent", "surface", "text", "navbox",
 ];
 
 /// 把内置块灌进注册表。
@@ -98,6 +99,7 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("if", ContentMode::Sections, render_if))
         .register(spec("indent", ContentMode::Markdown, render_indent))
         .register(spec("surface", ContentMode::Markdown, render_surface))
+        .register(spec("text", ContentMode::Raw, render_text))
         .register(spec("navbox", ContentMode::Sections, render_navbox));
 }
 
@@ -274,7 +276,9 @@ mod tests {
             registry.get("aside").map(BlockSpec::mode),
             Some(ContentMode::Markdown)
         );
-        for name in ["code", "math", "html", "css", "js", "mermaid", "fields"] {
+        for name in [
+            "code", "math", "html", "css", "js", "mermaid", "fields", "text",
+        ] {
             assert_eq!(
                 registry.get(name).map(BlockSpec::mode),
                 Some(ContentMode::Raw),

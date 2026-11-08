@@ -48,8 +48,8 @@
 </div>
 ```
 
-块一共 27 个，覆盖引用、提示框、条件渲染、信息栏、选项卡、深浅色主题、水平分栏、图片音视频、
-代码块、公式、mermaid 图、导航框、内联样式与原始 HTML。完整的巡览见
+块一共 28 个，覆盖引用、提示框、条件渲染、信息栏、选项卡、深浅色主题、水平分栏、图片音视频、
+代码块、公式、mermaid 图、导航框、原样文本、内联样式与原始 HTML。完整的巡览见
 [`examples/tour.mdpp`](examples/tour.mdpp)，块名清单见 `mdpp render --list-blocks`。
 
 ## 命令行
@@ -259,8 +259,10 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 迁入的是 `small` / `title` / `quote` / `signature` / `flatlist`；`::card`、`::panel`、
 `::main`、`::deprecated`、`::grammar`、`::example` 属于示例或文档项目，不是库标准库。
 
-基础包装块用 `::element`（替代原来的 `::class`）和 `::surface`（受控的底色/字色/
-尺寸盒子），外围模板可以由它们组合出来。
+基础包装块用 `::element`（替代原来的 `::class`）、`::surface`（受控的底色/字色/
+尺寸盒子）和 `::text`（正文原样输出，不解析 markdown），外围模板可以由它们组合出来。
+`::surface` 的 `class=` 归调用者：写了就按原样用，不再自动追加 `surface` 或
+`surface--*`；高度、圆角与 `mini` 会落成行内样式。
 
 ```mdpp
 ::if condition-exist={{@body}}

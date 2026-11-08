@@ -1,4 +1,4 @@
 ::tip title=提示
   模板页内容出现在下方
-::surface color=#0055a4 class=banner
+::surface color=#0055a4 class="surface banner"
   {{body}}
