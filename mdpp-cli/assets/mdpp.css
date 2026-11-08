@@ -411,6 +411,9 @@
 .mdpp-content .callout__details > summary.callout__title {
   cursor: pointer;
   list-style: none;
+  /* 折着时下面没有正文，标题的底部间距会变成一整块空白；展开时的间距由
+   * 正文第一项的 margin-top 给，两处不叠 */
+  margin-bottom: 0;
 }
 
 .mdpp-content .callout__details > summary.callout__title::-webkit-details-marker {
