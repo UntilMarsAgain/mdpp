@@ -253,3 +253,29 @@ fn registration_order_is_kept_for_listing() {
     registry.register_fn("m", ContentMode::Raw, noop);
     assert_eq!(registry.names(), vec!["z", "a", "m"]);
 }
+
+/// 行表格解析：空行跳过，按 `|` 拆，单元格 trim；限量版保留最后一格里的 `|`
+#[test]
+fn rows_split_cells_and_limited_rows_keep_the_tail() {
+    let block = Block {
+        name: "表格".into(),
+        params: Vec::new(),
+        body: "甲|乙|丙\n\n 丁 | 戊 \n没有分隔\n".into(),
+    };
+    assert_eq!(
+        block.rows(),
+        vec![
+            vec!["甲".to_string(), "乙".to_string(), "丙".to_string()],
+            vec!["丁".to_string(), "戊".to_string()],
+            vec!["没有分隔".to_string()],
+        ]
+    );
+    assert_eq!(
+        block.rows_limited(Some(2)),
+        vec![
+            vec!["甲".to_string(), "乙|丙".to_string()],
+            vec!["丁".to_string(), "戊".to_string()],
+            vec!["没有分隔".to_string()],
+        ]
+    );
+}

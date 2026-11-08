@@ -1,14 +1,7 @@
-//! 只写文字的块：`fields`，以及原样文本原语 `text`；
-//! `banner` / `aside` / `quote` / `title` / `signature` 已迁到标准库模板，见
-//! [`crate::stdlib`]。
+//! 原样文本原语：`text`。
 //!
-//! 除 `fields` 与 `text` 外，内容都**照常按 markdown 解析** —— 子节点已经挂在
-//! `node.children` 上，渲染器只管 `fmt.contents(&node.children)`，所以块里能写链接、
-//! 列表、内部链接，也能再嵌一个块。要「不解析」的块在 [`super::embeds`] 与
-//! [`render_text`]。
-//!
-//! `fields` 是本组唯一的例外：内容是**逐行拆出来**的属性表，值用原文 —— 它是
-//! 「查参数」用的，一行一项最清楚。
+//! 它不解析 markdown，也不产生自己的元素；需要外层结构时由模板用 `::element`
+//! 包住。`fields` 已迁到标准库模板，表格行由 [`super::rows`] 提供。
 
 use super::super::dispatch::render_problem;
 use crate::registry::Block;
@@ -32,39 +25,6 @@ pub(super) fn render_text(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 
     fmt.cr();
     fmt.text(text);
-    fmt.cr();
-}
-
-/// `::fields` —— 左右两栏的属性表：每行 `标签 | 值`。
-///
-/// 值用**原文**（不解析 markdown）。没有 `|` 的行把整行当标签、值留空 ——
-/// 宁可少一栏，也不丢作者写下的字。
-pub(super) fn render_fields(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
-    fmt.cr();
-    fmt.open("table", &[("class", "fields".to_string())]);
-    fmt.open("tbody", &[]);
-    for line in block.body.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let (label, value) = match line.split_once('|') {
-            Some((label, value)) => (label.trim(), value.trim()),
-            None => (line, ""),
-        };
-        fmt.cr();
-        fmt.open("tr", &[]);
-        fmt.open("th", &[]);
-        fmt.text(label);
-        fmt.close("th");
-        fmt.open("td", &[]);
-        fmt.text(value);
-        fmt.close("td");
-        fmt.close("tr");
-    }
-    fmt.cr();
-    fmt.close("tbody");
-    fmt.close("table");
     fmt.cr();
 }
 

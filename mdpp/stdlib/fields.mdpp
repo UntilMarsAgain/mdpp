@@ -1,0 +1,17 @@
+::element tag=table class="fields {{?@class}}"
+  ::element tag=tbody
+    ::rows max=2
+      [__template__]
+        ::element tag=tr
+          ::element tag=th
+            ::if condition-exist={{@row.0}}
+              [then]
+                ::text
+                  {{@row.0}}
+          ::element tag=td
+            ::if condition-exist={{?@row.1}}
+              [then]
+                ::text
+                  {{?@row.1}}
+      [__data__]
+        {{body}}
