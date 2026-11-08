@@ -9,6 +9,7 @@ fn page<'a>(body: &'a str, assets: Assets) -> Page<'a> {
         canonical: Canonical::default(),
         favicon: None,
         body,
+        toc: "",
         extra_css: &[],
         extra_js: &[],
         assets,
@@ -254,6 +255,50 @@ fn the_site_shell_only_shows_up_in_a_built_site() {
     // 判据是**类选择器**（那个点得带着）：调色板里有两条 `--mdpp-bar-*` 变量
     // 跟着 `mdpp.css` 进了每一页，可单文件页面里没有顶栏这回事
     assert!(!standalone.contains(".mdpp-bar"), "单文件页面不该带顶栏");
+}
+
+/// 站点页面把侧边目录摆在正文之前；单文件页面即使调用方递了目录也不该出现 ——
+/// 「有没有站点」由资源怎么进页面决定，不靠调用方记得传空串
+#[test]
+fn a_site_page_puts_the_sidebar_before_the_article_and_full_ignores_it() {
+    let toc = r#"<aside class="mdpp-toc mdpp-toc--wide">目录</aside>"#;
+    let html = document(&Page {
+        toc,
+        ..site_page("x")
+    });
+    let toc_at = html.find("mdpp-toc").expect("站点页面该有目录");
+    let article_at = html
+        .find(r#"<article class="mdpp-content">"#)
+        .expect("有正文");
+    assert!(toc_at < article_at, "目录该在正文之前：{html}");
+    assert!(html.contains(toc), "{html}");
+
+    let standalone = document(&Page {
+        toc,
+        ..page("x", Assets::Inline)
+    });
+    assert!(
+        !standalone.contains(r#"class="mdpp-toc"#),
+        "单文件页面不该带目录标记：{standalone}"
+    );
+}
+
+/// 没有可链接的标题时，外壳里不该留下一个空目录盒子
+#[test]
+fn a_site_page_without_a_sidebar_renders_no_toc_container() {
+    let html = document(&site_page("x"));
+    // 只认标记，不认样式里的类名：`mdpp.css` 总会带着 `.mdpp-toc` 那几条规则
+    assert!(!html.contains(r#"class="mdpp-toc"#), "{html}");
+}
+
+/// 版面那一半：宽屏时目录与正文并排，窄屏时改成一列
+#[test]
+fn the_site_shell_lays_the_sidebar_beside_the_article() {
+    let css = asset(SITE_CSS);
+    assert!(css.contains(".mdpp-main > .mdpp-toc--wide"), "{css}");
+    assert!(css.contains("flex: 0 0 14rem;"), "{css}");
+    assert!(css.contains("@media (max-width: 60rem)"), "{css}");
+    assert!(css.contains("flex-direction: column;"), "{css}");
 }
 
 /// 顶栏上是站点名、那句话说明与（给了的）仓库链接；站点名空就没有顶栏
@@ -873,6 +918,7 @@ fn the_template_still_has_the_placeholders_the_filler_fills() {
         "styles",
         "scripts",
         "bar",
+        "toc",
         "foot",
         "body",
     ] {
