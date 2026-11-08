@@ -23,6 +23,7 @@
 // ## 代码地图
 //
 // - [`block`]：`::` 方言的扫描、分发、模板展开、填充与内置块；
+// - [`stdlib`]：随库嵌入的标准库模板；
 // - [`engine`] / [`context`] / [`assets`]：一次渲染的构建、状态与资源；
 // - [`variants`]：按选项切换的变体组与延迟资源；
 // - [`link`]：内部链接的解析 trait；
@@ -89,6 +90,7 @@ mod support;
 
 pub mod block;
 pub mod link;
+pub mod stdlib;
 
 // 物理目录按职责分组（runtime / parse / block / api / support），
 // 根上的模块名保持稳定：`mdpp::engine`、`mdpp::context`、`mdpp::raw` 等旧路径照常可用。

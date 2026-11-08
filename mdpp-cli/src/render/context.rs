@@ -4,14 +4,12 @@
 //! 目录里的 `.mdpp` 就是模板页，不递归、不认别的扩展名、不按 front matter 分流。
 //! 更聪明的那部分应该写在**知道那些约定的地方**。
 //!
-//! 模板来源是两层：项目 `templates/` 优先，随二进制嵌入的 `stdlib/` 兜底；
-//! 两者同名时项目页覆盖标准库。
+//! 标准库模板在 `mdpp` 库里，默认的 `RenderContext` 已经带上；这里只负责把
+//! 项目的 `templates/` 叠到它上面。
 
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, OnceLock};
 
-use include_dir::{Dir, include_dir};
 use mdpp::block::template::{TemplatePage, TemplatePages, TemplateSource};
 use mdpp::link::{LinkResolver, LinkTarget, ResolvedLink};
 
@@ -51,74 +49,6 @@ impl TemplateSource for Pages {
     fn page(&self, name: &str) -> Option<TemplatePage> {
         self.0.get(name).cloned()
     }
-}
-
-/// 编译期嵌进来的标准库模板（`mdpp-cli/stdlib/`）。
-///
-/// 与 `site/`、`assets/` 同一条路：文件在源码里，运行时不必去找安装目录；
-/// 项目自己的 `templates/` 仍然优先，标准库只是兜底。
-static STDLIB: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/stdlib");
-
-/// 项目模板优先、标准库兜底的来源。
-#[derive(Debug)]
-struct Layered {
-    project: TemplatePages,
-    stdlib: TemplatePages,
-}
-
-impl TemplateSource for Layered {
-    fn page(&self, name: &str) -> Option<TemplatePage> {
-        self.project.page(name).or_else(|| self.stdlib.page(name))
-    }
-}
-
-/// 标准库模板表。只读一次，之后各处拿同一个 [`Arc`]。
-pub fn stdlib_template_pages() -> TemplatePages {
-    static PAGES: OnceLock<TemplatePages> = OnceLock::new();
-    Arc::clone(PAGES.get_or_init(|| Arc::new(embedded_pages())))
-}
-
-/// 把标准库与项目模板叠起来；`project` 为 `None` 就只用标准库。
-pub fn with_stdlib(project: Option<TemplatePages>) -> TemplatePages {
-    match project {
-        Some(project) => Arc::new(Layered {
-            project,
-            stdlib: stdlib_template_pages(),
-        }),
-        None => stdlib_template_pages(),
-    }
-}
-
-/// 读嵌入目录里的 `.mdpp`。顺序排一下，保证不同构建里的同名覆盖规则稳定。
-fn embedded_pages() -> Pages {
-    let mut files: Vec<_> = STDLIB.files().collect();
-    files.sort_by_key(|file| file.path());
-
-    let mut pages = Pages::default();
-    for file in files {
-        if !file
-            .path()
-            .extension()
-            .is_some_and(|extension| extension == TEMPLATE_SUFFIX)
-        {
-            continue;
-        }
-        let Some(stem) = file
-            .path()
-            .file_stem()
-            .map(|name| name.to_string_lossy().into_owned())
-        else {
-            continue;
-        };
-        let Some(text) = file.contents_utf8() else {
-            continue;
-        };
-        pages
-            .0
-            .insert(stem.to_lowercase(), TemplatePage::Ready(text.to_string()));
-    }
-    tracing::debug!(pages = pages.0.len(), "标准库模板已读入");
-    pages
 }
 
 /// 模板页文件的后缀。目录里带这个后缀的才是模板页，别的文件一律不认。
@@ -292,44 +222,25 @@ mod tests {
         assert!(template_pages(dir.path()).is_ok());
     }
 
-    /// 标准库是嵌进二进制的：不依赖项目目录，直接就能用
+    /// 默认上下文已经带库的 `small` 标准库模板
     #[test]
-    fn the_embedded_standard_library_is_available() {
-        let context = RenderContext::new().with_templates(stdlib_template_pages());
-        let mdpp = Mdpp::new();
-
-        let card = mdpp.render_with("::card title=卡片\n  正文\n", &context);
-        assert!(card.contains("std-card"), "{card}");
-        assert!(card.contains("<strong>卡片</strong>"), "{card}");
-
-        let main = mdpp.render_with("::main\n  某页\n", &context);
-        assert!(main.contains("主条目"), "{main}");
-        assert!(main.contains("某页"), "{main}");
-
-        let panel = mdpp.render_with("::panel title=标题\n  正文\n", &context);
-        assert!(panel.contains("tabs__bar"), "{panel}");
-        assert!(panel.contains("标题"), "{panel}");
-
-        let grammar = mdpp.render_with("::grammar\n  # 标题\n", &context);
-        assert!(grammar.contains("columns"), "{grammar}");
-        assert!(grammar.contains("template-code"), "{grammar}");
-
-        let example = mdpp.render_with("::example\n  正文\n", &context);
-        assert!(example.contains("callout--tip"), "{example}");
-        assert!(example.contains("surface banner"), "{example}");
+    fn the_default_context_has_the_library_standard_library() {
+        let context = RenderContext::new();
+        let html = Mdpp::new().render_with("::small\n  这里是小字\n", &context);
+        assert!(html.contains(r#"<div class="small">"#), "{html}");
+        assert!(html.contains("这里是小字"), "{html}");
     }
 
-    /// 项目模板优先，标准库只在同名页缺失时兜底
+    /// 项目模板优先，库标准库是兜底
     #[test]
     fn a_project_template_overrides_the_standard_library() {
         let dir = tempfile::tempdir().expect("造得出临时目录");
-        std::fs::write(dir.path().join("card.mdpp"), "OVERRIDE").expect("写得下");
+        std::fs::write(dir.path().join("small.mdpp"), "OVERRIDE").expect("写得下");
         let project = template_pages(dir.path()).expect("读得动");
-        let context = RenderContext::new().with_templates(with_stdlib(Some(project)));
+        let context = RenderContext::new().with_templates(project);
 
-        let html = Mdpp::new().render_with("::card title=x\n", &context);
+        let html = Mdpp::new().render_with("::small\n  正文\n", &context);
         assert!(html.contains("OVERRIDE"), "{html}");
-        assert!(!html.contains("std-card"), "{html}");
     }
 
     /// 大小写只差一点的两份模板不能静悄悄互相覆盖，谁赢要看文件系统脸色

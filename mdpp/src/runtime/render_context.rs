@@ -5,7 +5,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use crate::block::template::TemplatePages;
+use crate::block::template::{TemplatePage, TemplatePages, TemplateSource};
 use crate::link::LinkResolver;
 
 /// 用户模板默认最多嵌套多少层。
@@ -14,6 +14,19 @@ use crate::link::LinkResolver;
 /// `render --max-template-depth`，站点模式对应 `mdpp.toml` 的
 /// `max_template_depth`。
 pub const DEFAULT_MAX_TEMPLATE_DEPTH: usize = 64;
+
+/// 调用方模板优先、标准库兜底。
+#[derive(Debug)]
+struct LayeredTemplates {
+    primary: TemplatePages,
+    fallback: TemplatePages,
+}
+
+impl TemplateSource for LayeredTemplates {
+    fn page(&self, name: &str) -> Option<TemplatePage> {
+        self.primary.page(name).or_else(|| self.fallback.page(name))
+    }
+}
 
 /// 一次渲染里、解析器外面那几样东西。
 ///
@@ -29,7 +42,7 @@ impl Default for RenderContext {
     fn default() -> Self {
         RenderContext {
             links: None,
-            templates: None,
+            templates: Some(crate::stdlib::pages()),
             max_template_depth: DEFAULT_MAX_TEMPLATE_DEPTH,
         }
     }
@@ -46,7 +59,7 @@ impl fmt::Debug for RenderContext {
 }
 
 impl RenderContext {
-    /// 空上下文：所有内部链接都落成红链，所有非内置的 `::名字` 都按未知块处理。
+    /// 默认上下文：内部链接落成红链，标准库模板可用；标准库之外的名字按未知块处理。
     pub fn new() -> Self {
         Self::default()
     }
@@ -57,9 +70,24 @@ impl RenderContext {
         self
     }
 
-    /// 递进一份模板页来源（非内置的 `::名字` 去那里找同名页）。
+    /// 在现有来源之上叠加一份模板页来源；**调用方优先**，已有的标准库是兜底。
+    ///
+    /// 多次调用会一层层叠上去，后叠的优先。要完全关掉标准库用
+    /// [`Self::without_templates`]。
     pub fn with_templates(mut self, templates: TemplatePages) -> Self {
-        self.templates = Some(templates);
+        self.templates = Some(match self.templates.take() {
+            Some(fallback) => Arc::new(LayeredTemplates {
+                primary: templates,
+                fallback,
+            }),
+            None => templates,
+        });
+        self
+    }
+
+    /// 不要任何模板来源：非内置的 `::名字` 全部按未知块处理。
+    pub fn without_templates(mut self) -> Self {
+        self.templates = None;
         self
     }
 
