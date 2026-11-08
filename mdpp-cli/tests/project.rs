@@ -932,7 +932,7 @@ fn deferred_tab_assets_build_as_static_files() {
     let root = init(dir.path());
     std::fs::write(
         root.join("pages/index.mdpp"),
-        "# 首页\n\n::tabs\n  [北岸]\n  ::css\n    .north-only { color: red; }\n  ::js\n    console.log(\"north\");\n  [南岸]\n  ::css\n    .south-only { color: blue; }\n",
+        "# 首页\n\n::tabs\n  [北岸]\n    ::css\n      .north-only { color: red; }\n    ::js\n      console.log(\"north\");\n  [南岸]\n    ::css\n      .south-only { color: blue; }\n",
     )
     .expect("写得下");
 
@@ -979,7 +979,7 @@ fn deferred_tab_assets_stay_inline_in_a_full_page() {
     let dir = empty_dir();
     std::fs::write(
         dir.path().join("页.mdpp"),
-        "# 页\n\n::tabs\n  [一]\n  ::css\n    .only { color: red; }\n  ::js\n    console.log(\"one\");\n  [二]\n  ::js\n    console.log(\"two\");\n",
+        "# 页\n\n::tabs\n  [一]\n    ::css\n      .only { color: red; }\n    ::js\n      console.log(\"one\");\n  [二]\n    ::js\n      console.log(\"two\");\n",
     )
     .expect("写得下");
 

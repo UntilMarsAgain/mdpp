@@ -40,7 +40,7 @@
 //! });
 //!
 //! let mdpp = Mdpp::builder().registry(registry).build();
-//! let html = mdpp.render("::我的面板\n  [甲]\n  内容\n");
+//! let html = mdpp.render("::我的面板\n  [甲]\n    内容\n");
 //! assert!(html.contains(r#"class="mine""#), "{html}");
 //! ```
 

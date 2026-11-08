@@ -223,20 +223,20 @@ mod tests {
             let source = match *name {
                 "image" | "video" | "audio" => format!("::{name} src=x.png\n  注\n"),
                 // 分栏每节都得有 [标签]，标签前不许有正文
-                "columns" => format!("::{name}\n  [甲]\n  正文一行\n"),
+                "columns" => format!("::{name}\n  [甲]\n    正文一行\n"),
                 // 变体组至少要 control= 与一节 [标签]
-                "variants" => format!("::{name} control=choice\n  [甲]\n  正文一行\n"),
+                "variants" => format!("::{name} control=choice\n  [甲]\n    正文一行\n"),
                 // 折叠原语要一个标题；正文不能为空
                 "disclose" => format!("::{name} title=更多\n  正文一行\n"),
                 // element 需要 class= 参数，indent 需要 indent= 参数
                 "element" => format!("::{name} class=foo\n  内容\n"),
                 // if 至少要一节 [then]；用字面量条件，不依赖模板作用域
-                "if" => format!("::{name} condition-exist=yes\n  [then]\n  内容\n"),
+                "if" => format!("::{name} condition-exist=yes\n  [then]\n    内容\n"),
                 "indent" => format!("::{name} indent=1\n  内容\n"),
                 // surface 包一层带 class 的盒子
                 "surface" => format!("::{name} class=foo\n  内容\n"),
                 // navbox 要一个标题与一行分组，否则那个样子是「用法有问题」的框
-                "navbox" => format!("::{name} title=某导航框\n  [分类]\n  甲\n"),
+                "navbox" => format!("::{name} title=某导航框\n  [分类]\n    甲\n"),
                 _ => format!("::{name}\n  正文一行\n"),
             };
             let html = Mdpp::new().render(&source);

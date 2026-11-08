@@ -1,10 +1,10 @@
 ::surface color={{?@color}} class="surface std-card std-card--brand {{?@class}}"
   ::if condition-defined={{@title}}
     [then]
-    **{{?title}}**
+      **{{?title}}**
 
   {{body}}
 
   ::if condition-defined={{@extra}}
     [then]
-    {{?extra}}
+      {{?extra}}

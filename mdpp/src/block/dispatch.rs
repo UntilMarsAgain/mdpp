@@ -123,7 +123,8 @@ fn body_as_code(block: &Block, fmt: &mut dyn Renderer) {
 /// 取一个分节模板的几节：`(标签原样, 那一节的节点)`。
 ///
 /// 标签**不做大小写转换**：它是显示用的字（`[API]` 该照原样出现在选项卡上），
-/// 要按大小写不敏感地认标签的地方自己转。
+/// 要按大小写不敏感地认标签的地方自己转。分节由严格缩进扫描器产生，标签一定非空；
+/// 空标签、标签前正文这些情况在扫描阶段就已经报错。
 pub fn sections(node: &Node) -> Vec<(&str, &Node)> {
     node.children
         .iter()
@@ -133,26 +134,6 @@ pub fn sections(node: &Node) -> Vec<(&str, &Node)> {
                 .map(|section| (section.label.as_str(), child))
         })
         .collect()
-}
-
-/// 分节块的预检之一：`[标签]` **之前不许有正文**。
-///
-/// 三个分节块（`tabs` / `columns` / `navbox`）都得问这一句 —— 这种情形几乎总是**漏写
-/// 了方括号**（正文被当成了没有标签的那一节），所以句子里要点名「每一节都要以
-/// [标签] 开头」。三个地方各写各的措辞的话，改一处就只改得了一处
-///
-/// `what` 是块的显示名（「选项卡」「分栏」「导航框」），句子的主语。
-/// `Err` 是要摆给作者看的那一句，调用方拿去 [`render_problem`]。
-///
-/// **「一节都没有」不在这里**：那句话各块说的不是一件事 —— 分栏要的是「每一节」，
-/// 导航框要的是「一个分组都没有（通栏撑不起一个框）」，合成一句反而都说不清
-pub(crate) fn no_leading_content(sections: &[(&str, &Node)], what: &str) -> Result<(), String> {
-    if sections.iter().any(|(label, _)| label.is_empty()) {
-        return Err(format!(
-            "有内容写在第一个 [标签] 之前：{what}的每一节都要以 [标签] 开头"
-        ));
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -183,7 +164,7 @@ mod tests {
         assert!(!unknown.contains("template--problem"), "{unknown}");
 
         // 名字是注册过的，错在用法：`[link]` 后面没写页面名
-        let problem = Mdpp::new().render("::navbox title=x\n  [link]\n  甲\n");
+        let problem = Mdpp::new().render("::navbox title=x\n  [link]\n    甲\n");
         assert!(problem.contains("template--problem"), "{problem}");
         assert!(!problem.contains("template--unknown"), "{problem}");
         assert!(problem.contains("template__why"), "{problem}");

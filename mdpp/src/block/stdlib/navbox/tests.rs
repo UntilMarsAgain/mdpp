@@ -7,7 +7,7 @@ fn render(src: &str) -> String {
 /// 一张两列的表：左边分组名、右边内容 —— 与 `::fields` 同一个骨架
 #[test]
 fn it_is_a_two_column_table_like_fields() {
-    let html = render("::navbox title=桥梁\n  [分类]\n  * [[拱桥]]\n");
+    let html = render("::navbox title=桥梁\n  [分类]\n    * [[拱桥]]\n");
     assert!(html.contains(r#"<table class="navbox__table">"#), "{html}");
     assert!(
         html.contains(r#"<th class="navbox__group" scope="row">分类</th>"#),
@@ -20,7 +20,7 @@ fn it_is_a_two_column_table_like_fields() {
 /// **`[标签]` 就是分组名** —— 不另配参数
 #[test]
 fn the_label_is_the_group_title() {
-    let html = render("::navbox title=桥梁\n  [收录标准]\n  甲\n");
+    let html = render("::navbox title=桥梁\n  [收录标准]\n    甲\n");
     assert!(html.contains("收录标准"), "{html}");
     // 组名**不**从参数里来
     assert!(
@@ -33,7 +33,7 @@ fn the_label_is_the_group_title() {
 /// 分组名可以**乱写**：不像编号也不像保留字，就是显示用的那几个字
 #[test]
 fn a_group_name_is_whatever_the_author_wrote() {
-    let html = render("::navbox title=x\n  [2024 年的条目]\n  甲\n  [B 组 · 补充]\n  乙\n");
+    let html = render("::navbox title=x\n  [2024 年的条目]\n    甲\n  [B 组 · 补充]\n    乙\n");
     assert!(!html.contains("template--problem"), "{html}");
     assert!(html.contains("2024 年的条目"), "{html}");
     assert!(html.contains("B 组 · 补充"), "{html}");
@@ -44,7 +44,7 @@ fn a_group_name_is_whatever_the_author_wrote() {
 #[test]
 fn a_group_name_may_repeat_under_each_header() {
     let html = render(
-        "::navbox title=x\n  [header]\n  基本原则\n  [基本原则]\n  甲\n  [header]\n  内容方针\n  [基本原则]\n  乙\n",
+        "::navbox title=x\n  [header]\n    基本原则\n  [基本原则]\n    甲\n  [header]\n    内容方针\n  [基本原则]\n    乙\n",
     );
     assert!(!html.contains("template--problem"), "{html}");
     assert_eq!(html.matches("navbox__head").count(), 2, "{html}");
@@ -61,8 +61,9 @@ fn a_group_name_may_repeat_under_each_header() {
 /// `[header]` 是一条横跨两列的通栏，落在作者写它的那两行之间
 #[test]
 fn a_header_is_a_full_width_row_between_them() {
-    let html =
-        render("::navbox title=求问百科\n  [header]\n  基本原则\n  [甲组]\n  甲\n  [乙组]\n  乙\n");
+    let html = render(
+        "::navbox title=求问百科\n  [header]\n    基本原则\n  [甲组]\n    甲\n  [乙组]\n    乙\n",
+    );
     assert!(html.contains(r#"colspan="2""#), "{html}");
     assert!(html.contains("基本原则"), "{html}");
     // 通栏横跨两列，里面**没有**分组名也没有列表 —— 按 `</tr>` 切出那一行来断，
@@ -88,12 +89,12 @@ fn a_header_is_a_full_width_row_between_them() {
 /// `[header]` 不带编号；带编号的是老写法，要指出该写什么
 #[test]
 fn a_header_takes_no_number() {
-    let ok = render("::navbox title=x\n  [header]\n  甲\n  [分组]\n  乙\n");
+    let ok = render("::navbox title=x\n  [header]\n    甲\n  [分组]\n    乙\n");
     assert!(!ok.contains("template--problem"), "{ok}");
 
     // 带数字的（从维基照搬过来的）不认，且提示要说清改成什么
     for bad in ["header1", "header0", "header2"] {
-        let html = render(&format!("::navbox title=x\n  [{bad}]\n  甲\n"));
+        let html = render(&format!("::navbox title=x\n  [{bad}]\n    甲\n"));
         assert!(html.contains("template--problem"), "{bad} -> {html}");
         assert!(html.contains("不用编号"), "{bad} -> {html}");
         assert!(html.contains("[header]"), "{bad} -> {html}");
@@ -107,7 +108,7 @@ fn a_header_takes_no_number() {
 #[test]
 fn a_header_may_appear_many_times() {
     let html = render(
-        "::navbox title=x\n  [header]\n  甲\n  [一组]\n  一\n  [header]\n  乙\n  [二组]\n  二\n",
+        "::navbox title=x\n  [header]\n    甲\n  [一组]\n    一\n  [header]\n    乙\n  [二组]\n    二\n",
     );
     assert!(!html.contains("template--problem"), "{html}");
     assert_eq!(html.matches("navbox__head").count(), 2, "{html}");
@@ -123,7 +124,7 @@ fn a_header_may_appear_many_times() {
 /// 空通栏报错（它就是它的标题，没有标题等于没有）
 #[test]
 fn an_empty_header_is_refused() {
-    let empty = render("::navbox title=x\n  [header]\n  [分组]\n  甲\n");
+    let empty = render("::navbox title=x\n  [header]\n  [分组]\n    甲\n");
     assert!(empty.contains("template--problem"), "{empty}");
     assert!(empty.contains("是空的"), "{empty}");
     assert!(!empty.contains("navbox__table"), "不渲染半截：{empty}");
@@ -133,7 +134,7 @@ fn an_empty_header_is_refused() {
 #[test]
 fn above_sits_at_the_top_and_below_at_the_bottom() {
     let html = render(
-        "::navbox title=桥梁\n  [above]\n  上面那句\n  [分类]\n  甲\n  [below]\n  下面那句\n",
+        "::navbox title=桥梁\n  [above]\n    上面那句\n  [分类]\n    甲\n  [below]\n    下面那句\n",
     );
     let top = html.find("上面那句").expect("above");
     let group = html.find(">分类<").expect("分组");
@@ -150,7 +151,7 @@ fn above_sits_at_the_top_and_below_at_the_bottom() {
 fn above_and_below_may_appear_once() {
     for (label, other) in [("above", "below"), ("below", "above")] {
         let html = render(&format!(
-            "::navbox title=x\n  [{label}]\n  甲\n  [分组]\n  乙\n  [{label}]\n  丙\n"
+            "::navbox title=x\n  [{label}]\n    甲\n  [分组]\n    乙\n  [{label}]\n    丙\n"
         ));
         assert!(html.contains("template--problem"), "{label} -> {html}");
         assert!(html.contains("写了两处"), "{html}");
@@ -161,7 +162,7 @@ fn above_and_below_may_appear_once() {
 /// **没有 `title=` 就是嵌进去的样子**：没有标题栏、没有边框、没有开关
 #[test]
 fn no_title_means_nested() {
-    let html = render("::navbox\n  [桥墩]\n  * 甲\n");
+    let html = render("::navbox\n  [桥墩]\n    * 甲\n");
     assert!(html.contains("navbox--nested"), "{html}");
     assert!(!html.contains("navbox__bar"), "没有标题栏：{html}");
     assert!(!html.contains("navbox__toggle"), "{html}");
@@ -174,7 +175,7 @@ fn no_title_means_nested() {
 /// 嵌进去的没有开关，写 `state=` 是白写 —— 说出来
 #[test]
 fn state_on_a_nested_navbox_is_pointless() {
-    let html = render("::navbox state=collapsed\n  [分组]\n  甲\n");
+    let html = render("::navbox state=collapsed\n  [分组]\n    甲\n");
     assert!(html.contains("template--problem"), "{html}");
     assert!(html.contains("state="), "{html}");
 }
@@ -183,7 +184,7 @@ fn state_on_a_nested_navbox_is_pointless() {
 #[test]
 fn a_group_can_hold_a_nested_navbox() {
     let html = render(
-        "::navbox title=桥的构件\n  [上部结构]\n  * 桥面\n\n  ::navbox\n    [桥墩]\n    * 石墩\n    * 木墩\n",
+        "::navbox title=桥的构件\n  [上部结构]\n    * 桥面\n\n    ::navbox\n      [桥墩]\n        * 石墩\n        * 木墩\n",
     );
     assert!(!html.contains("template--problem"), "{html}");
     assert_eq!(html.matches("navbox--nested").count(), 1, "{html}");
@@ -199,7 +200,9 @@ fn a_group_can_hold_a_nested_navbox() {
 /// 「父格文字的大间距」与「子导航框贴左的小间距」分开
 #[test]
 fn a_cell_holding_a_nested_navbox_is_marked() {
-    let html = render("::navbox title=x\n  [分组]\n  * 甲\n\n  ::navbox\n    [子组]\n    * 乙\n");
+    let html = render(
+        "::navbox title=x\n  [分组]\n    * 甲\n\n    ::navbox\n      [子组]\n        * 乙\n",
+    );
     assert!(
         html.contains(r#"<td class="navbox__cell navbox__cell--branch">"#),
         "{html}"
@@ -212,7 +215,7 @@ fn a_cell_holding_a_nested_navbox_is_marked() {
 #[test]
 fn nested_cells_are_marked_at_every_level() {
     let html = render(
-        "::navbox title=x\n  [甲]\n  一句\n\n  ::navbox\n    [乙]\n    一句\n\n    ::navbox\n      [丙]\n      一句\n",
+        "::navbox title=x\n  [甲]\n    一句\n\n    ::navbox\n      [乙]\n        一句\n\n        ::navbox\n          [丙]\n            一句\n",
     );
     assert_eq!(html.matches("navbox__cell--branch").count(), 2, "{html}");
 }
@@ -220,7 +223,8 @@ fn nested_cells_are_marked_at_every_level() {
 /// 写在列表项里的不算（那是懒延续，子导航框整个被吞成文字）
 #[test]
 fn a_navbox_swallowed_by_a_list_is_not_marked() {
-    let html = render("::navbox title=x\n  [分组]\n  * 甲\n  ::navbox\n    [子]\n    乙\n");
+    let html =
+        render("::navbox title=x\n  [分组]\n    * 甲\n    ::navbox\n      [子]\n        乙\n");
     assert!(!html.contains("navbox__cell--branch"), "{html}");
 }
 
@@ -231,7 +235,7 @@ fn a_navbox_swallowed_by_a_list_is_not_marked() {
 #[test]
 fn nesting_without_a_blank_line_swallows_the_block() {
     let swallowed =
-        render("::navbox title=外层\n  [组]\n  * 甲\n  ::navbox\n    [子组]\n    * 乙\n");
+        render("::navbox title=外层\n  [组]\n    * 甲\n    ::navbox\n      [子组]\n        * 乙\n");
     assert!(
         !swallowed.contains("navbox--nested"),
         "不空行时子导航框整个被列表吞成文字了：{swallowed}"
@@ -241,15 +245,16 @@ fn nesting_without_a_blank_line_swallows_the_block() {
         "原文成了列表项里的字：{swallowed}"
     );
 
-    let separate =
-        render("::navbox title=外层\n  [组]\n  * 甲\n\n  ::navbox\n    [子组]\n    * 乙\n");
+    let separate = render(
+        "::navbox title=外层\n  [组]\n    * 甲\n\n    ::navbox\n      [子组]\n        * 乙\n",
+    );
     assert_eq!(separate.matches("navbox--nested").count(), 1, "{separate}");
 }
 
 /// 折叠：`state=collapsed` 落成 `hidden` + `aria-expanded="false"`，**不给 onclick**
 #[test]
 fn collapse_is_structure_not_behaviour() {
-    let collapsed = render("::navbox title=桥梁 state=collapsed\n  [分类]\n  * 甲\n");
+    let collapsed = render("::navbox title=桥梁 state=collapsed\n  [分类]\n    * 甲\n");
     assert!(
         collapsed.contains(r#"data-state="collapsed""#),
         "{collapsed}"
@@ -265,7 +270,7 @@ fn collapse_is_structure_not_behaviour() {
     // 按钮上写的是「点了会发生什么」：折着时写「显示」
     assert!(collapsed.contains(">显示</button>"), "{collapsed}");
 
-    let expanded = render("::navbox title=桥梁\n  [分类]\n  * 甲\n");
+    let expanded = render("::navbox title=桥梁\n  [分类]\n    * 甲\n");
     assert!(expanded.contains(r#"aria-expanded="true""#), "{expanded}");
     assert!(expanded.contains(">隐藏</button>"), "{expanded}");
     assert!(!expanded.contains("hidden"), "{expanded}");
@@ -275,7 +280,7 @@ fn collapse_is_structure_not_behaviour() {
 /// 按钮上带着两个词，脚本换的时候不必把中文硬编码进 JS
 #[test]
 fn the_button_carries_both_labels() {
-    let html = render("::navbox title=桥梁\n  [分类]\n  * 甲\n");
+    let html = render("::navbox title=桥梁\n  [分类]\n    * 甲\n");
     assert!(html.contains(r#"data-label-show="显示""#), "{html}");
     assert!(html.contains(r#"data-label-hide="隐藏""#), "{html}");
 }
@@ -283,7 +288,7 @@ fn the_button_carries_both_labels() {
 /// `state=plain`：展开且没有开关
 #[test]
 fn plain_has_no_toggle() {
-    let html = render("::navbox title=桥梁 state=plain\n  [分类]\n  * 甲\n");
+    let html = render("::navbox title=桥梁 state=plain\n  [分类]\n    * 甲\n");
     assert!(html.contains(r#"data-state="plain""#), "{html}");
     assert!(!html.contains("navbox__toggle"), "{html}");
     assert!(html.contains("桥梁"), "标题仍在：{html}");
@@ -292,7 +297,7 @@ fn plain_has_no_toggle() {
 /// `state=` 写错就整块拒掉
 #[test]
 fn a_bad_state_is_refused() {
-    let html = render("::navbox title=x state=autocollapse\n  [分类]\n  * 甲\n");
+    let html = render("::navbox title=x state=autocollapse\n  [分类]\n    * 甲\n");
     assert!(html.contains("template--problem"), "{html}");
     for known in ["expanded", "collapsed", "plain"] {
         assert!(html.contains(known), "提示里该说得出 {known}：{html}");
@@ -319,7 +324,7 @@ fn a_group_label_can_be_an_internal_link() {
         }
     }
     let html = Mdpp::new().render_with(
-        "::navbox title=x\n  [link 桥梁]\n  内容\n",
+        "::navbox title=x\n  [link 桥梁]\n    内容\n",
         &RenderContext::new(),
     );
     // 标签格里是一条 `<a>`，不是文字
@@ -331,14 +336,14 @@ fn a_group_label_can_be_an_internal_link() {
     // 递了解析器就出地址
     let resolver: Arc<dyn LinkResolver> = Arc::new(Vault);
     let with = Mdpp::new().render_with(
-        "::navbox title=x\n  [link 桥梁]\n  内容\n",
+        "::navbox title=x\n  [link 桥梁]\n    内容\n",
         &RenderContext::new().with_links(resolver),
     );
     assert!(with.contains(r#"href="/notes/桥梁""#), "{with}");
 
     // `|` 那一半换显示文字
     let alias = Mdpp::new().render_with(
-        "::navbox title=x\n  [link 桥梁|拱桥一览]\n  内容\n",
+        "::navbox title=x\n  [link 桥梁|拱桥一览]\n    内容\n",
         &RenderContext::new(),
     );
     assert!(alias.contains(">拱桥一览</a>"), "{alias}");
@@ -349,7 +354,7 @@ fn a_group_label_can_be_an_internal_link() {
 #[test]
 fn only_the_bare_word_link_starts_a_link() {
     for label in ["linkage", "linked", "links"] {
-        let html = render(&format!("::navbox title=x\n  [{label}]\n  甲\n"));
+        let html = render(&format!("::navbox title=x\n  [{label}]\n    甲\n"));
         assert!(!html.contains("template--problem"), "{label}: {html}");
         assert!(html.contains(label), "{label}");
         assert!(!html.contains("<a "), "{label} 不该是链接：{html}");
@@ -362,7 +367,7 @@ fn only_the_bare_word_link_starts_a_link() {
 #[test]
 fn a_link_label_needs_a_page() {
     for label in ["link", "link "] {
-        let html = render(&format!("::navbox title=x\n  [{label}]\n  甲\n"));
+        let html = render(&format!("::navbox title=x\n  [{label}]\n    甲\n"));
         assert!(html.contains("template--problem"), "{label:?} -> {html}");
         assert!(html.contains("没写页面名"), "{html}");
         assert!(!html.contains(r#"class="navbox""#), "不渲染半截：{html}");
@@ -389,7 +394,7 @@ fn brackets_inside_a_label_are_not_a_link() {
 #[test]
 fn the_three_backgrounds_become_custom_properties() {
     let html = render(
-        "::navbox title=x group-bg=#0055a4 title-bg=#123456 header-bg=#0af\n  [分类]\n  甲\n",
+        "::navbox title=x group-bg=#0055a4 title-bg=#123456 header-bg=#0af\n  [分类]\n    甲\n",
     );
     assert!(!html.contains("template--problem"), "{html}");
     for (name, value) in [
@@ -403,7 +408,7 @@ fn the_three_backgrounds_become_custom_properties() {
         );
     }
     // `#rgb` 那种简写要规范成六位，与 `::banner` 同一套
-    let short = render("::navbox title=x group-bg=#0af\n  [分类]\n  甲\n");
+    let short = render("::navbox title=x group-bg=#0af\n  [分类]\n    甲\n");
     assert!(short.contains("--navbox-group-bg: #00aaff;"), "{short}");
 }
 
@@ -413,13 +418,13 @@ fn the_three_backgrounds_become_custom_properties() {
 /// 字色就该由这里算，而不是让作者自己配一遍。
 #[test]
 fn the_text_colour_follows_the_background_brightness() {
-    let dark = render("::navbox title=x group-bg=#0055a4\n  [分类]\n  甲\n");
+    let dark = render("::navbox title=x group-bg=#0055a4\n  [分类]\n    甲\n");
     assert!(
         dark.contains("--navbox-group-bg: #0055a4; --navbox-group-fg: #f5f5f5;"),
         "深底该配浅字：{dark}"
     );
 
-    let light = render("::navbox title=x title-bg=#ffe680\n  [分类]\n  甲\n");
+    let light = render("::navbox title=x title-bg=#ffe680\n  [分类]\n    甲\n");
     assert!(
         light.contains("--navbox-title-bg: #ffe680; --navbox-title-fg: #101010;"),
         "浅底该配深字：{light}"
@@ -429,10 +434,10 @@ fn the_text_colour_follows_the_background_brightness() {
 /// 一个底色都没给时**不写** `style` —— 多余的 `style=""` 是噪音
 #[test]
 fn no_background_means_no_style_attribute() {
-    let html = render("::navbox title=x\n  [分类]\n  甲\n");
+    let html = render("::navbox title=x\n  [分类]\n    甲\n");
     assert!(!html.contains("style="), "{html}");
     // 给了别的属性也不该冒出 style
-    let nested = render("::navbox\n  [分类]\n  甲\n");
+    let nested = render("::navbox\n  [分类]\n    甲\n");
     assert!(!nested.contains("style="), "{nested}");
 }
 
@@ -445,7 +450,7 @@ fn a_bad_background_is_refused() {
         ("header-bg", "#fff; position: fixed"),
     ] {
         let html = render(&format!(
-            "::navbox title=x {param}={value}\n  [分类]\n  甲\n"
+            "::navbox title=x {param}={value}\n  [分类]\n    甲\n"
         ));
         assert!(
             html.contains("template--problem"),
@@ -462,24 +467,24 @@ fn a_bad_background_is_refused() {
 fn an_empty_navbox_says_so() {
     let html = render("::navbox title=x\n");
     assert!(html.contains("template--problem"), "{html}");
-    assert!(html.contains("一行也没有"), "{html}");
+    assert!(html.contains("分节是空的"), "{html}");
 
     // 只有通栏也不算数 —— 它自己撑不起一个框
-    let headers = render("::navbox title=x\n  [header]\n  只有通栏\n");
+    let headers = render("::navbox title=x\n  [header]\n    只有通栏\n");
     assert!(headers.contains("template--problem"), "{headers}");
 }
 
 /// 第一个标签之前有内容
 #[test]
 fn content_before_the_first_slot_is_refused() {
-    let html = render("::navbox title=x\n  开场白\n  [分类]\n  甲\n");
+    let html = render("::navbox title=x\n  开场白\n  [分类]\n    甲\n");
     assert!(html.contains("template--problem"), "{html}");
 }
 
 /// 标题按 markdown 渲染，但外层那个 `<p>` 剥掉
 #[test]
 fn the_title_is_markdown_without_the_wrapping_paragraph() {
-    let html = render("::navbox title=**桥梁**\n  [分类]\n  甲\n");
+    let html = render("::navbox title=**桥梁**\n  [分类]\n    甲\n");
     assert!(html.contains("<strong>桥梁</strong>"), "{html}");
     assert!(!html.contains("<p><strong>桥梁</strong></p>"), "{html}");
 }
@@ -490,7 +495,7 @@ fn the_title_is_markdown_without_the_wrapping_paragraph() {
 /// 而换一份样式表的人会立刻看到列表塌回竖排，输出里却没有任何东西能解释为什么。
 #[test]
 fn horizontality_is_pure_css() {
-    let html = render("::navbox title=x\n  [分类]\n  * 甲\n  * 乙\n");
+    let html = render("::navbox title=x\n  [分类]\n    * 甲\n    * 乙\n");
     assert!(html.contains("<ul>"), "{html}");
     assert_eq!(html.matches("<li>").count(), 2, "{html}");
     for marker in ["hlist", "horizontal", "inline"] {
@@ -517,6 +522,6 @@ fn links_inside_a_navbox_go_through_the_resolver() {
     }
     let resolver: Arc<dyn LinkResolver> = Arc::new(Vault);
     let context = RenderContext::new().with_links(resolver);
-    let html = Mdpp::new().render_with("::navbox title=x\n  [分类]\n  * [[拱桥]]\n", &context);
+    let html = Mdpp::new().render_with("::navbox title=x\n  [分类]\n    * [[拱桥]]\n", &context);
     assert!(html.contains(r#"href="/notes/拱桥""#), "{html}");
 }
