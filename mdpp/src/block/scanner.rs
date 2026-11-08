@@ -70,10 +70,17 @@ impl BlockRule for BlockScanner {
         //
         // **只有会解析的那两档吃它**：原始档的正文原样摆在 `block.body` 里（一个字
         // 不动，`text=` 同样不动它），用户块也照旧从 `body` 去模板页取正文 ——
-        // 写在 `::css text=…` 或 `::卡片 text=…` 上是**不起作用**的
-        let source = match params.iter().find(|(key, _)| key == "text") {
-            Some((_, text)) => text.clone(),
-            None => body.clone(),
+        // 写在 `::css text=…` 或 `::卡片 text=…` 上是**不起作用**的。
+        //
+        // `::surface` 是例外：它的 `text=` 是**字色**（`auto` 或十六进制），不是正文。
+        // 把这个名字让给内容替换会让 `text=auto` 直接吞掉整个盒子。
+        let source = if name == "surface" {
+            body.clone()
+        } else {
+            match params.iter().find(|(key, _)| key == "text") {
+                Some((_, text)) => text.clone(),
+                None => body.clone(),
+            }
         };
 
         // **用户自定义块**：名字不在注册表里，就去模板页里找同名的一页。找得到就把那一页
