@@ -62,7 +62,7 @@
   `tabs` 现在是它上面的两层标准库模板。类名、按钮文字与默认标题全部由模板给。
 - `columns` / `fields` / `fold` / `theme` / `tabs` / `indent` 从 Rust 内置块迁成标准库
   模板；新增 `disclose` / `variants` / `each` / `rows` / `inline` / `style-vars` 六个
-  原语，内置块最终是 23 个。
+  原语，内置块最终是 24 个。
 - 新增行内渲染原语 `::inline`：只取单段行内 HTML，不产生 `<p>`，可用于标题、
   标签和组名。
 - 新增 `::style-vars`：只接受 `--名字` 形式的 CSS 自定义属性，值限定为颜色与尺寸；
@@ -74,6 +74,9 @@
 - 新增 `::noinclude` / `::includeonly`：按当前有没有模板作用域判断，页面直接渲染时
   只输出 `noinclude`，作为模板引入时只输出 `includeonly`；两者都是透明的 Markdown
   容器，参数会报用法问题。
+- `::problem` 从 `problem.mdpp` 改为 Rust 内置诊断原语：标准库模板里的用法错误
+  也会进入 `Rendered.problems`，与分发、展开产生的问题框共用同一套布局，不再出现
+  「页面有框、报告里是 0」。
 - 新增行表格原语 `::rows` 与 `Block::rows()`：按 `|` 把 `[__data__]` 里的正文拆成
   单元格行，模板用 `{{@row.0}}` / `{{@row.1}}` 取格；`max=` 可限制拆几刀。
   `fields` 现在是 `rows max=2` 上面的一层两列表格模板。

@@ -48,7 +48,7 @@
 </div>
 ```
 
-内置块 23 个，覆盖条件渲染、分节/行表格遍历、行内渲染、受控样式变量、页面与模板
+内置块 24 个，覆盖条件渲染、分节/行表格遍历、行内渲染、受控样式变量、页面与模板
 包含条件、图片音视频、代码块、公式、mermaid 图、导航框、原样文本、内联样式与原始 HTML；`columns`、`fields`、`fold`、`tabs`、`theme`、
 `indent`、`banner`、`aside`、`quote`、`title` 等展示块由标准库模板提供。完整的巡览见
 [`examples/tour.mdpp`](examples/tour.mdpp)，内置块清单见 `mdpp render --list-blocks`。
