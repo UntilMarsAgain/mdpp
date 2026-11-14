@@ -123,11 +123,6 @@ fn the_tour_visits_every_builtin_block() {
         ("if", "条件成立时出现。"),
         // 类名是 `theme__part theme__part--dark` 两个，所以只认后半截
         ("theme", "theme__part--dark"),
-        // navbox：认「左分组名、右内容」那两列，而不只是它渲染出了东西
-        (
-            "navbox",
-            r#"<th class="mdpp-navbox__group" scope="row">分类</th>"#,
-        ),
         ("image", "<img "),
         ("video", "<video "),
         ("audio", "<audio "),

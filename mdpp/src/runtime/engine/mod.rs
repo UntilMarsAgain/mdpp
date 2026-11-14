@@ -75,9 +75,11 @@ pub fn render_nested(source: &str) -> String {
     .unwrap_or(false);
 
     let out = if exceeded {
+        let why = format!("嵌套渲染超过 {MAX_RENDER_DEPTH} 层（是不是自己嵌自己？）");
+        crate::env::note_problem("块的用法有问题", "mdpp-template--problem", "markdown", &why);
         format!(
             "<div class=\"mdpp-template mdpp-template--problem\"><p class=\"mdpp-template__why\">\
-             嵌套渲染超过 {MAX_RENDER_DEPTH} 层（是不是自己嵌自己？）</p></div>"
+             {why}</p></div>"
         )
     } else {
         let out = run(source);
@@ -210,6 +212,8 @@ impl Mdpp {
             render_depth: 0,
             features: Features::default(),
             problems: Problems::default(),
+            diagnostics: 0,
+            problem_detail: None,
         };
         let _guard = crate::env::enter(env);
         parse_markdown(&self.parser, source)

@@ -298,7 +298,7 @@ pub(super) fn render_variants(block: &Block, node: &Node, fmt: &mut dyn Renderer
             attrs.push(("type", "button".to_string()));
             attrs.push(("role", "tab".to_string()));
             // 旧版钩子；新代码认 `data-mdpp-option`。
-            attrs.push(("data-tab", part.value.clone()));
+            attrs.push(("data-mdpp-tab", part.value.clone()));
             attrs.push((
                 "aria-selected",
                 if selected { "true" } else { "false" }.to_string(),
@@ -335,9 +335,9 @@ pub(super) fn render_variants(block: &Block, node: &Node, fmt: &mut dyn Renderer
             Control::Choice => {
                 attrs.push(("role", "tabpanel".to_string()));
                 // 旧版钩子；新代码认 `data-mdpp-panel`。
-                attrs.push(("data-panel", part.value.clone()));
+                attrs.push(("data-mdpp-panel", part.value.clone()));
                 // 打印时每一节都要有标题（见 `mdpp.css` 的 `@media print`）
-                attrs.push(("data-label", part.label.to_string()));
+                attrs.push(("data-mdpp-label", part.label.to_string()));
                 attrs.extend(group.panel_attrs(&part.value));
             }
             Control::Theme => {
@@ -411,9 +411,9 @@ mod tests {
             "{html}"
         );
         assert!(html.contains(r#"aria-selected="true""#), "{html}");
-        assert!(html.contains(r#"data-tab="0""#), "{html}");
-        assert!(html.contains(r#"data-panel="1""#), "{html}");
-        assert!(html.contains(r#"data-label="乙""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-tab="0""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-panel="1""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-label="乙""#), "{html}");
         assert!(html.contains("hidden"), "{html}");
     }
 

@@ -69,6 +69,7 @@ pub enum AssetPolicy {
 }
 
 /// 当次渲染的资源收集器。
+#[derive(Debug, Clone)]
 pub(crate) struct Sink {
     pub(crate) mode: AssetMode,
     pub(crate) assets: Vec<Asset>,

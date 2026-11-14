@@ -11,21 +11,22 @@
 //!   校验、尺寸上限与图注规矩。
 //! - `disclose`：一份正文 + 布尔状态的原生折叠原语，`fold` 由它加模板实现。
 //! - `each`：把一段模板套在分节上重复渲染，类名与结构全由模板片段决定。
+//! - `guard`：把一段内容包成“完整成功或只留一个问题框”的事务。
 //! - `rows`：把一段模板套在「每行若干格」的原始行上，`fields` 用它做两列表格。
 //! - `variants`：N 份正文 + 选中状态的变体组原语，`theme` / `tabs` 由它加模板实现。
-//! - `navbox`：按 `[标签]` 分组的导航框；标签同时就是分组名。
 //! - `embeds`：把内容**原样写出去**的块（`code` / `mermaid` / `math` / `css` /
 //!   `html` / `js`），注册为 [`ContentMode::Raw`]，正文一个字符都不解析。
 //! - `control`：控制流（`if`）。按条件渲染 `[then]` / `[else]`，不产生自己的 DOM。
 //! - `include`：`noinclude` / `includeonly` —— 页面直接渲染与模板引入两种语境。
 //! - `inline`：把正文按行内 markdown 渲染，不产生外层元素。
 //! - `problem`：诊断框原语；写框的同时把这次错误记进渲染报告。
+//! - `guard`：把子内容先写进缓冲区；出现任何问题框就整段丢弃并只留一个诊断。
 //! - `style-vars`：带受控 CSS 自定义属性的盒子；`--名字-bg` 自动补字色。
 //! - `wrapper`：基础包装（`element` / `surface` / `style-vars`）。`element` 选标签、挂
 //!   受控属性，`surface` 管单个盒子的外观，`style-vars` 管受控 CSS 自定义属性。
 //!
-//! `columns`、`fields`、`fold`、`theme`、`tabs`、`banner`、提示框 `note` / `tip` /
-//! `warning` / `danger` / `error` 与 `aside` 已迁到标准库模板。
+//! `columns`、`fields`、`fold`、`theme`、`tabs`、`banner`、`navbox`、提示框 `note` /
+//! `tip` / `warning` / `danger` / `error` 与 `aside` 已迁到标准库模板。
 //!
 //! 本文件另有三个多组共用的东西：`size_rule`（尺寸参数 → 一条 CSS 声明）、
 //! `normalize_hex`（`color=` 只认十六进制）与 `text_on`（底色 → 字色）。
@@ -35,10 +36,10 @@ mod demo;
 mod disclose;
 mod each;
 mod embeds;
+mod guard;
 mod include;
 mod inline;
 mod media;
-mod navbox;
 mod problem;
 mod rows;
 mod text;
@@ -52,10 +53,10 @@ use demo::render_demo;
 use disclose::render_disclose;
 use each::render_each;
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
+use guard::render_guard;
 use include::{render_includeonly, render_noinclude};
 use inline::render_inline;
 use media::{render_audio, render_image, render_video};
-use navbox::render_navbox;
 use rows::render_rows;
 use text::render_text;
 use variants::render_variants;
@@ -90,6 +91,7 @@ pub const NAMES: &[&str] = &[
     "disclose",
     "each",
     "element",
+    "guard",
     "if",
     "includeonly",
     "inline",
@@ -98,7 +100,6 @@ pub const NAMES: &[&str] = &[
     "style-vars",
     "surface",
     "text",
-    "navbox",
     "variants",
 ];
 
@@ -118,6 +119,7 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("disclose", ContentMode::Markdown, render_disclose))
         .register(spec("each", ContentMode::Sections, render_each))
         .register(spec("element", ContentMode::Markdown, render_element))
+        .register(spec("guard", ContentMode::Markdown, render_guard))
         .register(spec("if", ContentMode::Sections, render_if))
         .register(spec(
             "includeonly",
@@ -130,7 +132,6 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("style-vars", ContentMode::Markdown, render_style_vars))
         .register(spec("surface", ContentMode::Markdown, render_surface))
         .register(spec("text", ContentMode::Raw, render_text))
-        .register(spec("navbox", ContentMode::Sections, render_navbox))
         .register(spec("rows", ContentMode::Sections, render_rows))
         .register(spec("variants", ContentMode::Sections, render_variants));
 }
@@ -191,7 +192,7 @@ pub(crate) fn css_size(value: &str) -> Option<String> {
 
 /// `#abc` / `#aabbcc` → 规范的 `#aabbcc`；别的写法一律不认。
 ///
-/// 放在这一层而不是某个块里：`surface`、`fold` 与 `navbox` 都认 `color=`，
+/// 放在这一层而不是某个块里：`surface` 与 `fold` 都认 `color=`，
 /// 留在任一组都会让另一组跨界来取 —— 与 [`size_rule`] 是同一个理由。
 pub(crate) fn normalize_hex(text: &str) -> Option<String> {
     let body = text.trim().strip_prefix('#')?;
@@ -319,8 +320,6 @@ mod tests {
                 "if" => format!("::{name} condition-exist=yes\n  [then]\n    内容\n"),
                 // surface 包一层带 class 的盒子
                 "surface" => format!("::{name} class=foo\n  内容\n"),
-                // navbox 要一个标题与一行分组，否则那个样子是「用法有问题」的框
-                "navbox" => format!("::{name} title=某导航框\n  [分类]\n    甲\n"),
                 _ => format!("::{name}\n  正文一行\n"),
             };
             let html = Mdpp::new().render(&source);

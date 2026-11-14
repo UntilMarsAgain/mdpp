@@ -388,8 +388,8 @@
       body.setAttribute("hidden", "");
     }
     toggle.setAttribute("aria-expanded", wasCollapsed ? "true" : "false");
-    navbox.setAttribute("data-state", wasCollapsed ? "expanded" : "collapsed");
-    var next = toggle.getAttribute(wasCollapsed ? "data-label-hide" : "data-label-show");
+    navbox.setAttribute("data-mdpp-state", wasCollapsed ? "expanded" : "collapsed");
+    var next = toggle.getAttribute(wasCollapsed ? "data-mdpp-label-hide" : "data-mdpp-label-show");
     if (next) {
       toggle.textContent = next;
     }
@@ -416,7 +416,7 @@
     }
     if (window.katex) {
       document.querySelectorAll(".mdpp-math").forEach(function (el) {
-        var tex = el.getAttribute("data-tex");
+        var tex = el.getAttribute("data-mdpp-tex");
         if (tex) {
           window.katex.render(tex, el, {
             throwOnError: false,

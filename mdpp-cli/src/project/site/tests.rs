@@ -288,7 +288,7 @@ fn a_bare_file_name_finds_the_only_page_with_that_name() {
     assert_eq!(link.url, "指南/入门/");
     assert_eq!(
         link.attrs,
-        vec![("data-page".to_string(), "指南/入门".to_string())]
+        vec![("data-mdpp-page".to_string(), "指南/入门".to_string())]
     );
 }
 

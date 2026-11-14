@@ -56,6 +56,18 @@ pub(crate) fn template_vars() -> Option<Arc<TemplateVars>> {
 
 /// 取一个模板变量。存在但为空也返回 `Some("")` —— `condition-defined` 靠这个
 /// 与「变量根本不存在」区分开。
+pub(crate) fn template_var_local(name: &str) -> Option<String> {
+    crate::env::with(|env| {
+        env.template_vars
+            .as_ref()
+            .and_then(|vars| vars.lookup_local(name))
+            .map(str::to_string)
+    })
+    .flatten()
+}
+
+/// 取一个模板变量。存在但为空也返回 `Some("")` —— `condition-defined` 靠这个
+/// 与「变量根本不存在」区分开。
 pub(crate) fn template_var(name: &str) -> Option<String> {
     crate::env::with(|env| {
         env.template_vars

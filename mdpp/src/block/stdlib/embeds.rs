@@ -61,7 +61,7 @@ pub(super) fn render_js(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 /// 与 `::code` 同一个道理：图定义里的 `-->`、`[]`、`{}` 都是它自己的记号，
 /// 绝不能按 markdown 解析。
 ///
-/// 原文同时留一份在 `data-source` 上：mermaid 画完会把元素内容换成 SVG，
+/// 原文同时留一份在 `data-mdpp-source` 上：mermaid 画完会把元素内容换成 SVG，
 /// 切主题要重画时就靠这份原文还原。
 pub(super) fn render_mermaid(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     let source = block.body.trim();
@@ -77,7 +77,7 @@ pub(super) fn render_mermaid(block: &Block, _node: &Node, fmt: &mut dyn Renderer
         "pre",
         &[
             ("class", "mdpp-mermaid".to_string()),
-            ("data-source", source.to_string()),
+            ("data-mdpp-source", source.to_string()),
         ],
     );
     fmt.text(source);
@@ -104,7 +104,7 @@ pub(super) fn render_math(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
         "div",
         &[
             ("class", "mdpp-math mdpp-math--display".to_string()),
-            ("data-tex", tex.to_string()),
+            ("data-mdpp-tex", tex.to_string()),
         ],
     );
     // 排版之前看到的是原文，取不到 KaTeX 也不至于是一片空白
@@ -125,13 +125,16 @@ pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     let mut attrs: Vec<(&str, String)> = vec![("class", "mdpp-template-code".to_string())];
     if let Some(lines) = block.param("lines") {
         let off = matches!(lines.trim(), "off" | "false" | "no");
-        attrs.push(("data-lines", if off { "off" } else { "on" }.to_string()));
+        attrs.push((
+            "data-mdpp-lines",
+            if off { "off" } else { "on" }.to_string(),
+        ));
     }
     if let Some(start) = block.param("start") {
-        attrs.push(("data-line-start", start.trim().to_string()));
+        attrs.push(("data-mdpp-line-start", start.trim().to_string()));
     }
     if let Some(highlight) = block.param("highlight") {
-        attrs.push(("data-highlight", highlight.trim().to_string()));
+        attrs.push(("data-mdpp-highlight", highlight.trim().to_string()));
     }
 
     let code_attrs: Vec<(&str, String)> = if language.is_empty() {
@@ -547,9 +550,9 @@ mod tests {
             html.contains(r#"<pre class="mdpp-template-code""#),
             "{html}"
         );
-        assert!(html.contains(r#"data-lines="off""#), "{html}");
-        assert!(html.contains(r#"data-line-start="10""#), "{html}");
-        assert!(html.contains(r#"data-highlight="2-3""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-lines="off""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-line-start="10""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-highlight="2-3""#), "{html}");
         assert!(html.contains(r#"<code class="language-rust">"#), "{html}");
         assert!(html.contains("fn main() {}"), "{html}");
     }
@@ -564,7 +567,7 @@ mod tests {
     }
 
     /// `::mermaid`：原文照收（图定义里的记号不该被 markdown 解析），
-    /// 另存一份在 `data-source` 上给「切主题重画」用
+    /// 另存一份在 `data-mdpp-source` 上给「切主题重画」用
     #[test]
     fn mermaid_keeps_its_source_verbatim() {
         let html =
@@ -574,7 +577,7 @@ mod tests {
             html.contains("A[开始] --&gt; B{行不行}"),
             "箭头照原样：{html}"
         );
-        assert!(html.contains("data-source="), "原文要留一份：{html}");
+        assert!(html.contains("data-mdpp-source="), "原文要留一份：{html}");
         // 图定义里的 `-->` `{}` 不该变成 HTML 标签
         assert!(!html.contains("<b>"), "{html}");
     }
@@ -587,13 +590,13 @@ mod tests {
         assert!(html.contains("里面还没有图"), "{html}");
     }
 
-    /// `::math`：TeX 原文进 `data-tex`，元素里留着原文当兜底
+    /// `::math`：TeX 原文进 `data-mdpp-tex`，元素里留着原文当兜底
     #[test]
     fn math_template_hands_the_source_to_the_frontend() {
         let html = render("::math\n  \\frac{a}{b} = c_1 * d\n");
         assert!(html.contains("math--display"), "{html}");
         assert!(
-            html.contains(r#"data-tex="\frac{a}{b} = c_1 * d""#),
+            html.contains(r#"data-mdpp-tex="\frac{a}{b} = c_1 * d""#),
             "{html}"
         );
         // `*` 与 `_` 是公式的一部分，不该被当成强调

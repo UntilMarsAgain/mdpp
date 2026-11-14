@@ -128,6 +128,22 @@ impl TemplateVars {
         }
     }
 
+    /// 取当前这一层模板的变量，**不往父模板找**。
+    ///
+    /// 条件里要判断“这一次调用有没有传某个参数”时用它。父模板的同名参数
+    /// 不该让子模板误以为自己传了。
+    pub(crate) fn lookup_local(&self, key: &str) -> Option<&str> {
+        match key {
+            "body" => Some(&self.body),
+            "template" => Some(&self.name),
+            _ => self
+                .params
+                .iter()
+                .find(|(name, _)| name == key)
+                .map(|(_, value)| value.as_str()),
+        }
+    }
+
     /// 取一个变量；`body` / `template` 是保留名，参数同名时也不行。
     pub(crate) fn lookup(&self, key: &str) -> Option<&str> {
         match key {

@@ -15,13 +15,13 @@
 //! |---|---|
 //! | [`ResolvedLink::Link`] | `<a href=… class="mdpp-wikilink">` |
 //! | [`ResolvedLink::Node`] | 整个节点归那个函数写（连 `<a>` 都由它决定） |
-//! | `None`，**或压根没递解析器** | `<a class="mdpp-wikilink mdpp-wikilink--missing" data-missing="true">` —— **红链** |
+//! | `None`，**或压根没递解析器** | `<a class="mdpp-wikilink mdpp-wikilink--missing" data-mdpp-missing="true">` —— **红链** |
 //!
 //! 「解析器说没有」与「压根没人递解析器」渲染成**同样的红链**，而且红链**故意不带
 //! `href`** —— 这两条都由 [`crate::link`] 定下，理由在那边的模块头（一句话：渲染成
 //! 看起来正常的链，等于替调用方宣称「这一页存在」；`href` 一带上，浏览器就自己走了）。
 //! 想换掉它的样子有两条路：递 [`ResolvedLink::Node`] 自己画，或者用自己那份样式接
-//! `wikilink--missing` 与 `data-missing="true"` 这两个钩子。
+//! `wikilink--missing` 与 `data-mdpp-missing="true"` 这两个钩子。
 
 use crate::context;
 use crate::link::ResolvedLink;
@@ -74,8 +74,8 @@ impl NodeValue for WikiLink {
                 "a",
                 &[
                     ("class", "mdpp-wikilink mdpp-wikilink--missing".to_string()),
-                    ("data-doc", self.doc.clone()),
-                    ("data-missing", "true".to_string()),
+                    ("data-mdpp-doc", self.doc.clone()),
+                    ("data-mdpp-missing", "true".to_string()),
                 ],
             );
             fmt.contents(&node.children);
@@ -99,7 +99,7 @@ impl NodeValue for WikiLink {
 
         let mut all: Vec<(&str, String)> = Vec::with_capacity(attrs.len() + 2);
         all.push(("class", classes.join(" ")));
-        all.push(("data-doc", self.doc.clone()));
+        all.push(("data-mdpp-doc", self.doc.clone()));
         all.extend(attrs);
 
         fmt.open("a", &all);
@@ -202,7 +202,7 @@ mod tests {
     fn target_first_display_second() {
         // [[目标文档|显示文字]]
         let html = render("[[目标文档|显示文字]]\n");
-        assert!(html.contains(r#"data-doc="目标文档""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-doc="目标文档""#), "{html}");
         assert!(html.contains(">显示文字</a>"), "{html}");
     }
 
@@ -219,7 +219,11 @@ mod tests {
             2,
             "{html}"
         );
-        assert_eq!(html.matches(r#"data-missing="true""#).count(), 2, "{html}");
+        assert_eq!(
+            html.matches(r#"data-mdpp-missing="true""#).count(),
+            2,
+            "{html}"
+        );
         assert!(!html.contains("href="), "红链不该有 href：{html}");
     }
 
@@ -246,14 +250,14 @@ mod tests {
     fn a_red_link_carries_no_href() {
         let html = render("[[目标]]\n");
         assert!(!html.contains(r#"href="#), "{html}");
-        assert!(html.contains(r#"data-doc="目标""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-doc="目标""#), "{html}");
     }
 
     /// 省下 `|显示文字` 时，显示的文字就是目标本身
     #[test]
     fn display_text_defaults_to_the_target() {
         let html = render("[[同名文档]]\n");
-        assert!(html.contains(r#"data-doc="同名文档""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-doc="同名文档""#), "{html}");
         assert!(html.contains(">同名文档</a>"), "{html}");
     }
 
@@ -279,7 +283,7 @@ mod tests {
     fn a_resolver_that_answers_gives_out_a_href() {
         let html = render_with(Targets(vec!["存在的条目".into()]), "[[存在的条目]]\n");
         assert!(html.contains(r#"href="/page/存在的条目""#), "{html}");
-        assert!(html.contains(r#"data-doc="存在的条目""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-doc="存在的条目""#), "{html}");
     }
 
     /// 递进来的解析器**额外给的属性**要跟在 href 后面
@@ -291,13 +295,13 @@ mod tests {
                 Some(ResolvedLink::Link(
                     LinkTarget::new(format!("/p/{target}"))
                         .attr("class", "mdpp-wikilink--ok")
-                        .attr("data-missing", "false"),
+                        .attr("data-mdpp-missing", "false"),
                 ))
             }
         }
         let html = render_with(WithAttrs, "[[甲]]\n");
         assert!(html.contains(r#"href="/p/甲""#), "{html}");
-        assert!(html.contains(r#"data-missing="false""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-missing="false""#), "{html}");
         // 两个 class 都得在（这是使用方的事，渲染器只是照写）
         assert!(
             html.contains(r#"class="mdpp-wikilink mdpp-wikilink--ok""#),
@@ -322,13 +326,13 @@ mod tests {
             }
         }
         let html = render_with(Marked, "[[没有的条目]]\n");
-        // 整个节点归它：不是 `<a>`，也没有 data-doc
+        // 整个节点归它：不是 `<a>`，也没有 data-mdpp-doc
         assert!(
             html.contains(r#"<span class="redlink">没有的条目 ✗</span>"#),
             "{html}"
         );
         assert!(!html.contains("<a "), "{html}");
-        assert!(!html.contains("data-doc"), "{html}");
+        assert!(!html.contains("data-mdpp-doc"), "{html}");
     }
 
     /// 解析器认得的那几条 → **不带**红链的记号，两者不会混
@@ -337,7 +341,7 @@ mod tests {
         let html = render_with(Targets(vec!["存在的条目".into()]), "[[存在的条目]]\n");
         assert!(html.contains(r#"href="/page/存在的条目""#), "{html}");
         assert!(
-            !html.contains("data-missing"),
+            !html.contains("data-mdpp-missing"),
             "认得的链接不该标成没找到：{html}"
         );
         assert!(!html.contains("wikilink--missing"), "{html}");

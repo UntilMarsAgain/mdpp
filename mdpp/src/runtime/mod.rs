@@ -5,6 +5,7 @@
 
 pub(crate) mod asset;
 pub mod assets;
+pub(crate) mod capture;
 pub mod context;
 pub mod engine;
 pub(crate) mod env;

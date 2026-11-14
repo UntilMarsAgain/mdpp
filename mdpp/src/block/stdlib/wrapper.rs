@@ -314,6 +314,11 @@ fn style_vars(block: &Block) -> Result<Vec<(String, String)>, String> {
                 "`::style-vars` 的变量名要写成 --名字，只能含字母、数字、-、_：`{key}`"
             ));
         }
+        // 模板里常用 `--x={{?参数}}` 挂可选颜色：参数没给时这里收到空串，
+        // 应当当作「没有这个声明」，而不是让整块报错。
+        if value.trim().is_empty() {
+            continue;
+        }
         let value = style_value(key, value)?;
         if name.ends_with("-bg") {
             backgrounds.insert(key.clone());
