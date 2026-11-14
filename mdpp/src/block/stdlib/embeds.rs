@@ -57,7 +57,7 @@ pub(super) fn render_js(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 
 /// `::mermaid` —— 画一张图（[mermaid](https://mermaid.js.org) 的语法）。
 ///
-/// 这里只把**原文**放进 `<pre class="mermaid">`，画图在前端（mermaid 是 JS）。
+/// 这里只把**原文**放进 `<pre class="mdpp-mermaid">`，画图在前端（mermaid 是 JS）。
 /// 与 `::code` 同一个道理：图定义里的 `-->`、`[]`、`{}` 都是它自己的记号，
 /// 绝不能按 markdown 解析。
 ///
@@ -71,12 +71,12 @@ pub(super) fn render_mermaid(block: &Block, _node: &Node, fmt: &mut dyn Renderer
     }
 
     fmt.cr();
-    fmt.open("div", &[("class", "diagram".to_string())]);
+    fmt.open("div", &[("class", "mdpp-diagram".to_string())]);
     fmt.cr();
     fmt.open(
         "pre",
         &[
-            ("class", "mermaid".to_string()),
+            ("class", "mdpp-mermaid".to_string()),
             ("data-source", source.to_string()),
         ],
     );
@@ -103,7 +103,7 @@ pub(super) fn render_math(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     fmt.open(
         "div",
         &[
-            ("class", "math math--display".to_string()),
+            ("class", "mdpp-math mdpp-math--display".to_string()),
             ("data-tex", tex.to_string()),
         ],
     );
@@ -122,7 +122,7 @@ pub(super) fn render_math(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     let language = block.param("lang").unwrap_or("").trim();
 
-    let mut attrs: Vec<(&str, String)> = vec![("class", "template-code".to_string())];
+    let mut attrs: Vec<(&str, String)> = vec![("class", "mdpp-template-code".to_string())];
     if let Some(lines) = block.param("lines") {
         let off = matches!(lines.trim(), "off" | "false" | "no");
         attrs.push(("data-lines", if off { "off" } else { "on" }.to_string()));
@@ -543,7 +543,10 @@ mod tests {
         let html = render(
             "::code lang=rust lines=off start=10 highlight=2-3\n  fn main() {}\n  // 注释\n",
         );
-        assert!(html.contains(r#"<pre class="template-code""#), "{html}");
+        assert!(
+            html.contains(r#"<pre class="mdpp-template-code""#),
+            "{html}"
+        );
         assert!(html.contains(r#"data-lines="off""#), "{html}");
         assert!(html.contains(r#"data-line-start="10""#), "{html}");
         assert!(html.contains(r#"data-highlight="2-3""#), "{html}");
@@ -566,7 +569,7 @@ mod tests {
     fn mermaid_keeps_its_source_verbatim() {
         let html =
             render("::mermaid\n  graph TD\n    A[开始] --> B{行不行}\n     B -->|行| C[干活]\n");
-        assert!(html.contains(r#"<pre class="mermaid""#), "{html}");
+        assert!(html.contains(r#"<pre class="mdpp-mermaid""#), "{html}");
         assert!(
             html.contains("A[开始] --&gt; B{行不行}"),
             "箭头照原样：{html}"

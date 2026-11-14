@@ -1,7 +1,7 @@
 ::if condition-exist={{@body}}
   [then]
-    ::surface class="callout callout--{{?@tone}} {{?@class}}" color={{?@color}}
-      ::disclose class=callout__details button-class=callout__title prefix={{?@mark}} prefix-class=callout__mark title={{?@title}} default-title={{?@default}} collapsible={{@collapsible}} default=plain name={{?@name}} empty-why="内容是空的：正文至少写一行，或用 title= 给个标题再补上正文"
+    ::surface class="mdpp-callout mdpp-callout--{{?@tone}} {{?@class}}" color={{?@color}}
+      ::disclose class=mdpp-callout__details button-class=mdpp-callout__title prefix={{?@mark}} prefix-class=mdpp-callout__mark title={{?@title}} default-title={{?@default}} collapsible={{@collapsible}} default=plain name={{?@name}} empty-why="内容是空的：正文至少写一行，或用 title= 给个标题再补上正文"
         {{body}}
   [else]
     ::problem name={{?@name}} why="内容是空的：正文至少写一行，或用 title= 给个标题再补上正文"

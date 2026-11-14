@@ -32,15 +32,15 @@
 
 ```html
 <h1 id="十四门桥">十四门桥</h1>
-<aside class="aside"><p class="aside__title">某年建成</p>
+<aside class="mdpp-aside"><p class="mdpp-aside__title">某年建成</p>
 <p>与某桥并称。</p>
 </aside>
-<div class="callout callout--note">
-<p class="callout__title"><span class="callout__mark">ℹ</span>说明</p>
-<p>这里可以写 <strong>markdown</strong> 与 <a class="wikilink" href="/notes/内部链接">内部链接</a>。</p>
+<div class="mdpp-callout mdpp-callout--note">
+<p class="mdpp-callout__title"><span class="mdpp-callout__mark">ℹ</span>说明</p>
+<p>这里可以写 <strong>markdown</strong> 与 <a class="mdpp-wikilink" href="/notes/内部链接">内部链接</a>。</p>
 </div>
-<div class="tabs">
-  <div class="tabs__bar" role="tablist">
+<div class="mdpp-tabs">
+  <div class="mdpp-tabs__bar" role="tablist">
     <button role="tab" aria-selected="true">读法一</button>
     <button role="tab" aria-selected="false">读法二</button>
   </div>
@@ -281,8 +281,8 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 
 基础包装块用 `::element`（替代原来的 `::class`）、`::surface`（受控的底色/字色/
 尺寸盒子）和 `::text`（正文原样输出，不解析 markdown），外围模板可以由它们组合出来。
-`::surface` 的 `class=` 归调用者：写了就按原样用，不再自动追加 `surface` 或
-`surface--*`；高度、圆角与 `mini` 会落成行内样式。`tag=auto` 会按正文形状选
+`::surface` 的 `class=` 归调用者：写了就按原样用，不再自动追加 `mdpp-surface` 或
+`mdpp-surface--*`；高度、圆角与 `mini` 会落成行内样式。`tag=auto` 会按正文形状选
 `<p>` 或 `<div>`。裸 flag `key` 等价于 `key=on`，显式 `key=` 才是空值。
 
 分节块（`tabs` / `theme` / `columns` / `navbox` / `if` / `each`）有一条共同规则：
@@ -339,7 +339,7 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 ```mdpp
 ::each
   [__template__]
-    ::element class=columns__col
+    ::element class=mdpp-columns__col
       ::text
         {{@item.label}}
       {{@item.body}}
@@ -347,8 +347,27 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
     {{body}}
 ```
 
-每一项用 `{{@item.label}}` / `{{@item.body}}` / `{{@item.index}}` /
-`{{@item.first}}` / `{{@item.last}}` 取数据；`as=` 可以改名，例如
+如果需要按数据类型分开渲染，可以再加 `[__template__ 类型]`，数据标签写成
+`[类型 数据]`。有对应类型模板时，`{{@item.label}}` 是类型后面的数据，
+`{{@item.type}}` 是类型；没有对应模板时，整条标签走默认模板：
+
+```mdpp
+::each
+  [__template__]
+    ::text
+      {{@item.label}}
+  [__template__ link]
+    ::text
+      [[{{@item.label}}]]
+  [__data__]
+    [link 甲|甲页]
+      链接项
+    [普通]
+      普通项
+```
+
+每一项用 `{{@item.label}}` / `{{@item.type}}` / `{{@item.body}}` /
+`{{@item.index}}` / `{{@item.first}}` / `{{@item.last}}` 取数据；`as=` 可以改名，例如
 `::each as=col` 后写 `{{@col.label}}`。`{{@body}}` 仍然表示 caller 的完整正文，
 不会和 `{{@item.body}}` 冲突。
 
@@ -435,7 +454,7 @@ assert_eq!(group.variants().len(), 2);
 把资源写成 `assets/` 下的静态文件。两条路都不需要网络接口，也没有运行时后端。
 
 写块、模板时常用的填空、分节、净化、诊断框都在 `mdpp::author` 里；具体块的
-DOM（`.tabs`、`.callout` …）不属于扩展契约，要复用分节数据就用
+DOM（`.mdpp-tabs`、`.mdpp-callout` …）不属于扩展契约，要复用分节数据就用
 `mdpp::author::sections`，要让现成交互脚本认领就照浏览器钩子表那套 `class` /
 `data-*` 写。AST 是 markdown-it 的 `Node`（本库重导出了 `markdown_it`），
 `parse` 与 `render_node` 应当用同一个 `Mdpp`。

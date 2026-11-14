@@ -1,2 +1,2 @@
-::element class="flatlist hlist {{?@class}}"
+::element class="mdpp-flatlist mdpp-hlist {{?@class}}"
   {{body}}

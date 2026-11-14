@@ -85,11 +85,11 @@ pub(super) fn toc_body(site: &Site, site_name: &str, toc_key: &str) -> String {
             page.stem().to_string()
         };
         items.push_str(&format!(
-            "<li><a href=\"{}\">{}</a> <span class=\"toc__path\">{}</span></li>\n",
+            "<li><a href=\"{}\">{}</a> <span class=\"mdpp-toc-page__path\">{}</span></li>\n",
             page::escape(&href(toc_key, &page.key)),
             page::escape(&label),
             page::escape(&page.key),
         ));
     }
-    format!("<ul class=\"toc\">\n{items}</ul>")
+    format!("<ul class=\"mdpp-toc-page\">\n{items}</ul>")
 }

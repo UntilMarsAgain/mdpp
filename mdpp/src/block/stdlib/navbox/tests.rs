@@ -8,12 +8,15 @@ fn render(src: &str) -> String {
 #[test]
 fn it_is_a_two_column_table_like_fields() {
     let html = render("::navbox title=桥梁\n  [分类]\n    * [[拱桥]]\n");
-    assert!(html.contains(r#"<table class="navbox__table">"#), "{html}");
     assert!(
-        html.contains(r#"<th class="navbox__group" scope="row">分类</th>"#),
+        html.contains(r#"<table class="mdpp-navbox__table">"#),
         "{html}"
     );
-    assert!(html.contains(r#"<td class="navbox__cell">"#), "{html}");
+    assert!(
+        html.contains(r#"<th class="mdpp-navbox__group" scope="row">分类</th>"#),
+        "{html}"
+    );
+    assert!(html.contains(r#"<td class="mdpp-navbox__cell">"#), "{html}");
     assert!(html.contains("<li>"), "{html}");
 }
 
@@ -24,7 +27,7 @@ fn the_label_is_the_group_title() {
     assert!(html.contains("收录标准"), "{html}");
     // 组名**不**从参数里来
     assert!(
-        html.contains(r#"<th class="navbox__group" scope="row">"#),
+        html.contains(r#"<th class="mdpp-navbox__group" scope="row">"#),
         "{html}"
     );
     assert!(!html.contains("template__param"), "{html}");
@@ -50,7 +53,7 @@ fn a_group_name_may_repeat_under_each_header() {
     assert_eq!(html.matches("navbox__head").count(), 2, "{html}");
     // 数的是**分组行**上的那个标签（通栏里也写着「基本原则」，不能混进来）
     assert_eq!(
-        html.matches(r#"<th class="navbox__group" scope="row">基本原则</th>"#)
+        html.matches(r#"<th class="mdpp-navbox__group" scope="row">基本原则</th>"#)
             .count(),
         2,
         "该出现两次：{html}"
@@ -140,8 +143,8 @@ fn above_sits_at_the_top_and_below_at_the_bottom() {
     let group = html.find(">分类<").expect("分组");
     let bottom = html.find("下面那句").expect("below");
     assert!(top < group && group < bottom, "{html}");
-    assert!(html.contains(r#"class="navbox__above""#), "{html}");
-    assert!(html.contains(r#"class="navbox__below""#), "{html}");
+    assert!(html.contains(r#"class="mdpp-navbox__above""#), "{html}");
+    assert!(html.contains(r#"class="mdpp-navbox__below""#), "{html}");
     // 两处是内容不是表头
     assert_eq!(html.matches("navbox__above").count(), 1, "{html}");
 }
@@ -167,7 +170,7 @@ fn no_title_means_nested() {
     assert!(!html.contains("navbox__bar"), "没有标题栏：{html}");
     assert!(!html.contains("navbox__toggle"), "{html}");
     assert!(
-        html.contains(r#"<th class="navbox__group" scope="row">桥墩</th>"#),
+        html.contains(r#"<th class="mdpp-navbox__group" scope="row">桥墩</th>"#),
         "{html}"
     );
 }
@@ -204,7 +207,7 @@ fn a_cell_holding_a_nested_navbox_is_marked() {
         "::navbox title=x\n  [分组]\n    * 甲\n\n    ::navbox\n      [子组]\n        * 乙\n",
     );
     assert!(
-        html.contains(r#"<td class="navbox__cell navbox__cell--branch">"#),
+        html.contains(r#"<td class="mdpp-navbox__cell mdpp-navbox__cell--branch">"#),
         "{html}"
     );
     // 只有装着子框的那一格带记号
@@ -226,6 +229,15 @@ fn a_navbox_swallowed_by_a_list_is_not_marked() {
     let html =
         render("::navbox title=x\n  [分组]\n    * 甲\n    ::navbox\n      [子]\n        乙\n");
     assert!(!html.contains("navbox__cell--branch"), "{html}");
+}
+
+/// 包在一层块里的子导航框也算嵌套 —— 分支记号看的是整棵子树，不只是直接子节点。
+#[test]
+fn a_nested_navbox_inside_a_wrapper_is_still_marked() {
+    let html = render(
+        "::navbox title=x\n  [分组]\n    ::element tag=div\n      ::navbox\n        [子组]\n          * 乙\n",
+    );
+    assert!(html.contains("navbox__cell--branch"), "{html}");
 }
 
 /// 嵌套**必须空一行**，否则会被 markdown 当成列表项的续行。
@@ -264,7 +276,7 @@ fn collapse_is_structure_not_behaviour() {
         "{collapsed}"
     );
     assert!(
-        collapsed.contains(r#"<div class="navbox__body" hidden="hidden">"#),
+        collapsed.contains(r#"<div class="mdpp-navbox__body" hidden="hidden">"#),
         "{collapsed}"
     );
     // 按钮上写的是「点了会发生什么」：折着时写「显示」
@@ -302,7 +314,10 @@ fn a_bad_state_is_refused() {
     for known in ["expanded", "collapsed", "plain"] {
         assert!(html.contains(known), "提示里该说得出 {known}：{html}");
     }
-    assert!(!html.contains(r#"class="navbox""#), "不渲染半截：{html}");
+    assert!(
+        !html.contains(r#"class="mdpp-navbox""#),
+        "不渲染半截：{html}"
+    );
 }
 
 /// **`[link 页面]` 让分组名变成一条内部链接。**
@@ -370,7 +385,10 @@ fn a_link_label_needs_a_page() {
         let html = render(&format!("::navbox title=x\n  [{label}]\n    甲\n"));
         assert!(html.contains("template--problem"), "{label:?} -> {html}");
         assert!(html.contains("没写页面名"), "{html}");
-        assert!(!html.contains(r#"class="navbox""#), "不渲染半截：{html}");
+        assert!(
+            !html.contains(r#"class="mdpp-navbox""#),
+            "不渲染半截：{html}"
+        );
     }
 }
 
@@ -458,7 +476,7 @@ fn a_bad_background_is_refused() {
         );
         assert!(html.contains("#rgb"), "{html}");
         // 整块拒掉，不渲染半截
-        assert!(!html.contains(r#"class="navbox""#), "{html}");
+        assert!(!html.contains(r#"class="mdpp-navbox""#), "{html}");
     }
 }
 

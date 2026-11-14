@@ -176,7 +176,7 @@ fn outline_of(root: &Node) -> Vec<Heading> {
 }
 
 /// 从解析树里取前端特性。这里只认**语义节点**：正文里恰好写着
-/// `class="mermaid"` 不算 —— 那是 `::html` 的内容，不是我们生成的图。
+/// `class="mdpp-mermaid"` 不算 —— 那是 `::html` 的内容，不是我们生成的图。
 fn features_of(root: &Node) -> Features {
     let mut features = Features::default();
     root.walk(|node, _| {

@@ -71,6 +71,9 @@
   `aria-*` / `data-mdpp-*` 白名单。
 - `::each` 增加 `min=` / `max=` / `nonempty` / `check`，可以在模板顶部做预检，
   不输出内容。
+- `::each` 支持 `[__template__ 类型]`：数据标签写成 `[类型 数据]` 时选对应类型
+  模板，`{{@item.label}}` 是类型后的数据、`{{@item.type}}` 是类型；没有对应模板
+  时整条标签走默认模板。
 - 新增 `::noinclude` / `::includeonly`：按当前有没有模板作用域判断，页面直接渲染时
   只输出 `noinclude`，作为模板引入时只输出 `includeonly`；两者都是透明的 Markdown
   容器，参数会报用法问题。
@@ -137,6 +140,12 @@
 - `mdpp/examples/bench.rs`：单线程与多线程渲染的轻量基准。
 
 ### 前端
+
+- 内置块与标准库模板输出的类名统一加 `mdpp-` 前缀（如 `mdpp-callout`、
+  `mdpp-navbox`、`mdpp-tabs`），`mdpp.css` / `site.css` / `mdpp.js` 同步更新；
+  `language-*`、代码高亮 token 等第三方类名保持不变。
+- navbox 的标题与分组名改为严格的单段行内 Markdown，含列表/段落等块内容的标签
+  会在写出表格前报用法问题；包在 `::element` 等容器里的子 navbox 也会带分支记号。
 
 - 站点模式自动生成当前页的侧边目录：从渲染后的 `h2` / `h3` 取锚点，宽屏常驻，
   窄于 `60rem` 时收成正文上方的 `<details>`；无标题页面不出空目录，单文件模式

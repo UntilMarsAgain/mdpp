@@ -62,7 +62,7 @@ mod tests {
         let html = render("::demo\n  **加粗** 里有 H_2_O\n");
         // 源码壳在
         assert!(
-            html.contains(r#"<pre class="template-code"><code class="language-html">"#),
+            html.contains(r#"<pre class="mdpp-template-code"><code class="language-html">"#),
             "{html}"
         );
         // 壳里是**转义后**的 HTML
@@ -83,11 +83,11 @@ mod tests {
     fn the_body_goes_through_the_whole_pipeline() {
         let html = render("::demo\n  ::note\n    框里的话\n");
         // 嵌套块没有直接渲染
-        assert!(!html.contains("<div class=\"callout"), "{html}");
+        assert!(!html.contains("<div class=\"mdpp-callout"), "{html}");
         // 它的结构在壳里看得见（引号被同一个转义规则收编成实体）
         let q = ent("quot;");
         let tag = format!(
-            "{l}div class={q}callout callout--note{q}{r}",
+            "{l}div class={q}mdpp-callout mdpp-callout--note{q}{r}",
             l = ent("lt;"),
             r = ent("gt;"),
         );

@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn the_default_context_uses_the_standard_library() {
         let html = crate::Mdpp::new().render("::small class=note\n  小字 **加粗**\n");
-        assert!(html.contains(r#"<div class="small note">"#), "{html}");
+        assert!(html.contains(r#"<div class="mdpp-small note">"#), "{html}");
         assert!(html.contains("<strong>加粗</strong>"), "{html}");
     }
 
@@ -99,20 +99,23 @@ mod tests {
         assert!(title.contains("卷首的题名"), "{title}");
 
         let quote = mdpp.render("::quote origin=某人\n  引用内容\n");
-        assert!(quote.contains(r#"<blockquote class="quote">"#), "{quote}");
+        assert!(
+            quote.contains(r#"<blockquote class="mdpp-quote">"#),
+            "{quote}"
+        );
         assert!(quote.contains("quote__origin"), "{quote}");
         assert!(quote.contains("— 某人"), "{quote}");
 
         let signature = mdpp.render("::signature\n  甲  \n  2026 年秋\n");
         assert!(
-            signature.contains(r#"<div class="signature">"#),
+            signature.contains(r#"<div class="mdpp-signature">"#),
             "{signature}"
         );
         assert!(signature.contains("2026 年秋"), "{signature}");
 
         let flatlist = mdpp.render("::flatlist\n  * 甲\n  * 乙\n");
         assert!(
-            flatlist.contains(r#"<div class="flatlist hlist">"#),
+            flatlist.contains(r#"<div class="mdpp-flatlist mdpp-hlist">"#),
             "{flatlist}"
         );
         assert_eq!(flatlist.matches("<li>").count(), 2, "{flatlist}");
@@ -149,19 +152,19 @@ mod tests {
     fn aside_parses_title_and_body_as_markdown() {
         let html =
             crate::Mdpp::new().render("::aside title=\"十四**门**桥\"\n  正文里的**强调**\n");
-        assert!(html.contains(r#"<aside class="aside">"#), "{html}");
+        assert!(html.contains(r#"<aside class="mdpp-aside">"#), "{html}");
         assert!(html.contains("aside__title"), "{html}");
         assert!(html.contains("<strong>门</strong>"), "{html}");
         assert!(html.contains("<strong>强调</strong>"), "{html}");
 
         let center = crate::Mdpp::new().render("::aside align=center\n  居中\n");
         assert!(
-            center.contains(r#"<aside class="aside aside--center">"#),
+            center.contains(r#"<aside class="mdpp-aside mdpp-aside--center">"#),
             "{center}"
         );
         let left = crate::Mdpp::new().render("::aside align=left\n  左侧\n");
         assert!(
-            left.contains(r#"<aside class="aside aside--left">"#),
+            left.contains(r#"<aside class="mdpp-aside mdpp-aside--left">"#),
             "{left}"
         );
 
@@ -174,15 +177,15 @@ mod tests {
     #[test]
     fn banner_uses_tag_auto_and_takes_text_or_body() {
         let body = crate::Mdpp::new().render("::banner\n  福建省文物保护单位\n");
-        assert!(body.contains(r#"<p class="banner">"#), "{body}");
+        assert!(body.contains(r#"<p class="mdpp-banner">"#), "{body}");
         assert!(!body.contains("<p><p>"), "{body}");
 
         let text = crate::Mdpp::new().render("::banner text=\"**加粗**的标题\"\n");
         assert!(text.contains("<strong>加粗</strong>"), "{text}");
-        assert!(text.contains(r#"<p class="banner">"#), "{text}");
+        assert!(text.contains(r#"<p class="mdpp-banner">"#), "{text}");
 
         let multi = crate::Mdpp::new().render("::banner\n  第一段\n\n  第二段\n");
-        assert!(multi.contains(r#"<div class="banner">"#), "{multi}");
+        assert!(multi.contains(r#"<div class="mdpp-banner">"#), "{multi}");
         assert!(multi.contains("<p>第二段</p>"), "{multi}");
     }
 
@@ -226,7 +229,7 @@ mod tests {
         ] {
             let html = crate::Mdpp::new().render(&format!("::{name}\n  正文一行\n"));
             assert!(
-                html.contains(&format!("callout callout--{class}")),
+                html.contains(&format!("mdpp-callout mdpp-callout--{class}")),
                 "{name}: {html}"
             );
             assert!(html.contains(mark), "{name} 的记号丢了: {html}");
@@ -264,16 +267,19 @@ mod tests {
     #[test]
     fn fold_uses_the_disclose_primitive() {
         let default = crate::Mdpp::new().render("::fold\n  折起来的内容\n");
-        assert!(default.contains(r#"<details class="fold">"#), "{default}");
         assert!(
-            default.contains(r#"<summary class="fold--custom">更多</summary>"#),
+            default.contains(r#"<details class="mdpp-fold">"#),
+            "{default}"
+        );
+        assert!(
+            default.contains(r#"<summary class="mdpp-fold--custom">更多</summary>"#),
             "{default}"
         );
         assert!(default.contains("折起来的内容"), "{default}");
 
         let open = crate::Mdpp::new().render("::fold open=on title=草稿\n  **加粗**\n");
         assert!(
-            open.contains("<details class=\"fold\" open=\"\">"),
+            open.contains("<details class=\"mdpp-fold\" open=\"\">"),
             "{open}"
         );
         assert!(open.contains("<strong>加粗</strong>"), "{open}");
@@ -281,7 +287,7 @@ mod tests {
         let colored = crate::Mdpp::new().render("::fold color=#0055a4 title=深蓝\n  正文\n");
         assert!(
             colored.contains(
-                r#"<summary class="fold--custom" style="background: #0055a4; color: #f5f5f5;">"#
+                r#"<summary class="mdpp-fold--custom" style="background: #0055a4; color: #f5f5f5;">"#
             ),
             "{colored}"
         );
@@ -308,39 +314,45 @@ mod tests {
     fn theme_and_tabs_use_the_variants_primitive() {
         let tabs =
             crate::Mdpp::new().render("::tabs\n  [北岸]\n    走北路\n  [南岸]\n    走南路\n");
-        assert!(tabs.contains(r#"class="tabs__bar""#), "{tabs}");
+        assert!(tabs.contains(r#"class="mdpp-tabs__bar""#), "{tabs}");
         assert!(
-            tabs.contains(r#"class="tabs__tab tabs__tab--on""#),
+            tabs.contains(r#"class="mdpp-tabs__tab mdpp-tabs__tab--on""#),
             "{tabs}"
         );
-        assert!(tabs.contains(r#"class="tabs__panel""#), "{tabs}");
+        assert!(tabs.contains(r#"class="mdpp-tabs__panel""#), "{tabs}");
         assert!(tabs.contains("data-mdpp-option=\"0\""), "{tabs}");
         assert!(tabs.contains("hidden"), "{tabs}");
 
         let theme = crate::Mdpp::new().render("::theme\n  [light]\n    浅色\n  [dark]\n    深色\n");
-        assert!(theme.contains(r#"class="theme""#), "{theme}");
-        assert!(theme.contains("theme__part theme__part--light"), "{theme}");
-        assert!(theme.contains("theme__part theme__part--dark"), "{theme}");
+        assert!(theme.contains(r#"class="mdpp-theme""#), "{theme}");
+        assert!(
+            theme.contains("mdpp-theme__part mdpp-theme__part--light"),
+            "{theme}"
+        );
+        assert!(
+            theme.contains("mdpp-theme__part mdpp-theme__part--dark"),
+            "{theme}"
+        );
         assert!(theme.contains("data-mdpp-control=\"theme\""), "{theme}");
 
         let bad = crate::Mdpp::new().render("::theme\n  [blue]\n    没有这个主题\n");
         assert!(bad.contains("template--problem"), "{bad}");
         assert!(
-            !bad.contains("class=\"theme\""),
+            !bad.contains("class=\"mdpp-theme\""),
             "坏标签不该留下半个容器：{bad}"
         );
     }
 
-    /// `indent` 是 `surface indent=` 上面的一层模板：比例回到 CSS 的 `.indent`
+    /// `indent` 是 `surface indent=` 上面的一层模板：比例回到 CSS 的 `.mdpp-indent`
     #[test]
     fn indent_uses_surface_and_the_css_variable() {
         let html = crate::Mdpp::new().render("::indent indent=2\n  这里有**加粗**\n");
-        assert!(html.contains(r#"class="indent""#), "{html}");
+        assert!(html.contains(r#"class="mdpp-indent""#), "{html}");
         assert!(html.contains("--mdpp-indent: 2;"), "{html}");
         assert!(html.contains("<strong>加粗</strong>"), "{html}");
 
         let boxed = crate::Mdpp::new().render("::indent indent=1 class=box\n  内容\n");
-        assert!(boxed.contains(r#"class="indent box""#), "{boxed}");
+        assert!(boxed.contains(r#"class="mdpp-indent box""#), "{boxed}");
         assert!(boxed.contains("--mdpp-indent: 1;"), "{boxed}");
 
         let missing = crate::Mdpp::new().render("::indent\n  内容\n");
@@ -359,7 +371,7 @@ mod tests {
     fn fields_use_the_rows_template() {
         let html = crate::Mdpp::new()
             .render("::fields\n  地址 | 福建省某村\n  分类 | 古建筑\n  备注\n  公式 | 甲|乙\n\n");
-        assert!(html.contains(r#"<table class="fields">"#), "{html}");
+        assert!(html.contains(r#"<table class="mdpp-fields">"#), "{html}");
         assert!(
             html.contains("地址") && html.contains("福建省某村"),
             "{html}"
@@ -371,10 +383,13 @@ mod tests {
         assert!(!html.contains("template--problem"), "{html}");
 
         let classed = crate::Mdpp::new().render("::fields class=attrs\n  甲 | 乙\n");
-        assert!(classed.contains(r#"class="fields attrs""#), "{classed}");
+        assert!(
+            classed.contains(r#"class="mdpp-fields attrs""#),
+            "{classed}"
+        );
 
         let empty = crate::Mdpp::new().render("::fields\n");
-        assert!(empty.contains(r#"<table class="fields">"#), "{empty}");
+        assert!(empty.contains(r#"<table class="mdpp-fields">"#), "{empty}");
         assert!(!empty.contains("template--problem"), "{empty}");
     }
 
@@ -383,7 +398,11 @@ mod tests {
     fn columns_use_the_each_template() {
         let html =
             crate::Mdpp::new().render("::columns\n  [写法]\n    这边写\n  [效果]\n    那边看\n");
-        assert_eq!(html.matches("class=\"columns__col\"").count(), 2, "{html}");
+        assert_eq!(
+            html.matches("class=\"mdpp-columns__col\"").count(),
+            2,
+            "{html}"
+        );
         assert!(html.contains("columns__head"), "{html}");
         assert!(html.contains("写法") && html.contains("效果"), "{html}");
         assert!(html.contains("这边写") && html.contains("那边看"), "{html}");
@@ -408,15 +427,18 @@ mod tests {
     fn callouts_can_fold_with_disclose() {
         let plain = crate::Mdpp::new().render("::note\n  普通提示\n");
         assert!(!plain.contains("<details"), "{plain}");
-        assert!(plain.contains(r#"<p class="callout__title">"#), "{plain}");
+        assert!(
+            plain.contains(r#"<p class="mdpp-callout__title">"#),
+            "{plain}"
+        );
 
         let open = crate::Mdpp::new().render("::note collapsible\n  可折叠提示\n");
         assert!(
-            open.contains(r#"<details class="callout__details" open="">"#),
+            open.contains(r#"<details class="mdpp-callout__details" open="">"#),
             "{open}"
         );
         assert!(
-            open.contains(r#"<summary class="callout__title">"#),
+            open.contains(r#"<summary class="mdpp-callout__title">"#),
             "{open}"
         );
         assert!(open.contains("可折叠提示"), "{open}");
@@ -428,7 +450,7 @@ mod tests {
 
         let off = crate::Mdpp::new().render("::warning collapsible=off\n  还是静态\n");
         assert!(!off.contains("<details"), "{off}");
-        assert!(off.contains(r#"<p class="callout__title">"#), "{off}");
+        assert!(off.contains(r#"<p class="mdpp-callout__title">"#), "{off}");
 
         let bad = crate::Mdpp::new().render("::danger collapsible=maybe\n  内容\n");
         assert!(bad.contains("template--problem"), "{bad}");

@@ -96,7 +96,7 @@ pub enum Assets {
 
 /// mermaid / math / 代码高亮 前端资源的加载方式。
 ///
-/// `::mermaid` 输出 `<pre class="mermaid">`，`::math` 输出 `<div class="math">`，
+/// `::mermaid` 输出 `<pre class="mdpp-mermaid">`，`::math` 输出 `<div class="mdpp-math">`，
 /// 代码块产出 `class="language-…"`；它们需要页面里引入 mermaid.js / katex.js /
 /// highlight.js（连同 GitHub 浅深两份主题样式）才能在浏览器里画出来、高亮出来。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

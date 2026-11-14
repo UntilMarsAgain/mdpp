@@ -1,2 +1,2 @@
-::variants control=theme group=theme default=light class="theme {{?@class}}" panel-class=theme__part panel-variant-class=on label=深浅色主题
+::variants control=theme group=theme default=light class="mdpp-theme {{?@class}}" panel-class=mdpp-theme__part panel-variant-class=on label=深浅色主题
   {{body}}

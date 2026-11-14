@@ -2,16 +2,16 @@
   [then]
     ::if condition-exist={{@color}}
       [then]
-        ::surface tag=auto class="banner banner--tinted {{?@class}}" color={{@color}} height={{?@height}} rounded={{?@rounded}} mini={{?@mini}}
+        ::surface tag=auto class="mdpp-banner mdpp-banner--tinted {{?@class}}" color={{@color}} height={{?@height}} rounded={{?@rounded}} mini={{?@mini}}
           {{?text}}
       [else]
-        ::surface tag=auto class="banner {{?@class}}" height={{?@height}} rounded={{?@rounded}} mini={{?@mini}}
+        ::surface tag=auto class="mdpp-banner {{?@class}}" height={{?@height}} rounded={{?@rounded}} mini={{?@mini}}
           {{?text}}
   [else]
     ::if condition-exist={{@color}}
       [then]
-        ::surface tag=auto class="banner banner--tinted {{?@class}}" color={{@color}} height={{?@height}} rounded={{?@rounded}} mini={{?@mini}}
+        ::surface tag=auto class="mdpp-banner mdpp-banner--tinted {{?@class}}" color={{@color}} height={{?@height}} rounded={{?@rounded}} mini={{?@mini}}
           {{body}}
       [else]
-        ::surface tag=auto class="banner {{?@class}}" height={{?@height}} rounded={{?@rounded}} mini={{?@mini}}
+        ::surface tag=auto class="mdpp-banner {{?@class}}" height={{?@height}} rounded={{?@rounded}} mini={{?@mini}}
           {{body}}

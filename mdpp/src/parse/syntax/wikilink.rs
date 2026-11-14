@@ -13,9 +13,9 @@
 //!
 //! | 情形 | 渲染成 |
 //! |---|---|
-//! | [`ResolvedLink::Link`] | `<a href=… class="wikilink">` |
+//! | [`ResolvedLink::Link`] | `<a href=… class="mdpp-wikilink">` |
 //! | [`ResolvedLink::Node`] | 整个节点归那个函数写（连 `<a>` 都由它决定） |
-//! | `None`，**或压根没递解析器** | `<a class="wikilink wikilink--missing" data-missing="true">` —— **红链** |
+//! | `None`，**或压根没递解析器** | `<a class="mdpp-wikilink mdpp-wikilink--missing" data-missing="true">` —— **红链** |
 //!
 //! 「解析器说没有」与「压根没人递解析器」渲染成**同样的红链**，而且红链**故意不带
 //! `href`** —— 这两条都由 [`crate::link`] 定下，理由在那边的模块头（一句话：渲染成
@@ -73,7 +73,7 @@ impl NodeValue for WikiLink {
             fmt.open(
                 "a",
                 &[
-                    ("class", "wikilink wikilink--missing".to_string()),
+                    ("class", "mdpp-wikilink mdpp-wikilink--missing".to_string()),
                     ("data-doc", self.doc.clone()),
                     ("data-missing", "true".to_string()),
                 ],
@@ -85,7 +85,7 @@ impl NodeValue for WikiLink {
 
         // `class` 单独攒着最后合并 —— HTML 里**一个元素只能有一个 class 属性**，
         // 写两个的话浏览器取第一个，而那会正好把解析器给的那几个类名丢掉。
-        let mut classes: Vec<&str> = vec!["wikilink"];
+        let mut classes: Vec<&str> = vec!["mdpp-wikilink"];
         let mut attrs: Vec<(&str, String)> = Vec::new();
         attrs.push(("href", target.url.clone()));
         for (key, value) in &target.attrs {
@@ -214,7 +214,7 @@ mod tests {
     fn with_no_resolver_every_link_is_a_red_link() {
         let html = render("[[甲]] 与 [[乙]]\n");
         assert_eq!(
-            html.matches(r#"class="wikilink wikilink--missing""#)
+            html.matches(r#"class="mdpp-wikilink mdpp-wikilink--missing""#)
                 .count(),
             2,
             "{html}"
@@ -290,7 +290,7 @@ mod tests {
             fn resolve(&self, target: &str) -> Option<ResolvedLink> {
                 Some(ResolvedLink::Link(
                     LinkTarget::new(format!("/p/{target}"))
-                        .attr("class", "wikilink--ok")
+                        .attr("class", "mdpp-wikilink--ok")
                         .attr("data-missing", "false"),
                 ))
             }
@@ -300,7 +300,7 @@ mod tests {
         assert!(html.contains(r#"data-missing="false""#), "{html}");
         // 两个 class 都得在（这是使用方的事，渲染器只是照写）
         assert!(
-            html.contains(r#"class="wikilink wikilink--ok""#),
+            html.contains(r#"class="mdpp-wikilink mdpp-wikilink--ok""#),
             "两个 class 要合成一个：{html}"
         );
     }

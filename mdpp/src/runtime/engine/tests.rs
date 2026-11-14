@@ -73,19 +73,27 @@ fn dangerous_link_protocols_are_rejected() {
 fn external_links_are_marked_but_internal_ones_are_not() {
     let html = md_of("[外](https://example.com/x) [内](../指南/) [[某页]]\n");
     assert!(
-        html.contains(r#"<a class="external" href="https://example.com/x">"#),
+        html.contains(r#"<a class="mdpp-external" href="https://example.com/x">"#),
         "{html}"
     );
     assert_eq!(html.matches("external__text").count(), 1, "{html}");
     // 全页只有那一条外链带这个类
-    assert_eq!(html.matches(r#"class="external""#).count(), 1, "{html}");
+    assert_eq!(
+        html.matches(r#"class="mdpp-external""#).count(),
+        1,
+        "{html}"
+    );
 }
 
 /// 三种链接节点（普通链接、尖括号自动链接、裸地址）都认，站内与邮件不认
 #[test]
 fn every_kind_of_external_link_is_marked() {
     let html = md_of("[外](https://example.com/x) <https://example.com/y> https://example.com/z\n");
-    assert_eq!(html.matches(r#"class="external""#).count(), 3, "{html}");
+    assert_eq!(
+        html.matches(r#"class="mdpp-external""#).count(),
+        3,
+        "{html}"
+    );
     // 相对地址、内部链接、邮件都不该带这个类
     let html = md_of("[内](../指南/) [[某页]] [信](mailto:a@b.c)\n");
     assert!(!html.contains("external"), "{html}");
@@ -95,7 +103,11 @@ fn every_kind_of_external_link_is_marked() {
 #[test]
 fn nested_blocks_do_not_duplicate_the_external_class() {
     let html = md_of("::note\n  [外](https://example.com/x)\n");
-    assert_eq!(html.matches(r#"class="external""#).count(), 1, "{html}");
+    assert_eq!(
+        html.matches(r#"class="mdpp-external""#).count(),
+        1,
+        "{html}"
+    );
     assert_eq!(html.matches("external__text").count(), 1, "{html}");
 }
 
@@ -404,7 +416,7 @@ fn rendered_features_follow_semantic_nodes() {
 fn rendered_problems_are_counted_at_the_render_site() {
     let mdpp = Mdpp::new();
     let rendered = mdpp.render_report(
-        "::没这个名字\n  内容\n\n::mermaid\n\n```md\n<div class=\"template--unknown\"></div>\n```\n",
+        "::没这个名字\n  内容\n\n::mermaid\n\n```md\n<div class=\"mdpp-template--unknown\"></div>\n```\n",
         &crate::context::RenderContext::new(),
     );
     assert_eq!(rendered.problems.unknown, 1, "{rendered:?}");

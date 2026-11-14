@@ -30,9 +30,9 @@ impl NodeValue for Math {
         attrs.push((
             "class",
             if self.display {
-                "math math--display"
+                "mdpp-math mdpp-math--display"
             } else {
-                "math math--inline"
+                "mdpp-math mdpp-math--inline"
             }
             .to_string(),
         ));
@@ -116,7 +116,10 @@ mod tests {
     #[test]
     fn inline_math_keeps_the_source_for_the_frontend() {
         let html = render("爱因斯坦说 $E = mc^2$ 是这样。\n");
-        assert!(html.contains(r#"class="math math--inline""#), "{html}");
+        assert!(
+            html.contains(r#"class="mdpp-math mdpp-math--inline""#),
+            "{html}"
+        );
         assert!(html.contains(r#"data-tex="E = mc^2""#), "{html}");
         // 排版之前看到的是原文
         assert!(html.contains(">E = mc^2</span>"), "{html}");

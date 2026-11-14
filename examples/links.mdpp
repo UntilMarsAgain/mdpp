@@ -16,7 +16,7 @@
 
 ## 红链
 
-认不出来的目标一律渲染成红链（`class="wikilink wikilink--missing"`、
+认不出来的目标一律渲染成红链（`class="mdpp-wikilink mdpp-wikilink--missing"`、
 `data-missing="true"`），**压根没递链接解析器时也一样** —— 那与「解析器说没有」
 是同一件事：调用方不知道目标存不存在。
 

@@ -216,7 +216,7 @@ impl Stats {
         }
         self.unknown += problems.unknown;
         self.misused += problems.misused;
-        self.links += rendered.html.matches("<a class=\"wikilink").count();
+        self.links += rendered.html.matches("<a class=\"mdpp-wikilink").count();
     }
 }
 
@@ -330,7 +330,7 @@ mod tests {
     fn render_falls_back_to_the_library_standard_library() {
         let context = build_context(&options_of(&["render"])).expect("读得动");
         let html = mdpp::Mdpp::new().render_with("::small\n  标准库\n", &context);
-        assert!(html.contains("class=\"small\""), "{html}");
+        assert!(html.contains("class=\"mdpp-small\""), "{html}");
         assert!(html.contains("标准库"), "{html}");
     }
 
@@ -372,7 +372,7 @@ mod tests {
             "坏掉的.md",
             "::没有这个块\n",
             &mdpp::Rendered {
-                html: r#"<div class="template template--unknown">"#.to_string(),
+                html: r#"<div class="mdpp-template mdpp-template--unknown">"#.to_string(),
                 assets: Vec::new(),
                 outline: Vec::new(),
                 features: mdpp::Features::default(),

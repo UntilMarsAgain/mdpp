@@ -341,7 +341,7 @@ mod tests {
         assert!(html.contains("template--unknown"), "{html}");
         assert!(html.contains("未知块"), "{html}");
         assert!(
-            html.contains(r#"<code class="template__name">还没有的块</code>"#),
+            html.contains(r#"<code class="mdpp-template__name">还没有的块</code>"#),
             "{html}"
         );
         assert!(html.contains("标题=含 空格"), "{html}");
@@ -432,14 +432,14 @@ mod tests {
             "::tabs\n  [甲]\n    正常条目\n\n    ```text\n      [这不是标签]\n      [group99]\n    ```\n\n    收尾一句\n",
         );
         // 标签栏仍是一个
-        assert_eq!(html.matches("class=\"tabs__tab").count(), 1, "{html}");
+        assert_eq!(html.matches("class=\"mdpp-tabs__tab").count(), 1, "{html}");
         // 两行示例原样留在代码块里 —— 注意它们**该出现**，所以不能断言全文没有它们
         assert!(html.contains("[这不是标签]"), "{html}");
         assert!(html.contains("[group99]"), "{html}");
         // 围栏后的那句还在原来那一节里（没被劈到别处去）
         assert!(html.contains("收尾一句"), "{html}");
         assert_eq!(
-            html.matches("class=\"tabs__panel").count(),
+            html.matches("class=\"mdpp-tabs__panel").count(),
             1,
             "只有一节：{html}"
         );
@@ -452,7 +452,7 @@ mod tests {
         let html =
             render("::tabs\n  [甲]\n    - ```text\n      例子\n      ```\n  [丙]\n    丙内容\n");
         assert_eq!(
-            html.matches("class=\"tabs__tab").count(),
+            html.matches("class=\"mdpp-tabs__tab").count(),
             2,
             "该有两节：{html}"
         );
@@ -464,7 +464,7 @@ mod tests {
     #[test]
     fn a_tilde_fence_protects_its_labels_too() {
         let html = render("::tabs\n  [甲]\n    ~~~text\n      [不是标签]\n    ~~~\n");
-        assert_eq!(html.matches("class=\"tabs__tab").count(), 1, "{html}");
+        assert_eq!(html.matches("class=\"mdpp-tabs__tab").count(), 1, "{html}");
         assert!(html.contains("[不是标签]"), "{html}");
     }
 
@@ -477,11 +477,15 @@ mod tests {
         let html = render(
             "::tabs\n  [甲]\n    <div class=\"card\">\n      [这不是标签]\n    </div>\n\n    收尾一句\n",
         );
-        assert_eq!(html.matches("class=\"tabs__tab").count(), 1, "{html}");
+        assert_eq!(html.matches("class=\"mdpp-tabs__tab").count(), 1, "{html}");
         assert!(!html.contains("这不是标签</button>"), "{html}");
         assert!(html.contains("[这不是标签]"), "该原样留在 HTML 里：{html}");
         // 空行之后重新是普通内容，那一句该回原来那一节
         assert!(html.contains("收尾一句"), "{html}");
-        assert_eq!(html.matches("class=\"tabs__panel").count(), 1, "{html}");
+        assert_eq!(
+            html.matches("class=\"mdpp-tabs__panel").count(),
+            1,
+            "{html}"
+        );
     }
 }
