@@ -16,6 +16,8 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use crate::block::typecheck::TemplateType;
+
 /// 模板页名的前缀。带不带它都行（见 [`page_key`]）。
 pub const TEMPLATE_PREFIX: &str = "template";
 
@@ -100,16 +102,20 @@ pub fn page_for(name: &str) -> Option<TemplatePage> {
     crate::context::templates()?.page(&key)
 }
 
-/// 展开一层模板时保留的变量：正文、参数与模板名。
+/// 展开一层模板时保留的变量：正文、参数、模板名与这次调用的输出类型。
 ///
 /// 这是 `{{@名字}}` 的来源。`{{名字}}` 是**早绑定**文本插值，`{{@名字}}` 是
 /// **晚绑定**参数引用：前者在模板文本替换时就没了，后者留到参数分词之后再取值，
 /// 所以值里有空格、引号、换行也不会破坏块头。
+///
+/// `type` 是保留名：值来自 [`TemplateType`]，不从 `params` 里取，也不继承父模板。
+/// 调用处写的 `type=inline` / `type=block` 会被归一成小写。
 #[derive(Debug, Clone)]
 pub(crate) struct TemplateVars {
     pub(crate) name: String,
     pub(crate) body: String,
     pub(crate) params: Vec<(String, String)>,
+    pub(crate) kind: TemplateType,
     pub(crate) parent: Option<Arc<TemplateVars>>,
 }
 
@@ -118,12 +124,14 @@ impl TemplateVars {
         name: &str,
         params: Vec<(String, String)>,
         body: String,
+        kind: TemplateType,
         parent: Option<Arc<TemplateVars>>,
     ) -> Self {
         TemplateVars {
             name: name.to_string(),
             body,
             params,
+            kind,
             parent,
         }
     }
@@ -136,6 +144,7 @@ impl TemplateVars {
         match key {
             "body" => Some(&self.body),
             "template" => Some(&self.name),
+            "type" => Some(self.kind.as_str()),
             _ => self
                 .params
                 .iter()
@@ -149,6 +158,7 @@ impl TemplateVars {
         match key {
             "body" => Some(&self.body),
             "template" => Some(&self.name),
+            "type" => Some(self.kind.as_str()),
             _ => self
                 .params
                 .iter()
@@ -421,6 +431,7 @@ mod tests {
             "卡片",
             vec![("标题".into(), "{{@标题}}".into())],
             "正文".into(),
+            TemplateType::Block,
             None,
         ));
         let _guard = crate::context::enter_template_vars(vars);

@@ -13,7 +13,8 @@
 
 use markdown_it::{Node, Renderer};
 
-use super::super::dispatch::render_problem;
+use super::super::dispatch::render_inline_problem;
+use crate::block::typecheck;
 use crate::registry::Block;
 
 /// 把 `render_nested` 的输出收成一段行内 HTML。
@@ -21,43 +22,67 @@ use crate::registry::Block;
 /// 单段落是 markdown 的常态；`<p>…</p>` 的外壳对 `<th>` / `<span>` 既不合法
 /// 也不好看，所以剥掉。多段直接拒绝，不再猜作者想保留哪一段。
 fn inline_html(text: &str) -> Result<String, String> {
+    let snapshot = crate::env::snapshot();
     let rendered = crate::engine::render_nested(text);
-    let trimmed = rendered.trim();
-    let Some(inner) = trimmed
-        .strip_prefix("<p>")
-        .and_then(|rest| rest.strip_suffix("</p>"))
-    else {
-        return Err("`::inline` 只接受单段行内内容，不能写列表、标题或多个段落".to_string());
-    };
-    if inner.contains("</p>") {
-        return Err("`::inline` 只接受单段行内内容，不能写多个段落".to_string());
+    match typecheck::check_inline(&rendered) {
+        Ok(html) => Ok(html),
+        Err(why) => {
+            // 行内检查失败时，正文里已经登记的样式/脚本也要跟着丢掉；
+            // 否则错误框旁边还留着半截渲染的副作用。
+            if let Some(snapshot) = snapshot {
+                crate::env::restore(snapshot);
+            }
+            Err(format!("`::inline` 只接受单段行内内容：{why}"))
+        }
     }
-    Ok(inner.to_string())
 }
 
 /// `::inline` —— 行内渲染，不产生自己的元素。
 pub(super) fn render_inline(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     if !block.params.is_empty() {
-        render_problem(block, fmt, "`::inline` 不接受参数：正文就是行内内容");
+        render_inline_problem(block, fmt, "`::inline` 不接受参数：正文就是行内内容");
         return;
     }
     let text = block.body.trim();
     if text.is_empty() {
-        render_problem(block, fmt, "内容是空的：::inline 要写点字");
+        render_inline_problem(block, fmt, "内容是空的：::inline 要写点字");
         return;
     }
     match inline_html(text) {
         Ok(html) => fmt.text_raw(&html),
-        Err(why) => render_problem(block, fmt, &why),
+        Err(why) => render_inline_problem(block, fmt, &why),
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use crate::RenderContext;
+    use crate::block::template::{TemplatePage, TemplateSource};
     use crate::engine::Mdpp;
+
+    #[derive(Debug, Default)]
+    struct Pages(HashMap<String, TemplatePage>);
+
+    impl TemplateSource for Pages {
+        fn page(&self, name: &str) -> Option<TemplatePage> {
+            self.0.get(name).cloned()
+        }
+    }
 
     fn render(src: &str) -> String {
         Mdpp::new().render(src)
+    }
+
+    fn render_with_template(name: &str, source: &str, src: &str) -> String {
+        let mut pages = Pages::default();
+        pages
+            .0
+            .insert(name.to_string(), TemplatePage::Ready(source.to_string()));
+        let context = RenderContext::new().with_templates(Arc::new(pages));
+        Mdpp::new().render_with(src, &context)
     }
 
     /// 单段正文只输出行内内容，不留下 `<p>`
@@ -82,5 +107,23 @@ mod tests {
             let html = render(source);
             assert!(html.contains("template--problem"), "{source:?}: {html}");
         }
+    }
+
+    #[test]
+    fn inline_accepts_a_template_that_outputs_inline_html() {
+        let span = "::element tag=span inline=on\n  行内**内容**";
+        let html = render_with_template("span", span, "::inline\n  ::span\n");
+        assert!(html.contains("<span>"), "{html}");
+        assert!(html.contains("<strong>内容</strong>"), "{html}");
+        assert!(!html.contains("template--problem"), "{html}");
+    }
+
+    #[test]
+    fn inline_refuses_a_block_template_and_rolls_back_its_styles() {
+        let block = "::css\n  .rollback { color: red; }\n::element tag=div\n  块内容";
+        let html = render_with_template("block", block, "::inline\n  ::block\n");
+        assert!(html.contains("template--problem"), "{html}");
+        assert!(!html.contains("<div>"), "{html}");
+        assert!(!html.contains("rollback"), "{html}");
     }
 }

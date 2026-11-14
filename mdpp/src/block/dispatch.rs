@@ -78,6 +78,34 @@ pub fn render_problem(block: &Block, fmt: &mut dyn Renderer, why: &str) {
     );
 }
 
+/// 行内位置的问题：不能写 `<div>`，只能写一个 `<span>`。
+///
+/// 类型检查失败时用它；与 [`problem_box`] 共用“只写一次、只记一次”的约定，
+/// 但外壳必须是行内元素，否则会制造新的非法 HTML。
+pub(crate) fn render_inline_problem(block: &Block, fmt: &mut dyn Renderer, why: &str) {
+    crate::env::misused_problem();
+    crate::env::note_problem(
+        "行内内容有问题",
+        "mdpp-template--problem-inline",
+        &block.name,
+        why,
+    );
+    fmt.open(
+        "span",
+        &[(
+            "class",
+            "mdpp-template mdpp-template--problem-inline".to_string(),
+        )],
+    );
+    fmt.open("span", &[("class", "mdpp-template__badge".to_string())]);
+    fmt.text("行内内容有问题");
+    fmt.close("span");
+    fmt.open("span", &[("class", "mdpp-template__why".to_string())]);
+    fmt.text(why);
+    fmt.close("span");
+    fmt.close("span");
+}
+
 /// 问题框的公共外壳：徽标、块头、原因，再由调用方补最后一段内容。
 ///
 /// Rust 分发、用户块展开与内置诊断原语 `::problem` 都从这里出去，class 与结构

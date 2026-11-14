@@ -14,8 +14,10 @@ use markdown_it::{Node, NodeValue, Renderer};
 use crate::block::dispatch;
 use crate::block::fill;
 use crate::block::template::{self, TemplatePage, TemplateVars, page_key};
+use crate::block::typecheck::{self, TemplateType};
 use crate::context;
 use crate::registry::Block;
+use crate::runtime::capture::Capture;
 use crate::syntax::wikilink;
 use crate::telemetry::{debug, trace, warn};
 
@@ -54,6 +56,23 @@ pub(crate) fn expand_user_block(
         );
     }
 
+    let kind = match params
+        .iter()
+        .find(|(key, _)| key == "type")
+        .map(|(_, value)| value.as_str())
+    {
+        Some(value) => match TemplateType::parse(value) {
+            Ok(kind) => kind,
+            Err(why) => return header_problem(name, params, body, &why),
+        },
+        None => TemplateType::Block,
+    };
+    // 把类型也作为普通参数递给模板：`{{type}}` 是早绑定文本，`{{@type}}` 由
+    // `TemplateVars` 的 kind 提供。调用处写的大小写不保留，统一成规范值。
+    let mut params = params;
+    params.retain(|(key, _)| key != "type");
+    params.push(("type".to_string(), kind.as_str().to_string()));
+
     let block = Block {
         name: name.to_string(),
         params: params.clone(),
@@ -66,6 +85,7 @@ pub(crate) fn expand_user_block(
         name,
         params,
         body.clone(),
+        kind,
         context::template_vars(),
     ));
     let _scope = context::enter_template_vars(Arc::clone(&vars));
@@ -79,7 +99,7 @@ pub(crate) fn expand_user_block(
 
     let md = state.md;
     let mut parsed = context::deeper(|| crate::parse::markdown::parse_markdown(md, &filled));
-    let mut node = Node::new(ScopedBlock { vars });
+    let mut node = Node::new(ScopedBlock { block, vars, kind });
     node.children = std::mem::take(&mut parsed.children);
     node
 }
@@ -90,15 +110,35 @@ pub(crate) fn expand_user_block(
 /// `{{@body}}`、模板里再嵌模板的晚绑定参数都要靠它。
 #[derive(Debug)]
 struct ScopedBlock {
+    block: Block,
     vars: Arc<TemplateVars>,
+    kind: TemplateType,
 }
 
 impl NodeValue for ScopedBlock {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         let _scope = context::enter_template_vars(Arc::clone(&self.vars));
-        fmt.cr();
-        fmt.contents(&node.children);
-        fmt.cr();
+        if self.kind == TemplateType::Block {
+            fmt.cr();
+            fmt.contents(&node.children);
+            fmt.cr();
+            return;
+        }
+
+        // 行内模板的产物先收进缓冲区：检查不过时整段丢弃，不能把半截 HTML 写出去。
+        let snapshot = crate::env::snapshot();
+        let mut capture = Capture::default();
+        capture.contents(&node.children);
+        let html = capture.into_string();
+        match typecheck::check_inline(&html) {
+            Ok(html) => fmt.text_raw(&html),
+            Err(why) => {
+                if let Some(snapshot) = snapshot {
+                    crate::env::restore(snapshot);
+                }
+                dispatch::render_inline_problem(&self.block, fmt, &why);
+            }
+        }
     }
 }
 
@@ -221,10 +261,26 @@ mod tests {
 
     /// 正文里只写 `::名`，把那一页的**这一刻的样子**递进去
     fn render(page: &str, source: TemplatePage) -> String {
+        render_call(page, source, &format!("::{page}\n"))
+    }
+
+    fn render_call(page: &str, source: TemplatePage, call: &str) -> String {
         let mut pages = Pages::default();
         pages.0.insert(page.to_string(), source);
         let context = RenderContext::new().with_templates(Arc::new(pages));
-        Mdpp::new().render_with(&format!("::{page}\n"), &context)
+        Mdpp::new().render_with(call, &context)
+    }
+
+    fn render_pages(pages: &[(&str, &str)], call: &str) -> String {
+        let mut map = Pages::default();
+        for (name, source) in pages {
+            map.0.insert(
+                (*name).to_string(),
+                TemplatePage::Ready((*source).to_string()),
+            );
+        }
+        let context = RenderContext::new().with_templates(Arc::new(map));
+        Mdpp::new().render_with(call, &context)
     }
 
     /// 那一页**在但读不出来**：报的是「读不出来」，**不是**「未知块」——
@@ -352,5 +408,94 @@ mod tests {
         let html = Mdpp::new().render("::压根没有这一页\n");
         assert!(html.contains("template--unknown"), "{html}");
         assert!(!html.contains("mdpp-template--unreadable"), "{html}");
+    }
+
+    #[test]
+    fn a_template_can_be_declared_inline_and_unwraps_one_paragraph() {
+        let html = render_call(
+            "卡片",
+            TemplatePage::Ready("一段**文字**".into()),
+            "::卡片 type=inline\n",
+        );
+        assert!(html.contains("一段<strong>文字</strong>"), "{html}");
+        assert!(!html.contains("<p>"), "{html}");
+    }
+
+    #[test]
+    fn a_block_shaped_inline_template_is_refused() {
+        let html = render_call(
+            "卡片",
+            TemplatePage::Ready("::element tag=div\n  块内容".into()),
+            "::卡片 type=inline\n",
+        );
+        assert!(html.contains("mdpp-template--problem-inline"), "{html}");
+        assert!(!html.contains("<div>"), "{html}");
+    }
+
+    #[test]
+    fn type_is_available_to_the_template_and_conditionals() {
+        let source = concat!(
+            "::if condition-equals=\"{{@type}}\" value=inline\n",
+            "  [then]\n",
+            "    ::inline\n",
+            "      行内 {{type}}\n",
+            "  [else]\n",
+            "    ::element tag=div\n",
+            "      块 {{type}}\n",
+        );
+        let inline = render_call(
+            "卡片",
+            TemplatePage::Ready(source.into()),
+            "::卡片 type=inline\n",
+        );
+        assert!(inline.contains("行内 inline"), "{inline}");
+        assert!(!inline.contains("<div>"), "{inline}");
+
+        let block = render_call("卡片", TemplatePage::Ready(source.into()), "::卡片\n");
+        assert!(block.contains("<div>"), "{block}");
+        assert!(block.contains("块 block"), "{block}");
+    }
+
+    #[test]
+    fn an_invalid_template_type_is_a_problem() {
+        let html = render_call(
+            "卡片",
+            TemplatePage::Ready("一段".into()),
+            "::卡片 type=wat\n",
+        );
+        assert!(html.contains("mdpp-template--problem"), "{html}");
+        assert!(html.contains("type="), "{html}");
+    }
+
+    #[test]
+    fn inline_wrappers_use_the_same_check_for_template_output() {
+        let html = render_pages(
+            &[
+                ("卡片", "一段**文字**"),
+                ("框", "::element tag=span inline=on\n  ::卡片"),
+            ],
+            "::框\n",
+        );
+        assert!(html.contains("<span>"), "{html}");
+        assert!(html.contains("<strong>文字</strong>"), "{html}");
+        assert!(!html.contains("<p>"), "{html}");
+        assert!(!html.contains("template--problem"), "{html}");
+    }
+
+    #[test]
+    fn a_failed_inline_template_rolls_back_its_styles() {
+        let source = concat!(
+            "::css\n",
+            "  .rollback-inline { color: red; }\n",
+            "::element tag=div\n",
+            "  块内容\n",
+        );
+        let html = render_call(
+            "卡片",
+            TemplatePage::Ready(source.into()),
+            "::卡片 type=inline\n",
+        );
+        assert!(html.contains("mdpp-template--problem-inline"), "{html}");
+        assert!(!html.contains("rollback-inline"), "{html}");
     }
 }

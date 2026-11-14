@@ -37,6 +37,7 @@ use super::super::fill;
 use super::super::section;
 use super::{present, valid_name};
 use crate::block::template::TemplateVars;
+use crate::block::typecheck::TemplateType;
 use crate::context;
 use crate::registry::Block;
 
@@ -152,7 +153,16 @@ pub(super) fn render_rows(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
             if index + 1 == count { "yes" } else { "" }.to_string(),
         ));
 
-        let vars = TemplateVars::new(&template_name, vars, inherited_body.clone(), parent.clone());
+        let kind = parent
+            .as_ref()
+            .map_or(TemplateType::Block, |vars| vars.kind);
+        let vars = TemplateVars::new(
+            &template_name,
+            vars,
+            inherited_body.clone(),
+            kind,
+            parent.clone(),
+        );
         let _scope = context::enter_template_vars(std::sync::Arc::new(vars));
         match fill::resolve_late_refs(template, Some(params.as_name)) {
             Ok(fragment) => {

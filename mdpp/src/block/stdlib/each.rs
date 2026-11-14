@@ -74,6 +74,7 @@ use super::super::fill;
 use super::super::section;
 use super::{present, valid_name};
 use crate::block::template::TemplateVars;
+use crate::block::typecheck::TemplateType;
 use crate::context;
 use crate::registry::Block;
 
@@ -438,6 +439,9 @@ pub(super) fn render_each(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         .map(|vars| vars.name.clone())
         .unwrap_or_else(|| "each".to_string());
     let count = items.len();
+    let kind = parent
+        .as_ref()
+        .map_or(TemplateType::Block, |vars| vars.kind);
 
     let mut expanded = String::new();
     for (index, item) in items.iter().enumerate() {
@@ -477,6 +481,7 @@ pub(super) fn render_each(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
                 ),
             ],
             inherited_body.clone(),
+            kind,
             parent.clone(),
         );
         let _scope = context::enter_template_vars(std::sync::Arc::new(vars));
@@ -525,9 +530,9 @@ mod tests {
     /// 每一节都拿得到 label / body / index；`@body` 仍是 caller 的完整正文
     #[test]
     fn each_renders_every_section_with_item_variables() {
-        let template = "::each\n  [__template__]\n    ::element tag=p class=col\n      ::text\n        {{@item.label}}\n      {{@item.body}}\n  [__data__]\n    {{body}}\n";
+        let template = "::each\n  [__template__]\n    ::element tag=div class=col\n      ::text\n        {{@item.label}}\n      {{@item.body}}\n  [__data__]\n    {{body}}\n";
         let html = render_page("列", template, "::列\n  [甲]\n    甲文\n  [乙]\n    乙文\n");
-        assert_eq!(html.matches("<p class=\"col\">").count(), 2, "{html}");
+        assert_eq!(html.matches("<div class=\"col\">").count(), 2, "{html}");
         assert!(html.contains("甲") && html.contains("甲文"), "{html}");
         assert!(html.contains("乙") && html.contains("乙文"), "{html}");
     }

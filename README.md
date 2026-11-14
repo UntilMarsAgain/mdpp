@@ -283,7 +283,8 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 尺寸盒子）和 `::text`（正文原样输出，不解析 markdown），外围模板可以由它们组合出来。
 `::surface` 的 `class=` 归调用者：写了就按原样用，不再自动追加 `mdpp-surface` 或
 `mdpp-surface--*`；高度、圆角与 `mini` 会落成行内样式。`tag=auto` 会按正文形状选
-`<p>` 或 `<div>`。裸 flag `key` 等价于 `key=on`，显式 `key=` 才是空值。
+`<p>` 或 `<div>`；`span` / `p` / `button` 这类只装短语内容的标签会自动按行内收尾。
+裸 flag `key` 等价于 `key=on`，显式 `key=` 才是空值。
 
 分节块（`tabs` / `theme` / `columns` / `navbox` / `if` / `each`）有一条共同规则：
 `[标签]` 在块的基础缩进上，**正文必须再缩进一层**；标签层上不允许出现没有标签头的
@@ -311,8 +312,9 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 
 `[then]` 必填，`[else]` 可选；多个条件用嵌套 `::if`。分节内容一律缩进在
 `[标签]` 之下，标签之间不再夹匿名正文；`{{body}}` 作为分支内容时也放在那一层
-缩进里，用户正文里的一行 `[else]` 因此不会被外层误认成分节。行内模板调用
-还没做，块级 `::名字` 是当前唯一入口。
+缩进里，用户正文里的一行 `[else]` 因此不会被外层误认成分节。行内调用语法
+（`{{> …}}`）还没做，块级 `::名字` 是当前唯一入口；需要行内输出时在调用处写
+`type=inline`。
 
 ### 页面与模板的包含条件
 
@@ -406,6 +408,42 @@ match use_asset(AssetKind::Css, ".mine { color: red; }") {
 ```
 
 `[[链接]]`、强调等正常解析；多段、列表或块级结构会报用法问题。
+
+### 模板的输出类型
+
+模板调用可以在块头声明这次要的输出形态：
+
+```mdpp
+::small type=inline
+  一行小字
+```
+
+`type=` 只认 `inline` / `block`，不写就是 `block`。`block` 是普通块，可以输出段落、
+列表、表格；`inline` 只能放在标题、表格单元格、`<span>` 这类行内位置。
+
+模板里能读到这次调用的类型：`{{@type}}` 是晚绑定值，适合喂给条件：
+
+```mdpp
+::if condition-equals="{{@type}}" value=inline
+  [then]
+    ::inline
+      {{body}}
+  [else]
+    {{body}}
+```
+
+`{{type}}` 是它的早绑定别名，用来直接写进正文。`type` 是模板调用的保留参数名，
+调用处写的大小写会归一成 `inline` / `block`。
+
+`type=inline` 的产物在渲染后检查：一个裸 `<p>…</p>` 会剥掉外壳，只留里面；
+纯行内 HTML 原样保留；出现 `div`、列表、表格、多个段落或多层块级内容就报错。
+检查失败时，模板已经登记的样式、脚本、资源和计数都会回滚，只留下一个行内诊断。
+`::inline`、`::element` / `::surface` / `::style-vars` 的 `inline=on` 也走同一套检查。
+`span` / `p` / `button` 这类标签本身只装短语内容，即使不写 `inline=on` 也会按行内
+规则收尾；`div` / `table` 这类块标签仍按块处理。
+
+`inline=on` 只检查最终产物的形状，不会把类型传给里面的模板；模板内部要按
+`@type` 分支时，才在调用处写 `type=inline`。
 
 ### 受控样式变量 `::style-vars`
 

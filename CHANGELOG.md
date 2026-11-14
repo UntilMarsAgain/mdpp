@@ -32,6 +32,11 @@
 - 新增 `{{@名字}}` 晚绑定引用：在块头分词之后从当前模板作用域取值，
   值里有空格、引号、换行也不会破坏参数；`{{?@名字}}` 缺失时填空串，
   `body` / `template` 是保留名。
+- 模板调用新增 `type=inline|block`：默认 `block`，`inline` 在渲染后按 HTML
+  结构检查，只接受单段落（剥掉 `<p>`）或纯行内内容，块级产物报行内诊断并回滚
+  已登记的样式/脚本/资源；`{{@type}}` / `{{type}}` 可在模板里分支。`::inline`
+  与 `::element` / `::surface` / `::style-vars` 的 `inline=on` 共用这套检查；
+  `span` / `p` / `button` 等短语内容标签不写 `inline=on` 也会自动检查。
 - 新增 `::if`：按 `condition-exist` / `condition-defined` / `condition-empty` /
   `condition-equals` / `condition-truthy` / `condition-yes` / `condition-no` 与
   `condition-not` 选择 `[then]` / `[else]` 分支；`condition-yes` 认

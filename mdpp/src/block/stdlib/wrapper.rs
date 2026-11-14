@@ -21,10 +21,12 @@ use std::collections::HashSet;
 use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::{Node, Renderer};
 
-use super::super::dispatch::render_problem;
+use super::super::dispatch::{self, render_problem};
 use super::{css_size, hex_why, normalize_hex, size_rule, text_on};
 use crate::block::fill;
+use crate::block::typecheck;
 use crate::registry::Block;
+use crate::runtime::capture::Capture;
 
 /// `::surface` 可用的标签。样式盒子是块级容器，`span` / `p` 留给行内用法。
 const SURFACE_TAGS: &[&str] = &["div", "span", "section", "aside", "p"];
@@ -86,6 +88,7 @@ const ELEMENT_TAGS: &[&str] = &[
 /// `mdpp-surface--sized` / `mdpp-surface--square` / `mdpp-surface--mini`，这些效果改为行内样式。
 /// `indent=` 只落 `--mdpp-indent` 等级；`1.6em` 的比例在 `mdpp.css` 的 `.mdpp-indent` 里。
 /// `tag=auto` 按正文形状选标签：单段落 `p`，多段/含块 `div`。
+/// `tag=span` / `tag=p` 这类短语内容标签会自动按行内规则收尾。
 pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     // 模板页可以给诊断框一个更贴近的名字（`indent` / `banner` …）
     let name = block
@@ -231,7 +234,8 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
                 return;
             }
         };
-        (tag, fill::flag(block, "inline"))
+        let inline = fill::flag(block, "inline") || tag_requires_inline(tag);
+        (tag, inline)
     };
 
     let mut attrs: Vec<(&str, String)> = vec![("class", class)];
@@ -241,13 +245,16 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
     fmt.cr();
     fmt.open(tag, &attrs);
     fmt.cr();
-    contents(node, fmt, inline);
+    contents(block, node, fmt, inline);
     fmt.cr();
     fmt.close(tag);
     fmt.cr();
 }
 
 /// `::element tag=div|auto class=... role=... aria-*=... data-mdpp-*=... [inline=on]`
+///
+/// `span` / `p` / `button` 等只装短语内容的标签会自动按行内检查，不必再写
+/// `inline=on`；块标签仍按块处理，除非显式打开 `inline=on`。
 /// `::style-vars` 里的一个声明。
 struct StyleVar {
     name: String,
@@ -376,6 +383,8 @@ fn style_vars(block: &Block) -> Result<Vec<(String, String)>, String> {
 }
 
 /// `::style-vars tag=div --demo-bg=#0055a4 class=...`
+///
+/// `span` / `p` 等短语内容标签会自动按行内规则收尾。
 pub(super) fn render_style_vars(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     if node.children.is_empty() {
         render_problem(block, fmt, "内容是空的：::style-vars 要包裹点东西");
@@ -389,7 +398,7 @@ pub(super) fn render_style_vars(block: &Block, node: &Node, fmt: &mut dyn Render
             return;
         }
     };
-    let inline = fill::flag(block, "inline");
+    let inline = fill::flag(block, "inline") || tag_requires_inline(tag);
 
     let vars = match style_vars(block) {
         Ok(vars) => vars,
@@ -445,7 +454,7 @@ pub(super) fn render_style_vars(block: &Block, node: &Node, fmt: &mut dyn Render
     fmt.cr();
     fmt.open(tag, &attrs);
     fmt.cr();
-    contents(node, fmt, inline);
+    contents(block, node, fmt, inline);
     fmt.cr();
     fmt.close(tag);
     fmt.cr();
@@ -468,7 +477,8 @@ pub(super) fn render_element(block: &Block, node: &Node, fmt: &mut dyn Renderer)
                 return;
             }
         };
-        (tag, fill::flag(block, "inline"))
+        let inline = fill::flag(block, "inline") || tag_requires_inline(tag);
+        (tag, inline)
     };
 
     let mut attrs: Vec<(&str, String)> = Vec::new();
@@ -561,7 +571,7 @@ pub(super) fn render_element(block: &Block, node: &Node, fmt: &mut dyn Renderer)
     fmt.cr();
     fmt.open(tag, &attrs);
     fmt.cr();
-    contents(node, fmt, inline);
+    contents(block, node, fmt, inline);
     fmt.cr();
     fmt.close(tag);
     fmt.cr();
@@ -579,15 +589,59 @@ fn auto_tag(node: &Node) -> (&'static str, bool) {
     }
 }
 
-/// `inline=on` 时把单段正文直接写进行内，避免 `<p>` 里再套 `<p>`。
-fn contents(node: &Node, fmt: &mut dyn Renderer, inline: bool) {
-    if inline
-        && let [only] = node.children.as_slice()
-        && only.is::<Paragraph>()
-    {
-        fmt.contents(&only.children);
-    } else {
+/// 这些标签的内容模型本来就是行内/短语内容；即使调用者没写
+/// `inline=on`，也不能把段落原样塞进去。
+///
+/// `p` 与 `pre` 也在这里：它们的子节点只能是短语内容，正文经过块解析后
+/// 通常是一个段落，必须先把外壳拆掉。
+fn tag_requires_inline(tag: &str) -> bool {
+    matches!(
+        tag,
+        "p" | "span"
+            | "button"
+            | "summary"
+            | "pre"
+            | "code"
+            | "small"
+            | "strong"
+            | "em"
+            | "cite"
+            | "q"
+            | "s"
+            | "del"
+            | "ins"
+            | "kbd"
+            | "samp"
+            | "var"
+            | "sub"
+            | "sup"
+            | "time"
+            | "mark"
+    )
+}
+
+/// `inline=on` 时把内容收成行内 HTML；块内容在写出前就换成行内错误。
+///
+/// 单段落外壳由 [`typecheck::check_inline`] 统一剥掉，不再只认“恰好一个
+/// `Paragraph` 节点”这一种形状 —— 模板展开后是 `ScopedBlock`，那个判断会漏。
+fn contents(block: &Block, node: &Node, fmt: &mut dyn Renderer, inline: bool) {
+    if !inline {
         fmt.contents(&node.children);
+        return;
+    }
+
+    let snapshot = crate::env::snapshot();
+    let mut capture = Capture::default();
+    capture.contents(&node.children);
+    let html = capture.into_string();
+    match typecheck::check_inline(&html) {
+        Ok(html) => fmt.text_raw(&html),
+        Err(why) => {
+            if let Some(snapshot) = snapshot {
+                crate::env::restore(snapshot);
+            }
+            dispatch::render_inline_problem(block, fmt, &why);
+        }
     }
 }
 
@@ -733,6 +787,20 @@ mod tests {
 
         let element = render("::element tag=auto class=mdpp-banner\n  一行\n");
         assert!(element.contains("<p class=\"mdpp-banner\">"), "{element}");
+    }
+
+    /// `inline=on` 也要走同一套行内检查：单段落剥壳，块内容换成行内错误
+    #[test]
+    fn inline_wrappers_strip_one_paragraph_and_reject_blocks() {
+        let single = render("::element tag=span inline=on\n  一行\n");
+        assert!(single.contains("<span>"), "{single}");
+        assert!(single.contains("一行"), "{single}");
+        assert!(!single.contains("<p>"), "{single}");
+
+        let block = render("::element tag=span inline=on\n  ::element tag=div\n    块\n");
+        assert!(block.contains("<span>"), "{block}");
+        assert!(block.contains("template--problem-inline"), "{block}");
+        assert!(!block.contains("<div>"), "{block}");
     }
 
     /// 裸 flag 已经解析成 `on`；显式空值才走默认值：
@@ -912,6 +980,49 @@ mod tests {
         let surface = render("::surface inline=on\n  文字\n");
         assert!(surface.contains("surface"), "{surface}");
         assert!(surface.contains("文字"), "{surface}");
+    }
+
+    /// 标签本身只装短语内容时，不写 inline=on 也必须按行内收尾，
+    /// 否则会落出 `<span><p>…</p></span>`、`<p><div>…</div></p>` 这类结构。
+    #[test]
+    fn inline_tags_are_checked_without_the_flag() {
+        for source in [
+            "::element tag=span\n  一行\n",
+            "::element tag=p class=box\n  一行\n",
+            "::element tag=button\n  按钮\n",
+            "::element tag=summary\n  摘要\n",
+            "::surface tag=span\n  一行\n",
+            "::style-vars tag=span --x=1rem\n  一行\n",
+        ] {
+            let html = render(source);
+            assert!(!html.contains("template--problem"), "{source:?}: {html}");
+            assert!(!html.contains("<p>"), "{source:?}: {html}");
+            assert!(
+                html.contains("一行") || html.contains("按钮") || html.contains("摘要"),
+                "{source:?}: {html}"
+            );
+        }
+    }
+
+    /// 同样的标签收到块内容时，应该变成合法的行内诊断，而不是硬塞进 span/p。
+    #[test]
+    fn inline_tags_refuse_block_contents_without_the_flag() {
+        for source in [
+            "::element tag=span\n  ::element tag=div\n    块\n",
+            "::element tag=p\n  ::element tag=div\n    块\n",
+            "::element tag=button\n  ::element tag=div\n    块\n",
+            "::element tag=code\n  ::element tag=div\n    块\n",
+            "::element tag=pre\n  ::element tag=div\n    块\n",
+            "::surface tag=span\n  ::element tag=div\n    块\n",
+            "::style-vars tag=span --x=1rem\n  ::element tag=div\n    块\n",
+        ] {
+            let html = render(source);
+            assert!(
+                html.contains("template--problem-inline"),
+                "{source:?}: {html}"
+            );
+            assert!(!html.contains("<div>"), "{source:?}: {html}");
+        }
     }
 
     /// 两者都保持内容按 markdown 解析

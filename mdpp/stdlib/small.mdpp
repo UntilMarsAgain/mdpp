@@ -5,5 +5,10 @@
     color: var(--mdpp-text-dim, #5c636b);
   }
 
-::element class="mdpp-small {{?@class}}"
-  {{body}}
+::if condition-equals="{{@type}}" value=inline
+  [then]
+    ::element tag=span inline=on class="mdpp-small {{?@class}}"
+      {{body}}
+  [else]
+    ::element class="mdpp-small {{?@class}}"
+      {{body}}

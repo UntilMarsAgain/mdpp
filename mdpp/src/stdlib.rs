@@ -106,6 +106,11 @@ mod tests {
     fn the_default_context_uses_the_standard_library() {
         let html = crate::Mdpp::new().render("::small class=note\n  小字 **加粗**\n");
         assert!(html.contains(r#"<div class="mdpp-small note">"#), "{html}");
+
+        let inline = crate::Mdpp::new().render("::small type=inline\n  小字 **加粗**\n");
+        assert!(inline.contains(r#"<span class="mdpp-small">"#), "{inline}");
+        assert!(!inline.contains("<p>"), "{inline}");
+        assert!(!inline.contains("template--problem"), "{inline}");
         assert!(html.contains("<strong>加粗</strong>"), "{html}");
     }
 

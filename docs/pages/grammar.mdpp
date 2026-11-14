@@ -153,3 +153,9 @@ Markdown++采用类似于[MediaWiki](https://www.mediawiki.org/wiki/MediaWiki)�
 不再用第一个标签之前的正文表示。`::each` 用 `[__template__]` 写默认模板，
 需要按类型分流时再写 `[__template__ 类型]`；模板正文也必须缩进，后面
 `[标签]` 或 `[类型 数据]` 是数据。
+
+模板调用可以声明输出形态：`::小字 type=inline` 表示这次只放进标题、表格单元格
+这类行内位置，不写就是 `block`。模板里用 `{{@type}}` 判断当前类型，用 `{{type}}`
+直接写值；`inline` 的产物只接受单段落或纯行内 HTML，块级内容会报行内问题。
+`::inline`、`inline=on` 也按同一套规则检查；`span` / `p` / `button`
+这类只装短语内容的标签即使不写 `inline=on` 也会自动按行内检查。
