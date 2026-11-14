@@ -1244,7 +1244,7 @@
   display: none;
 }
 
-@media (max-width: 60rem) {
+@media (max-width: 99.99rem) {
   .mdpp-toc--wide {
     display: none;
   }
