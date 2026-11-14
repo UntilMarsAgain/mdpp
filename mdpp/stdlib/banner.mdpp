@@ -1,3 +1,59 @@
+::css
+  /* 带了 color= 的横条：字色由渲染器按底色挑过（深底配白字、浅底配
+   * 黑字），所以这一处的行内代码绝不能再用主题的 surface 当芯子底 ——
+   * 深横条上那是一块浅底配白字，读不出来。
+   * 芯子取「字色往中灰掺一点」：白字得一块略暗的灰，黑字得一块略亮
+   * 的灰，两种主题、任意 color= 都落在「与字色差一段」的中间地带，
+   * 不必另配一个变量。 */
+  /* 注意没有空格：code 的父元素**就是**横条自己（`<p class="mdpp-banner …">`），
+   * 写成 `.mdpp-banner--tinted :not(pre)` 就成了「在横条里面」，永远匹配不上。 */
+  .mdpp-banner--tinted:not(pre) > code {
+    background: color-mix(in srgb, currentColor 22%, #808080);
+  }
+
+  .mdpp-banner--tinted pre {
+    background: color-mix(in srgb, currentColor 28%, #808080);
+    border-color: color-mix(in srgb, currentColor 42%, #808080);
+  }
+
+
+  /* ---- 标题带与大标题 ------------------------------------------------ */
+
+  .mdpp-banner {
+    margin: var(--mdpp-gap, 1em) 0;
+    padding: 0.7rem 1rem;
+    border-radius: var(--mdpp-radius, 8px);
+    background: var(--mdpp-surface, #f6f7f9);
+    text-align: center;
+  }
+
+  .mdpp-banner--sized {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mdpp-banner--square {
+    border-radius: 0;
+  }
+
+  /* mini 模式：与普通横条同一外观，只是更紧凑，适合嵌进正文或 ::aside 里当分节标题 */
+  .mdpp-banner.mdpp-banner--mini {
+    font-size: 0.9em;
+    padding: 0.35rem 0.7rem;
+    margin: 0.3em 0;
+    line-height: 1.4;
+    border-radius: 0.2rem;
+  }
+
+
+
+  @media print {
+    .mdpp-banner {
+      page-break-inside: avoid;
+    }
+  }
+
 ::if condition-defined={{@text}}
   [then]
     ::if condition-exist={{@color}}

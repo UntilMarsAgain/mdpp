@@ -20,6 +20,8 @@ pub(super) struct PageBody {
     pub(super) assets: Vec<mdpp::Asset>,
     /// `::css` 收集到的整页样式，交给外壳放进 `<head>`
     pub(super) styles: Vec<String>,
+    /// `::js` 收集到的脚本标签，放到正文末尾
+    pub(super) scripts: Vec<String>,
     pub(super) wanted: Vec<assets::Wanted>,
     pub(super) absent: Vec<String>,
     /// 正文实际用到的前端特性，供整页外壳决定是否引 CDN
@@ -73,6 +75,7 @@ pub(super) fn render_page(
         html: scan.html,
         assets: rendered.assets,
         styles: rendered.styles,
+        scripts: rendered.scripts,
         wanted: scan.wanted,
         absent: scan
             .missing
@@ -93,6 +96,7 @@ pub(super) fn generated_body(project: &Project, site: &Site, page: &Page) -> Pag
         sidebar: String::new(),
         assets: Vec::new(),
         styles: Vec::new(),
+        scripts: Vec::new(),
         wanted: Vec::new(),
         absent: Vec::new(),
         features: mdpp::Features::default(),

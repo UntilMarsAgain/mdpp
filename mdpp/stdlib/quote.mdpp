@@ -1,3 +1,12 @@
+::css
+  /* `::quote` 的署名（作者给了 `origin=` 时） */
+  blockquote.mdpp-quote__origin,
+  p.mdpp-quote__origin {
+    margin-top: 0.5rem;
+    font-size: 0.9em;
+    color: var(--mdpp-text-dim, #5c636b);
+  }
+
 ::element tag=blockquote class="mdpp-quote {{?@class}}"
   {{body}}
 

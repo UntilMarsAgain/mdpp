@@ -42,6 +42,7 @@ fn enter_render_env(
             hashes: HashSet::new(),
         },
         styles: Vec::new(),
+        scripts: Vec::new(),
         nested: Some(Box::new({
             let parser = Arc::clone(parser);
             let registry = Arc::clone(registry);
@@ -110,6 +111,11 @@ pub(super) fn render_parts(
     } else {
         crate::env::take_styles()
     };
+    let scripts = if nested {
+        Vec::new()
+    } else {
+        crate::env::take_scripts()
+    };
     // 问题计数与特性一样在守卫出栈时合并；这里先取这一趟的最终值
     let (features, problems) = crate::env::with(|env| (env.features, env.problems))
         .unwrap_or_else(|| (Features::default(), crate::engine::Problems::default()));
@@ -122,6 +128,7 @@ pub(super) fn render_parts(
             features,
             problems,
             styles,
+            scripts,
         },
     )
 }
@@ -153,6 +160,11 @@ pub(super) fn render_node_parts(
     } else {
         crate::env::take_styles()
     };
+    let scripts = if nested {
+        Vec::new()
+    } else {
+        crate::env::take_scripts()
+    };
     let (features, problems) = crate::env::with(|env| (env.features, env.problems))
         .unwrap_or_else(|| (Features::default(), crate::engine::Problems::default()));
     drop(guard);
@@ -164,6 +176,7 @@ pub(super) fn render_node_parts(
             features,
             problems,
             styles,
+            scripts,
         },
     )
 }

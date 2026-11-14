@@ -1,2 +1,11 @@
+::css
+  .mdpp-signature {
+    margin: 2em 0 1em;
+    text-align: right;
+    color: var(--mdpp-text-dim, #5c636b);
+    /* 硬换行在落款里是有意义的：「名字一行、日期一行」 */
+    white-space: pre-line;
+  }
+
 ::element class="mdpp-signature {{?@class}}"
   {{body}}

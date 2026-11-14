@@ -133,6 +133,13 @@ mod tests {
     }
 
     #[test]
+    fn a_failed_guard_rolls_back_scripts() {
+        let rendered = report("::guard\n  ::js\n    console.log('bad')\n  ::problem why=坏掉了\n");
+        assert!(!rendered.html.contains("<script"), "{}", rendered.html);
+        assert!(rendered.scripts.is_empty(), "{rendered:?}");
+    }
+
+    #[test]
     fn guard_does_not_accept_params() {
         let rendered = report("::guard why=坏\n  正文\n");
         assert!(rendered.html.contains("不接受参数"), "{}", rendered.html);

@@ -1,3 +1,9 @@
+::css
+  /* ::indent 只落一个缩进等级；1.6em 的比例在这里，不在渲染器里。 */
+  .mdpp-indent {
+    margin-left: calc(var(--mdpp-indent, 0) * 1.6em);
+  }
+
 ::if condition-empty={{@indent}}
   [then]
     ::problem name=indent why="indent= 缺失：写 ::indent indent=2"

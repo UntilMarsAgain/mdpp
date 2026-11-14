@@ -1,2 +1,59 @@
+::css
+  /* ---- 折叠 --------------------------------------------------------- */
+
+  .mdpp-fold {
+    border: 1px solid var(--mdpp-border, #d8dce1);
+    border-radius: var(--mdpp-radius, 8px);
+    margin: var(--mdpp-gap, 1em);
+    overflow: hidden;
+  }
+
+  .mdpp-fold > summary {
+    padding: 0.6rem 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+    background: var(--mdpp-surface, #f6f7f9);
+    border-bottom: 1px solid var(--mdpp-border, #d8dce1);
+  }
+
+  /* 隐藏浏览器自带的小三角，自己画一个 */
+  .mdpp-fold > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .mdpp-fold > summary::marker {
+    content: "";
+  }
+
+  .mdpp-fold > summary::after {
+    content: " ▾";
+    font-size: 0.8em;
+    opacity: 0.6;
+  }
+
+  .mdpp-fold[open] > summary::after {
+    content: " ▴";
+  }
+
+  /* 折叠内容区的间距用 margin 而不是 padding：
+   * padding 在子元素内部，::note 这类有背景色的块会把背景一直铺到折叠框边框；
+   * margin 在子元素外部，背景不会延伸过去，嵌套块与边框之间才有真正的空隙。 */
+  .mdpp-fold > *:not(summary) {
+    margin: 0.6rem 1rem;
+  }
+
+  .mdpp-fold > *:not(summary):not(:last-child) {
+    margin-bottom: 1em;
+  }
+
+  .mdpp-fold > :first-child:not(summary) {
+    margin-top: 0.6rem;
+  }
+
+  .mdpp-fold > :last-child:not(summary) {
+    margin-bottom: 0.6rem;
+  }
+
 ::disclose class="mdpp-fold {{?@class}}" button-class=mdpp-fold--custom title={{?@title}} default-title=更多 open={{?@open}} color={{?@color}} name=fold empty-why="内容是空的：折起来的那一块要写点东西，或留空不如不用这块"
   {{body}}

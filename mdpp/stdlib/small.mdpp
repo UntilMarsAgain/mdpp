@@ -1,2 +1,9 @@
+::css
+  /* ::small：显示小字，适合辅助说明、备注、脚注之类的内容 */
+  .mdpp-small {
+    font-size: 0.85em;
+    color: var(--mdpp-text-dim, #5c636b);
+  }
+
 ::element class="mdpp-small {{?@class}}"
   {{body}}

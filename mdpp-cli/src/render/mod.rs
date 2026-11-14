@@ -80,6 +80,13 @@ pub fn run(options: &Render) -> Result<(), String> {
         let rendered = parser.render_report(text, &context);
         total.add(name, text, &rendered);
         let html = &rendered.html;
+        let mut full_body = String::new();
+        if options.full {
+            full_body.push_str(html);
+            for script in &rendered.scripts {
+                full_body.push_str(script);
+            }
+        }
 
         if multiple && !options.full {
             // 多个输入时每个文件一段，用注释隔开 —— 不加的话几段 HTML 拼在一起看不出哪段是哪段。
@@ -103,7 +110,7 @@ pub fn run(options: &Render) -> Result<(), String> {
                 // 单篇没有「站点」这一说：它不在某个站点上，于是没有 canonical
                 canonical: page::Canonical::default(),
                 favicon: None,
-                body: html,
+                body: &full_body,
                 // 单篇没有站点，也就没有侧边目录
                 toc: "",
                 extra_css: &page_css,
@@ -378,6 +385,7 @@ mod tests {
                 html: r#"<div class="mdpp-template mdpp-template--unknown">"#.to_string(),
                 assets: Vec::new(),
                 styles: Vec::new(),
+                scripts: Vec::new(),
                 outline: Vec::new(),
                 features: mdpp::Features::default(),
                 problems: mdpp::Problems {
@@ -393,6 +401,7 @@ mod tests {
                 html: "<p>没错</p>".to_string(),
                 assets: Vec::new(),
                 styles: Vec::new(),
+                scripts: Vec::new(),
                 outline: Vec::new(),
                 features: mdpp::Features::default(),
                 problems: mdpp::Problems::default(),

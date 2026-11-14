@@ -1,8 +1,7 @@
 /* mdpp 默认主题 —— 可选的配色与基础排版。
  *
- * 已迁移的组件样式由标准库模板的 `::css` 随模板提供，收集进页面 `<head>`；
- * 这一份保留配色变量、正文排版、问题框、代码/公式等基础层、打印，以及尚未迁走的
- * 组件规则（目前 navbox 已迁走）。
+ * 组件样式由标准库模板的 `::css` 随模板提供，收集进页面 `<head>`；这一份只保留
+ * 配色变量、正文排版、问题框、代码/公式、内容表格、目录与打印等基础层。
  * 颜色全走 `:root` 里那组变量（`--mdpp-*`），改一处即可换肤。`::css` 注入的样式
  * 不再收进 `.mdpp-content`，可以直接影响整页；页面里加自己的样式写在**后面**，
  * 同优先级的规则由后者胜出。
@@ -250,10 +249,9 @@
   margin: var(--mdpp-gap) 0;
 }
 
-/* 只认**没有 class 的那张表**：`::fields`（「标题带与大标题」那一节）与
- * `::navbox`（「导航框」那一节）各有各的样子，它们只要行与行分开的那条线，不套一圈框。`table:not([class])`
- * 把那两张连同它们的格子一起挡在门外 —— 比逐个去比选择器的权重稳：它们的规则
- * 写在后面，权重却未必更高。 */
+/* 只认**没有 class 的那张表**：`::fields`、`::navbox` 等带 class 的表各有各的
+ * 样子，不套这里的一圈框。`table:not([class])` 把它们连同格子一起挡在门外，
+ * 比逐个比权重稳。 */
 .mdpp-content table:not([class]) th,
 .mdpp-content table:not([class]) td {
   border: 1px solid var(--mdpp-border);
@@ -286,22 +284,6 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
-/* 带了 color= 的横条：字色由渲染器按底色挑过（深底配白字、浅底配
- * 黑字），所以这一处的行内代码绝不能再用主题的 surface 当芯子底 ——
- * 深横条上那是一块浅底配白字，读不出来。
- * 芯子取「字色往中灰掺一点」：白字得一块略暗的灰，黑字得一块略亮
- * 的灰，两种主题、任意 color= 都落在「与字色差一段」的中间地带，
- * 不必另配一个变量。 */
-/* 注意没有空格：code 的父元素**就是**横条自己（`<p class="mdpp-banner …">`），
- * 写成 `.mdpp-banner--tinted :not(pre)` 就成了「在横条里面」，永远匹配不上。 */
-.mdpp-content .mdpp-banner--tinted:not(pre) > code {
-  background: color-mix(in srgb, currentColor 22%, #808080);
-}
-
-.mdpp-content .mdpp-banner--tinted pre {
-  background: color-mix(in srgb, currentColor 28%, #808080);
-  border-color: color-mix(in srgb, currentColor 42%, #808080);
-}
 
 .mdpp-content pre {
   margin: var(--mdpp-gap) 0;
@@ -373,232 +355,6 @@
   margin: 0.4em 0 0;
   border-style: solid;
 }
-/* ---- 提示框 ------------------------------------------------------- */
-
-.mdpp-content .mdpp-callout {
-  margin: var(--mdpp-gap) 0;
-  padding: 0.7rem 1rem;
-  border-left: 4px solid currentColor;
-  border-radius: var(--mdpp-radius);
-  background: var(--mdpp-surface);
-}
-
-.mdpp-content .mdpp-callout > :first-child {
-  margin-top: 0;
-}
-
-.mdpp-content .mdpp-callout > :last-child {
-  margin-bottom: 0;
-}
-
-.mdpp-content .mdpp-callout__title {
-  display: flex;
-  gap: 0.5em;
-  align-items: baseline;
-  margin: 0 0 0.4em;
-  font-weight: 600;
-}
-
-.mdpp-content .mdpp-callout__mark {
-  font-weight: 400;
-}
-
-/* 可折叠的提示框：标题就是 summary，默认的三角收起来，自己画一个。
- * 与 `::fold` 同一个做法；不折叠时 `disclose` 输出的是普通 `<p>`，不碰这里。 */
-.mdpp-content .mdpp-callout__details > summary.mdpp-callout__title {
-  cursor: pointer;
-  list-style: none;
-  /* 折着时下面没有正文，标题的底部间距会变成一整块空白；展开时的间距由
-   * 正文第一项的 margin-top 给，两处不叠 */
-  margin-bottom: 0;
-}
-
-.mdpp-content .mdpp-callout__details > summary.mdpp-callout__title::-webkit-details-marker {
-  display: none;
-}
-
-.mdpp-content .mdpp-callout__details > summary.mdpp-callout__title::marker {
-  content: "";
-}
-
-.mdpp-content .mdpp-callout__details > summary.mdpp-callout__title::after {
-  content: " ▾";
-  margin-left: auto;
-  font-size: 0.8em;
-  font-weight: 400;
-  opacity: 0.6;
-}
-
-.mdpp-content .mdpp-callout__details[open] > summary.mdpp-callout__title::after {
-  content: " ▴";
-}
-
-.mdpp-content .mdpp-callout__details > :not(summary) {
-  margin-top: 0.4em;
-}
-
-.mdpp-content .mdpp-callout__details > :not(summary):last-child {
-  margin-bottom: 0;
-}
-
-.mdpp-content .mdpp-callout--note { background: var(--mdpp-note-bg); color: var(--mdpp-note-fg); }
-.mdpp-content .mdpp-callout--tip { background: var(--mdpp-tip-bg); color: var(--mdpp-tip-fg); }
-.mdpp-content .mdpp-callout--warning { background: var(--mdpp-warning-bg); color: var(--mdpp-warning-fg); }
-.mdpp-content .mdpp-callout--danger { background: var(--mdpp-danger-bg); color: var(--mdpp-danger-fg); }
-.mdpp-content .mdpp-callout--error { background: var(--mdpp-error-bg); color: var(--mdpp-error-fg); }
-
-/* ---- 平行列表 ------------------------------------------------------- */
-/* `::flatlist` 的样子。根元素是一个带 `hlist` 类的 div 元素，与
- * qiuwenbaike 的 `Template:Flatlist` 对齐：
- *
- * 水平排列与分隔符全交给 CSS，与 `::navbox` 的 hlist 同一条原则：
- * 结构与样式分开，渲染器不吐 hlist/inline 之类标记。
- *
- * 分隔符缺省 ` · `（中间点），挂在「上一条」的后面，最后一条后面
- * 没有多余的那个。想换分隔符，用 `::css` 覆盖下面的 ::after。
- */
-
-.mdpp-content .mdpp-flatlist.mdpp-hlist > ul,
-.mdpp-content .mdpp-flatlist.mdpp-hlist > ol {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-}
-
-.mdpp-content .mdpp-flatlist.mdpp-hlist > ul > li,
-.mdpp-content .mdpp-flatlist.mdpp-hlist > ol > li {
-  /* flex item，保持 list-item 语义 */
-}
-
-/* 分隔符挂在「上一条」后面，最后一条后面没有多余的那个 */
-.mdpp-content .mdpp-flatlist.mdpp-hlist > ul > li:not(:last-child)::after,
-.mdpp-content .mdpp-flatlist.mdpp-hlist > ol > li:not(:last-child)::after {
-  content: " · ";
-  padding: 0 0.35em;
-  color: var(--mdpp-text-dim);
-}
-
-/* 里层的列表仍竖排带子弹：横排的里层在窄屏上没法读 */
-.mdpp-content .mdpp-flatlist.mdpp-hlist ul ul,
-.mdpp-content .mdpp-flatlist.mdpp-hlist ul ol,
-.mdpp-content .mdpp-flatlist.mdpp-hlist ol ul,
-.mdpp-content .mdpp-flatlist.mdpp-hlist ol ol {
-  display: block;
-  margin: 0;
-  padding-left: 1.2em;
-  list-style: disc;
-}
-
-.mdpp-content .mdpp-flatlist.mdpp-hlist ul ul > li,
-.mdpp-content .mdpp-flatlist.mdpp-hlist ul ol > li,
-.mdpp-content .mdpp-flatlist.mdpp-hlist ol ul > li,
-.mdpp-content .mdpp-flatlist.mdpp-hlist ol ol > li {
-  display: list-item;
-}
-
-.mdpp-content .mdpp-flatlist.mdpp-hlist ul ul > li:not(:last-child)::after,
-.mdpp-content .mdpp-flatlist.mdpp-hlist ul ol > li:not(:last-child)::after,
-.mdpp-content .mdpp-flatlist.mdpp-hlist ol ul > li:not(:last-child)::after,
-.mdpp-content .mdpp-flatlist.mdpp-hlist ol ol > li:not(:last-child)::after {
-  content: none;
-}
-
-/* 窄屏：分隔符收紧 */
-@media (max-width: 34rem) {
-  .mdpp-content .mdpp-flatlist.mdpp-hlist > ul > li:not(:last-child)::after,
-  .mdpp-content .mdpp-flatlist.mdpp-hlist > ol > li:not(:last-child)::after {
-    content: " · ";
-    padding: 0 0.2em;
-  }
-}
-
-/* ---- 折叠 --------------------------------------------------------- */
-
-.mdpp-content .mdpp-fold {
-  border: 1px solid var(--mdpp-border);
-  border-radius: var(--mdpp-radius);
-  margin: var(--mdpp-gap);
-  overflow: hidden;
-}
-
-.mdpp-content .mdpp-fold > summary {
-  padding: 0.6rem 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  list-style: none;
-  background: var(--mdpp-surface);
-  border-bottom: 1px solid var(--mdpp-border);
-}
-
-/* 隐藏浏览器自带的小三角，自己画一个 */
-.mdpp-content .mdpp-fold > summary::-webkit-details-marker {
-  display: none;
-}
-
-.mdpp-content .mdpp-fold > summary::marker {
-  content: "";
-}
-
-.mdpp-content .mdpp-fold > summary::after {
-  content: " ▾";
-  font-size: 0.8em;
-  opacity: 0.6;
-}
-
-.mdpp-content .mdpp-fold[open] > summary::after {
-  content: " ▴";
-}
-
-/* 折叠内容区的间距用 margin 而不是 padding：
- * padding 在子元素内部，::note 这类有背景色的块会把背景一直铺到折叠框边框；
- * margin 在子元素外部，背景不会延伸过去，嵌套块与边框之间才有真正的空隙。 */
-.mdpp-content .mdpp-fold > *:not(summary) {
-  margin: 0.6rem 1rem;
-}
-
-.mdpp-content .mdpp-fold > *:not(summary):not(:last-child) {
-  margin-bottom: 1em;
-}
-
-.mdpp-content .mdpp-fold > :first-child:not(summary) {
-  margin-top: 0.6rem;
-}
-
-.mdpp-content .mdpp-fold > :last-child:not(summary) {
-  margin-bottom: 0.6rem;
-}
-
-/* ---- 标题带与大标题 ------------------------------------------------ */
-
-.mdpp-content .mdpp-banner {
-  margin: var(--mdpp-gap) 0;
-  padding: 0.7rem 1rem;
-  border-radius: var(--mdpp-radius);
-  background: var(--mdpp-surface);
-  text-align: center;
-}
-
-.mdpp-content .mdpp-banner--sized {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mdpp-content .mdpp-banner--square {
-  border-radius: 0;
-}
-
-/* mini 模式：与普通横条同一外观，只是更紧凑，适合嵌进正文或 ::aside 里当分节标题 */
-.mdpp-content .mdpp-banner.mdpp-banner--mini {
-  font-size: 0.9em;
-  padding: 0.35rem 0.7rem;
-  margin: 0.3em 0;
-  line-height: 1.4;
-  border-radius: 0.2rem;
-}
-
 /* ::surface 是 banner / callout / card 共用的基础盒子。
    它不替作者决定文字对齐；要横条那种居中，再挂 banner 类。 */
 .mdpp-content .mdpp-surface {
@@ -626,107 +382,10 @@
   border-radius: 0.2rem;
 }
 
-/* ::indent 只落一个缩进等级；1.6em 的比例在这里，不在渲染器里。 */
-.mdpp-content .mdpp-indent {
-  margin-left: calc(var(--mdpp-indent, 0) * 1.6em);
-}
-
 /* 标准库 card 的默认品牌色；调用方给 color= 时行内样式会盖掉它。 */
 .mdpp-content .mdpp-surface.std-card--brand {
   background: #0055a4;
   color: #f5f5f5;
-}
-
-.mdpp-content .mdpp-title-block {
-  margin: 1.6em 0 0.6em;
-  text-align: center;
-  font-size: 1.6em;
-  font-weight: 700;
-}
-
-/* ---- 信息栏 / 落款 / 属性表 --------------------------------------- */
-
-.mdpp-content .mdpp-aside {
-  float: right;
-  width: 18rem;
-  max-width: 100%;
-  margin: 0 0 var(--mdpp-gap) var(--mdpp-gap);
-  padding: 0.8rem 1rem;
-  border: 1px solid var(--mdpp-border);
-  border-radius: var(--mdpp-radius);
-  background: var(--mdpp-bg);
-  font-size: 0.94em;
-}
-
-/* aside 里嵌套的 banner：与 aside 背景区分，更深一点 */
-.mdpp-content .mdpp-aside .mdpp-banner {
-  background: var(--mdpp-surface);
-  border: 1px solid var(--mdpp-border);
-}
-
-.mdpp-content .mdpp-aside__title {
-  margin: 0 0 0.4em;
-  font-weight: 600;
-}
-
-/* 窄屏上取消浮动：正文会绕着一条窄栏走，那在手机上没法读 */
-@media (max-width: 40em) {
-  .mdpp-content .mdpp-aside {
-    float: none;
-    width: auto;
-    margin: var(--mdpp-gap) 0;
-  }
-}
-
-/* align=center 时不浮动，居中显示，宽度随内容 —— 维基式「居中信息框」 */
-.mdpp-content .mdpp-aside.mdpp-aside--center {
-  float: none;
-  display: block;
-  margin: var(--mdpp-gap) auto;
-  width: fit-content;
-  max-width: 28rem;
-}
-
-/* align=left 时左浮动：显式覆盖 .mdpp-aside 的 float: right */
-.mdpp-content .mdpp-aside.mdpp-aside--left {
-  float: left !important;
-  width: fit-content;
-  max-width: 28rem;
-}
-
-.mdpp-content .mdpp-signature {
-  margin: 2em 0 1em;
-  text-align: right;
-  color: var(--mdpp-text-dim);
-  /* 硬换行在落款里是有意义的：「名字一行、日期一行」 */
-  white-space: pre-line;
-}
-
-/* ::small：显示小字，适合辅助说明、备注、脚注之类的内容 */
-.mdpp-content .mdpp-small {
-  font-size: 0.85em;
-  color: var(--mdpp-text-dim);
-}
-
-.mdpp-content table.mdpp-fields th,
-.mdpp-content table.mdpp-fields td {
-  padding: 0.3em 0.9em;
-  border-bottom: 1px solid var(--mdpp-border);
-  text-align: left;
-  font-weight: 400;
-}
-
-.mdpp-content table.mdpp-fields th {
-  white-space: nowrap;
-  color: var(--mdpp-text-dim);
-}
-
-/* `::quote` 的署名（作者给了 `origin=` 时） */
-.mdpp-content blockquote.mdpp-quote__origin,
-.mdpp-content p.mdpp-quote__origin {
-  margin-top: 0.5rem;
-  font-size: 0.9em;
-  color: var(--mdpp-text-dim);
 }
 
 /* ---- 媒体 --------------------------------------------------------- */
@@ -764,81 +423,6 @@
   text-align: center;
   font-size: 0.88em;
   color: var(--mdpp-text-dim);
-}
-
-/* ---- 选项卡与深浅色 ------------------------------------------------ */
-
-.mdpp-content .mdpp-tabs__bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25em;
-  border-bottom: 2px solid var(--mdpp-border);
-}
-
-.mdpp-content .mdpp-tabs__tab {
-  padding: 0.4em 0.9em;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  background: transparent;
-  color: var(--mdpp-text-dim);
-  font: inherit;
-  cursor: pointer;
-}
-
-.mdpp-content .mdpp-tabs__tab--on {
-  border-bottom-color: var(--mdpp-accent);
-  color: var(--mdpp-text);
-  font-weight: 600;
-}
-
-/* 没接线时（就一份 HTML 丢进浏览器）第一节照样显示得出来 */
-.mdpp-content .mdpp-tabs__panel[hidden] {
-  display: none;
-}
-
-/* 两节默认都藏着：显示哪一节由下面两条按主题挑。
- * 「两边都显示」那一节（没有 light/dark 档的）不受这两条影响。 */
-.mdpp-content .mdpp-theme__part--light { display: none; }
-.mdpp-content .mdpp-theme__part--dark { display: none; }
-
-/* 页面没有明确指定主题时，跟随系统。
- * `:not([data-mdpp-theme='…'])` 是为了让「明确说了 light 就别再被深色那条拿走」。 */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-mdpp-theme='light']) .mdpp-content .mdpp-theme__part--dark { display: block; }
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-mdpp-theme='dark']) .mdpp-content .mdpp-theme__part--light { display: block; }
-}
-
-/* 页面明确指定了主题：它说了算，且写在最后 —— 同优先级时后者胜出。 */
-:root[data-mdpp-theme='dark'] .mdpp-content .mdpp-theme__part--dark { display: block; }
-:root[data-mdpp-theme='light'] .mdpp-content .mdpp-theme__part--light { display: block; }
-
-/* ---- 分栏 --------------------------------------------------------- */
-
-/* 几栏一起摆出来（`::columns`）。等宽、随内容伸缩；每栏给了 `12em` 的
- * 起步宽度，挤不下时 `wrap` 自动把多出来的栏换到下一行 —— 窄屏因此
- * 自然堆成一竖列，不必问渲染器屏幕多宽。 */
-.mdpp-content .mdpp-columns {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--mdpp-gap);
-  align-items: flex-start;
-  margin: var(--mdpp-gap) 0;
-}
-
-.mdpp-content .mdpp-columns__col {
-  flex: 1 1 12em;
-  min-width: 0; /* 栏里的长代码/表格能自己滚，不把栏撑破 */
-}
-
-.mdpp-content .mdpp-columns__head {
-  font-weight: 600;
-  font-size: 0.9em;
-  color: var(--mdpp-text-dim);
-  margin-bottom: 0.4em;
 }
 
 /* ---- 图与公式 ----------------------------------------------------- */
@@ -978,49 +562,6 @@
     -webkit-print-color-adjust: exact;
   }
 
-  /* 每一节都出来，每节顶上带它自己的名字 */
-  .mdpp-content .mdpp-tabs__panel[hidden] {
-    display: block !important;
-  }
-
-  .mdpp-content .mdpp-tabs__panel::before {
-    content: attr(data-mdpp-label);
-    display: block;
-    margin: 0.8em 0 0.3em;
-    font-weight: 600;
-  }
-
-  .mdpp-content .mdpp-tabs__panel + .mdpp-tabs__panel {
-    margin-top: 0.8em;
-    border-top: 1px solid var(--mdpp-border);
-    padding-top: 0.6em;
-  }
-
-  /* 标签条本身在纸上没意义：每个标签下面就是它那一节 */
-  .mdpp-content .mdpp-tabs__bar {
-    display: none;
-  }
-
-  /* 深浅色两节都出来（不然纸上只有屏幕上是深色那一半） */
-  .mdpp-content .mdpp-theme__part--light,
-  .mdpp-content .mdpp-theme__part--dark {
-    display: block !important;
-  }
-
-  .mdpp-content .mdpp-theme__part + .mdpp-theme__part {
-    margin-top: 0.8em;
-    border-top: 1px solid var(--mdpp-border);
-    padding-top: 0.6em;
-  }
-
-  /* 信息栏在屏幕上浮在右边绕着正文走，纸上浮动只会让它只占半页 */
-  .mdpp-content .mdpp-aside {
-    float: none;
-    width: auto;
-    margin: 0.8em 0;
-    page-break-inside: avoid;
-  }
-
   /* 地址写出来：纸上看不见链接指向哪儿 */
   .mdpp-content a[href^="http"]::after {
     content: " (" attr(href) ")";
@@ -1046,8 +587,6 @@
   }
 
   /* 别把一块内容从中间撕成两页 */
-  .mdpp-content .mdpp-callout,
-  .mdpp-content .mdpp-banner,
   .mdpp-content .mdpp-template,
   .mdpp-content figure,
   .mdpp-content pre {

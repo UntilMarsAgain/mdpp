@@ -20,6 +20,23 @@ use include_dir::{Dir, include_dir};
 
 use crate::block::template::{TemplatePage, TemplatePages, TemplateSource};
 
+/// 测试断言只关心正文；模板自带的 `::css` 现在会出现在片段开头。
+#[cfg(test)]
+fn body(html: &str) -> String {
+    let mut rest = html;
+    let mut out = String::new();
+    while let Some(start) = rest.find("<style>") {
+        out.push_str(&rest[..start]);
+        let Some(end) = rest[start..].find("</style>") else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        rest = &rest[start + end + "</style>".len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
 #[cfg(test)]
 mod navbox_tests;
 
@@ -139,11 +156,11 @@ mod tests {
     /// `quote` 没写 `origin` 就不输出署名；嵌套时内容落在**内层**引用里
     #[test]
     fn quote_omits_an_absent_origin_and_keeps_nesting() {
-        let plain = crate::Mdpp::new().render("::quote\n  只引用\n");
+        let plain = body(&crate::Mdpp::new().render("::quote\n  只引用\n"));
         assert!(plain.contains("<blockquote"), "{plain}");
         assert!(!plain.contains("quote__origin"), "{plain}");
 
-        let nested = crate::Mdpp::new().render("::quote\n  ::quote origin=内层\n    文字\n");
+        let nested = body(&crate::Mdpp::new().render("::quote\n  ::quote origin=内层\n    文字\n"));
         assert_eq!(nested.matches("<blockquote").count(), 2, "{nested}");
         let before = &nested[..nested.find("文字").expect("应当渲染出内容")];
         let depth = before.matches("<blockquote").count() - before.matches("</blockquote>").count();
@@ -413,7 +430,7 @@ mod tests {
         let rich = crate::Mdpp::new().render("::columns\n  [一]\n    **加粗**\n");
         assert!(rich.contains("<strong>加粗</strong>"), "{rich}");
 
-        let bare = crate::Mdpp::new().render("::columns labels=off\n  [一]\n    内容\n");
+        let bare = body(&crate::Mdpp::new().render("::columns labels=off\n  [一]\n    内容\n"));
         assert!(!bare.contains("columns__head"), "{bare}");
         assert!(bare.contains("内容"), "{bare}");
 
@@ -465,6 +482,15 @@ mod tests {
             1,
             "折叠提示框里的标题不该被数两遍：{heading}"
         );
+    }
+
+    /// 组件样式由模板自己的 `::css` 提供，不依赖 `mdpp.css`
+    #[test]
+    fn template_component_css_is_collected_with_the_template() {
+        let html = crate::Mdpp::new().render("::callout tone=warning\n  内容\n");
+        assert!(html.contains(".mdpp-callout--warning"), "{html}");
+        assert!(html.contains("mdpp-callout--warning"), "{html}");
+        assert!(!body(&html).contains("<style>"), "{html}");
     }
 
     /// 调用方模板叠在标准库上面，同名时调用方赢

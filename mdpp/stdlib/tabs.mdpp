@@ -1,2 +1,61 @@
+::css
+  /* ---- 选项卡与深浅色 ------------------------------------------------ */
+
+  .mdpp-tabs__bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25em;
+    border-bottom: 2px solid var(--mdpp-border, #d8dce1);
+  }
+
+  .mdpp-tabs__tab {
+    padding: 0.4em 0.9em;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    background: transparent;
+    color: var(--mdpp-text-dim, #5c636b);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .mdpp-tabs__tab--on {
+    border-bottom-color: var(--mdpp-accent, #2f6fd0);
+    color: var(--mdpp-text, #1a1c1f);
+    font-weight: 600;
+  }
+
+  /* 没接线时（就一份 HTML 丢进浏览器）第一节照样显示得出来 */
+  .mdpp-tabs__panel[hidden] {
+    display: none;
+  }
+
+
+
+  @media print {
+    /* 每一节都出来，每节顶上带它自己的名字 */
+    .mdpp-tabs__panel[hidden] {
+      display: block !important;
+    }
+
+    .mdpp-tabs__panel::before {
+      content: attr(data-mdpp-label);
+      display: block;
+      margin: 0.8em 0 0.3em;
+      font-weight: 600;
+    }
+
+    .mdpp-tabs__panel + .mdpp-tabs__panel {
+      margin-top: 0.8em;
+      border-top: 1px solid var(--mdpp-border, #d8dce1);
+      padding-top: 0.6em;
+    }
+
+    /* 标签条本身在纸上没意义：每个标签下面就是它那一节 */
+    .mdpp-tabs__bar {
+      display: none;
+    }
+  }
+
 ::variants control=choice group=tabs default={{?@default}} class="mdpp-tabs {{?@class}}" bar-class=mdpp-tabs__bar button-class=mdpp-tabs__tab button-on-class=mdpp-tabs__tab--on panel-class=mdpp-tabs__panel label=选项卡
   {{body}}
