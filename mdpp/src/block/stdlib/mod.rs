@@ -19,6 +19,7 @@
 //! - `control`：控制流（`if`）。按条件渲染 `[then]` / `[else]`，不产生自己的 DOM。
 //! - `include`：`noinclude` / `includeonly` —— 页面直接渲染与模板引入两种语境。
 //! - `inline`：把正文按行内 markdown 渲染，不产生外层元素。
+//! - `problem`：诊断框原语；写框的同时把这次错误记进渲染报告。
 //! - `style-vars`：带受控 CSS 自定义属性的盒子；`--名字-bg` 自动补字色。
 //! - `wrapper`：基础包装（`element` / `surface` / `style-vars`）。`element` 选标签、挂
 //!   受控属性，`surface` 管单个盒子的外观，`style-vars` 管受控 CSS 自定义属性。
@@ -38,6 +39,7 @@ mod include;
 mod inline;
 mod media;
 mod navbox;
+mod problem;
 mod rows;
 mod text;
 mod variants;
@@ -92,6 +94,7 @@ pub const NAMES: &[&str] = &[
     "includeonly",
     "inline",
     "noinclude",
+    "problem",
     "style-vars",
     "surface",
     "text",
@@ -123,6 +126,7 @@ pub fn register(registry: &mut BlockRegistry) {
         ))
         .register(spec("inline", ContentMode::Raw, render_inline))
         .register(spec("noinclude", ContentMode::Markdown, render_noinclude))
+        .register(spec("problem", ContentMode::Raw, problem::render_problem))
         .register(spec("style-vars", ContentMode::Markdown, render_style_vars))
         .register(spec("surface", ContentMode::Markdown, render_surface))
         .register(spec("text", ContentMode::Raw, render_text))
@@ -302,6 +306,13 @@ mod tests {
                 // includeonly 在页面直接渲染时是空输出，但不算用法问题
                 "includeonly" | "noinclude" => format!("::{name}\n  正文一行\n"),
                 "inline" => format!("::{name}\n  正文一行\n"),
+                // problem 本身就是问题框；它有效时当然会输出 problem 类
+                "problem" => {
+                    let html = Mdpp::new().render("::problem name=示例 why=演示\n");
+                    assert!(html.contains("template--problem"), "{html}");
+                    assert!(html.contains("示例"), "{html}");
+                    continue;
+                }
                 // style-vars 要一个颜色变量与正文
                 "style-vars" => format!("::{name} --demo-bg=#0055a4\n  正文一行\n"),
                 // if 至少要一节 [then]；用字面量条件，不依赖模板作用域
@@ -349,7 +360,7 @@ mod tests {
             Some(ContentMode::Markdown)
         );
         for name in [
-            "code", "math", "html", "css", "js", "mermaid", "inline", "text",
+            "code", "math", "html", "css", "js", "mermaid", "inline", "problem", "text",
         ] {
             assert_eq!(
                 registry.get(name).map(BlockSpec::mode),
