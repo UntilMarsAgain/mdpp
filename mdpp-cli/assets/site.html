@@ -10,7 +10,7 @@
 <noscript>
 <style>
 /* 没有 JS 时把「一次只露一节」的结构展开：选项卡全部显示并带上节标题，
- * 折叠的导航框也展开。与 mdpp.css 的 @media print 是同一套降级。 */
+ * 折叠的导航框也展开。与组件自己的 @media print 是同一套降级。 */
 .mdpp-content .mdpp-tabs__bar { display: none; }
 .mdpp-content .mdpp-tabs__panel[hidden] { display: block !important; }
 .mdpp-content .mdpp-tabs__panel::before {

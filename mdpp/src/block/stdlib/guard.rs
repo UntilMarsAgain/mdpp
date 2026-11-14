@@ -128,6 +128,7 @@ mod tests {
     fn a_failed_guard_rolls_back_assets() {
         let rendered = report("::guard\n  ::css\n    .x { color: red; }\n  ::problem why=坏掉了\n");
         assert!(!rendered.html.contains("<style"), "{}", rendered.html);
+        assert!(rendered.styles.is_empty(), "{rendered:?}");
         assert!(rendered.assets.is_empty(), "{rendered:?}");
     }
 

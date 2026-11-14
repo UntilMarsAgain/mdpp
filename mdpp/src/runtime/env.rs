@@ -43,6 +43,7 @@ pub(crate) struct Snapshot {
     diagnostics: usize,
     detail: Option<ProblemDetail>,
     assets: Sink,
+    styles: Vec<String>,
     features: Features,
 }
 
@@ -69,6 +70,8 @@ pub(crate) struct RenderEnv {
     pub(crate) registry: Arc<BlockRegistry>,
     /// 资源收集器（单页/站点两种模式）
     pub(crate) assets: Sink,
+    /// 这一页全局收集的 CSS，按首次登记顺序去重
+    pub(crate) styles: Vec<String>,
     /// 嵌套渲染入口；只有真正的渲染装得上
     pub(crate) nested: Option<Nested>,
     /// 当前变体组作用域
@@ -99,6 +102,7 @@ impl Default for RenderEnv {
             context: RenderContext::default(),
             registry: Arc::new(BlockRegistry::default()),
             assets: Sink::default(),
+            styles: Vec::new(),
             nested: None,
             variant: None,
             variant_seq: sequence(),
@@ -141,6 +145,23 @@ pub(crate) fn note_problem(badge: &str, class: &str, name: &str, why: &str) {
     });
 }
 
+/// 登记一份整页 CSS。内容相同只留第一份，顺序就是首次出现的顺序。
+pub(crate) fn register_style(content: String) {
+    if content.trim().is_empty() {
+        return;
+    }
+    let _ = with(|env| {
+        if !env.styles.contains(&content) {
+            env.styles.push(content);
+        }
+    });
+}
+
+/// 取走这一趟收集到的整页 CSS；只有最外层渲染调用。
+pub(crate) fn take_styles() -> Vec<String> {
+    with(|env| std::mem::take(&mut env.styles)).unwrap_or_default()
+}
+
 /// 当前渲染环境的状态快照；不在渲染中时返回 `None`。
 pub(crate) fn snapshot() -> Option<Snapshot> {
     with(|env| Snapshot {
@@ -148,6 +169,7 @@ pub(crate) fn snapshot() -> Option<Snapshot> {
         diagnostics: env.diagnostics,
         detail: env.problem_detail.clone(),
         assets: env.assets.clone(),
+        styles: env.styles.clone(),
         features: env.features,
     })
 }
@@ -159,6 +181,7 @@ pub(crate) fn restore(snapshot: Snapshot) {
         env.diagnostics = snapshot.diagnostics;
         env.problem_detail = snapshot.detail;
         env.assets = snapshot.assets;
+        env.styles = snapshot.styles;
         env.features = snapshot.features;
     });
 }
@@ -225,6 +248,11 @@ impl Drop for Guard {
                 for asset in inner.assets.assets {
                     if previous.assets.hashes.insert(asset.hash.clone()) {
                         previous.assets.assets.push(asset);
+                    }
+                }
+                for style in inner.styles {
+                    if !previous.styles.contains(&style) {
+                        previous.styles.push(style);
                     }
                 }
                 previous.features.merge(inner.features);

@@ -12,8 +12,7 @@
   override / `extra_css` / `extra_js` 都不能用绝对路径、`..` 或符号链接指向项目外；
   `mdpp.toml` 自身也不能是符号链接。
 - 资源扫描只改开始标签里的 `src` / `href` / `poster`，正文和注释里长得像属性的文字
-  不再被改写；`::css` 未闭合的块会被丢弃，而不是漏成全局样式；HTML 净化改为显式
-  栈遍历，深层嵌套不再打穿调用栈。
+  不再被改写；HTML 净化改为显式栈遍历，深层嵌套不再打穿调用栈。
 - `build_dir` 必须在项目目录之内；`--clean` 在删除任何东西之前先验路径，不能清到
   项目外、项目根、正文/模板目录或它们的上一层。
 - `::html` 的 `<markdown>` 槽位不再受 `raw_html` 影响，始终再净化一遍。
@@ -156,11 +155,14 @@
   `data-*` 约定。
 
 - 站点模式自动生成当前页的侧边目录：从渲染后的 `h2` / `h3` 取锚点，宽屏常驻，
-  窄于 `60rem` 时收成正文上方的 `<details>`；无标题页面不出空目录，单文件模式
+  窄于 `100rem` 时收成正文上方的 `<details>`；无标题页面不出空目录，单文件模式
   不带侧边栏。目录不依赖 JS，打印时隐藏。
 
 - `::tabs` 的面板资源也按选项延迟挂载：未选中的面板不再在页面加载时直接
   执行其中的 CSS / JS。
+- `::css` 改为整页样式：不再套 `.mdpp-content`，由渲染环境按内容去重后收集到
+  `Rendered.styles`，片段放开头、整页/站点放 `<head>`；组件样式改由标准库模板
+  自己的 `::css` 提供，navbox 已先迁移，`mdpp.css` 退为基础主题与排版。
 - 所有由 mdpp 生成的 `<script>` 都带 `data-mdpp-version` 与 `data-mdpp-mode`；
   延迟脚本还带 `data-mdpp-group` / `value` / `key` / `run`。`mdpp.js` 提供
   `window.mdppVariants` 的 `get` / `set` / `refresh` / `rescan` / `onChange` /

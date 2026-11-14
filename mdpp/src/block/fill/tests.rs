@@ -166,57 +166,10 @@ fn on_inside_ordinary_words_is_left_alone() {
     assert!(html.contains("onboarding=2"), "{html}");
 }
 
-/// 收窄的几条岔路一起钉：并排的、括号里带逗号的、写给根的、已经收过的 —— 错一条，样式要么漏出正文要么被收两遍
-#[test]
-fn css_is_scoped_to_the_content() {
-    assert_eq!(
-        scope_css(".a { color: red }"),
-        ".mdpp-content .a { color: red }"
-    );
-    assert_eq!(
-        scope_css(".a, .b { }"),
-        ".mdpp-content .a, .mdpp-content .b { }"
-    );
-    // `:is(a, b)` 里的逗号不是选择器分隔符
-    assert_eq!(scope_css(":is(a, b) { }"), ".mdpp-content :is(a, b) { }");
-    // 写给根元素的收成正文本身
-    assert_eq!(scope_css("body { }"), ".mdpp-content { }");
-    assert_eq!(scope_css(":root { --x: 1 }"), ".mdpp-content { --x: 1 }");
-    // 已经收过的不重复收
-    assert_eq!(scope_css(".mdpp-content a { }"), ".mdpp-content a { }");
-}
-
-/// `@media` 里的选择器照样要收，`@keyframes` 里的一律别动 —— 反了一处，样式就漏出正文或动画被改坏
-#[test]
-fn conditional_rules_are_scoped_inside() {
-    assert_eq!(
-        scope_css("@media (min-width: 1px) { .a { } }"),
-        "@media (min-width: 1px) { .mdpp-content .a { } }"
-    );
-    // 关键帧里的百分比不是选择器，别去动它
-    assert_eq!(
-        scope_css("@keyframes spin { from { } to { } }"),
-        "@keyframes spin { from { } to { } }"
-    );
-}
-
-/// 未闭合的块不能原样漏出去：浏览器会把文件结尾当成 `}`，于是整页都被改掉
-#[test]
-fn an_unclosed_block_is_dropped_instead_of_escaping_the_scope() {
-    let css = scope_css("body { background: red");
-    assert!(!css.contains("body"), "{css}");
-    assert!(!css.contains("background"), "{css}");
-    assert!(css.contains("未闭合"), "{css}");
-}
-
 /// `@import` 必须先丢 —— 留着它，正文里一行 CSS 就能把页面支到外部去拉样式
 #[test]
 fn imports_are_dropped() {
-    // 让页面去外部拉样式：既慢又不受控
-    assert_eq!(
-        scope_css("@import url(x.css); .a { }"),
-        ".mdpp-content .a { }"
-    );
+    assert_eq!(sanitize_css("@import url(x.css); .a { }"), " .a { }");
 }
 
 /// 正文里混进来的 `</style>` 会提前收掉样式块，把后面的字顶到页面上 —— 得先摘掉

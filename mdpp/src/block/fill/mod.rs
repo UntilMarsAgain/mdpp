@@ -1,8 +1,8 @@
 //! 用户块的「填空」与过滤。
 //!
 //! 三件事：`{{}}` 把参数与块内容填进模板（[`substitute_checked`]；宽容版
-//! [`substitute`] 留给底层调用方）；CSS 收窄把用户写的样式关进 **正文**
-//! （[`scope_css`]）；`::html` 的正文净化转发给 [`crate::block::html`]。
+//! [`substitute`] 留给底层调用方）；CSS 净化（[`sanitize_css`]）；`::html`
+//! 的正文净化转发给 [`crate::block::html`]。
 //!
 //! [`source_of`] 是这一层的枢纽：`{{}}`、CSS、HTML 三样都要先问它要正文，因为正文可能
 //! 来自 `src=` 指的模板页而不是块自己的内容。它是**唯一**一处「`src=` 指的是谁」的
@@ -303,4 +303,4 @@ mod css;
 #[cfg(test)]
 mod tests;
 
-pub use css::{CONTENT_SCOPE, sanitize_css, scope_css};
+pub use css::sanitize_css;

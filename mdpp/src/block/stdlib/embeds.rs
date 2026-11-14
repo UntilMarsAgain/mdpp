@@ -153,20 +153,16 @@ pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     fmt.cr();
 }
 
-/// `::css` —— 把内容（或 `src="页面名"` 指的模板页）当 CSS 注入这一页。
+/// `::css` —— 把内容（或 `src="页面名"` 指的模板页）登记为**整页** CSS。
 ///
-/// 注入的 CSS 与正文在**同一个文档**里（作用域收在正文那一层，见
-/// [`fill::scope_css`]），所以本库默认样式表里的那些 CSS 变量
-/// （`--mdpp-accent`、`--mdpp-link` …）在这里用 `var()` 直接就能取到 ——
-/// 这正是「自定义块能跟着主题走」的关键。
+/// 样式不再收进正文：它由 [`crate::env`] 收集，去重后由调用方放在页面级
+/// `<style>` 里（片段在开头，整页/站点在 `<head>`）。因此组件样式要自己带
+/// `var(--token, fallback)`，不能假设主题表一定在。
 ///
-/// 内容里的 `{{param}}` 会被替换；`</style` 会被去掉，免得提前闭合样式块。
+/// 内容里的 `{{param}}` 会被替换；`@import` 与 `</style` 会被去掉。
 ///
-/// 单页模式下同一份 CSS 按内容哈希去重后内联；站点模式下输出 `<link>`，
-/// 内容随 [`crate::Rendered::assets`] 返回交给调用方写盘。
-///
-/// 在变体作用域里（`::theme` / `::tabs` / 自定义组）时，输出通用惰性占位符，
-/// 由页面脚本在选项激活时挂载。
+/// 在变体作用域里（`::theme` / `::tabs` / 自定义组）时仍是延迟资源：
+/// 输出通用惰性占位符，由页面脚本在选项激活时挂载。
 pub(super) fn render_css(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     let source = match fill::source_of(block) {
         Ok(s) => s,
@@ -183,9 +179,12 @@ pub(super) fn render_css(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
         }
     };
     let css = fill::sanitize_css(&filled);
-    // 收进正文：不然一条 `* { }` 就能把整个页面改掉
-    let css = fill::scope_css(&css);
-    write_css(fmt, use_asset(AssetKind::Css, css));
+    if crate::variants::current().is_some() {
+        // 变体里的样式要等选项激活才生效，仍走延迟资源。
+        write_css(fmt, use_asset(AssetKind::Css, css));
+    } else {
+        crate::env::register_style(css);
+    }
 }
 
 /// `::html` —— 把内容当**原始 HTML** 注入。
@@ -389,8 +388,8 @@ mod tests {
         let html = render("::css\n  .我有自己的样式 { color: var(--mdpp-accent); }\n");
         assert!(html.contains("<style>"), "{html}");
         assert!(html.contains("var(--mdpp-accent)"), "{html}");
-        // 作用域收在正文那一层
-        assert!(html.contains(".mdpp-content .我有自己的样式"), "{html}");
+        // 不再套正文作用域
+        assert!(!html.contains(".mdpp-content"), "{html}");
     }
 
     /// 正文里的 `</style` 只是普通文字 —— 让它提前闭合，后面的字就会漏到页面上
@@ -462,7 +461,7 @@ mod tests {
         assert_eq!(html.matches("<style>").count(), 2, "{html}");
     }
 
-    /// 站点模式：HTML 里是链接，资源内容随 `Rendered::assets` 返回
+    /// 站点模式：CSS 走 styles，脚本仍然外链并进资源清单
     #[test]
     fn linked_mode_returns_assets_and_links() {
         use crate::{AssetKind, Mdpp, RenderContext};
@@ -472,13 +471,7 @@ mod tests {
             &RenderContext::new(),
             "assets",
         );
-        assert!(
-            rendered
-                .html
-                .contains("<link rel=\"stylesheet\" href=\"assets/mdpp-"),
-            "{}",
-            rendered.html
-        );
+        assert_eq!(rendered.styles, vec![".a { color: red }"]);
         assert!(
             rendered.html.contains("<script src=\"assets/mdpp-"),
             "{}",
@@ -489,19 +482,8 @@ mod tests {
             "{}",
             rendered.html
         );
-        assert_eq!(rendered.assets.len(), 2, "{:?}", rendered.assets);
-        assert!(
-            rendered
-                .assets
-                .iter()
-                .any(|asset| asset.kind == AssetKind::Css)
-        );
-        assert!(
-            rendered
-                .assets
-                .iter()
-                .any(|asset| asset.kind == AssetKind::Js)
-        );
+        assert_eq!(rendered.assets.len(), 1, "{:?}", rendered.assets);
+        assert_eq!(rendered.assets[0].kind, AssetKind::Js);
     }
 
     /// 站点模式：重复资源只出现一次链接、清单里只有一份
@@ -514,13 +496,8 @@ mod tests {
             &RenderContext::new(),
             "assets",
         );
-        assert_eq!(rendered.assets.len(), 1, "{:?}", rendered.assets);
-        assert_eq!(
-            rendered.html.matches("<link").count(),
-            1,
-            "{}",
-            rendered.html
-        );
+        assert_eq!(rendered.styles, vec![".a { }"]);
+        assert!(rendered.assets.is_empty(), "{:?}", rendered.assets);
     }
 
     /// 前缀按调用方给的原样用（嵌套页面传 `../../assets`）
@@ -529,12 +506,12 @@ mod tests {
         use crate::{Mdpp, RenderContext};
 
         let rendered = Mdpp::new().render_with_assets(
-            "::css\n  .a { }\n",
+            "::js\n  console.log(1)\n",
             &RenderContext::new(),
             "../../assets",
         );
         assert!(
-            rendered.html.contains("href=\"../../assets/mdpp-"),
+            rendered.html.contains("src=\"../../assets/mdpp-"),
             "{}",
             rendered.html
         );

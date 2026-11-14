@@ -18,6 +18,8 @@ pub(super) struct PageBody {
     /// 侧边目录的 HTML；这页没有可链接的标题时是空串。只进站点外壳
     pub(super) sidebar: String,
     pub(super) assets: Vec<mdpp::Asset>,
+    /// `::css` 收集到的整页样式，交给外壳放进 `<head>`
+    pub(super) styles: Vec<String>,
     pub(super) wanted: Vec<assets::Wanted>,
     pub(super) absent: Vec<String>,
     /// 正文实际用到的前端特性，供整页外壳决定是否引 CDN
@@ -70,6 +72,7 @@ pub(super) fn render_page(
         sidebar: toc::sidebar(&scan.html),
         html: scan.html,
         assets: rendered.assets,
+        styles: rendered.styles,
         wanted: scan.wanted,
         absent: scan
             .missing
@@ -89,6 +92,7 @@ pub(super) fn generated_body(project: &Project, site: &Site, page: &Page) -> Pag
         // 目录页的正文是一份站点清单，不是「这一页的章节」——没有侧边目录
         sidebar: String::new(),
         assets: Vec::new(),
+        styles: Vec::new(),
         wanted: Vec::new(),
         absent: Vec::new(),
         features: mdpp::Features::default(),

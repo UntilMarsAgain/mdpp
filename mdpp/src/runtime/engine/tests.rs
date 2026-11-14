@@ -34,15 +34,15 @@ fn a_parsed_ast_can_be_modified_before_rendering() {
     assert!(html.contains(r#"class="mine""#), "{html}");
 }
 
-/// 渲染 AST 也有站点模式：`::css` 外链并进资源清单
+/// 渲染 AST 也有站点模式：`::css` 收集进 styles
 #[test]
 fn a_parsed_ast_can_be_rendered_with_assets() {
     let mdpp = Mdpp::new();
     let root = mdpp.parse("::css\n  .a { color: red; }\n");
     let rendered =
         mdpp.render_node_with_assets(&root, &crate::context::RenderContext::new(), "assets");
-    assert!(rendered.html.contains("assets/mdpp-"), "{}", rendered.html);
-    assert_eq!(rendered.assets.len(), 1, "{:?}", rendered.assets);
+    assert_eq!(rendered.styles, vec![".a { color: red; }"]);
+    assert!(rendered.assets.is_empty(), "{:?}", rendered.assets);
 }
 
 /// 兜底：标题、强调这些最基本的记号还认得 —— 开关加了这么多，先看这里

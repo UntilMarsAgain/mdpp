@@ -267,6 +267,10 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
         let assets_prefix = assets_href(&page.key);
         let title = body.title;
         let body_html = body.html;
+        // 正文收集到的 ::css 先于作者配置的 --css/extra_css，后者仍然最后覆盖
+        let mut page_css = Vec::with_capacity(body.styles.len() + extra_css.len());
+        page_css.extend(body.styles);
+        page_css.extend(extra_css.iter().cloned());
         let nav = nav_for(&nav, &page.key);
         // 顶栏那个图标也是同一套地址：按这一页的深度加前缀（`../../assets/…`）
         let logo = logo
@@ -290,7 +294,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
                 .as_deref(),
             body: &body_html,
             toc: &body.sidebar,
-            extra_css: &extra_css,
+            extra_css: &page_css,
             extra_js: &extra_js,
             assets: shell::Assets::Linked(assets_prefix.clone()),
             external_script,
