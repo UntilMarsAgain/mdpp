@@ -89,70 +89,96 @@ pub fn sanitize_without_markdown(source: &str) -> String {
 // ---------------------------------------------------------------- <markdown> 那一段
 
 /// 占位记号的两头：私有区的字符，HTML 文本里不会自然出现，也躲得开实体解码。
+struct Frame {
+    node: Handle,
+    /// 有值表示这是「该写闭合标签」的那一帧。
+    close: Option<String>,
+}
+
+/// 遍历解析树并重新拼出净化后的 HTML。
+///
+/// 用显式栈而不是递归：HTML 的嵌套深度不受 markdown 的 `MAX_NESTING` 约束，
+/// 一段几万层深的 `<div>` 就能把递归遍历的调用栈打爆。显式栈只吃堆内存。
 fn walk(handle: &Handle, render: &dyn Fn(&str) -> String, slots: &[String], out: &mut String) {
-    let children = handle.children.borrow();
-    for child in children.iter() {
-        walk_node(child, render, slots, out);
+    let mut stack = vec![Frame {
+        node: handle.clone(),
+        close: None,
+    }];
+    while let Some(frame) = stack.pop() {
+        if let Some(close) = frame.close {
+            out.push_str(&close);
+            continue;
+        }
+        match &frame.node.data {
+            NodeData::Document => push_children(&frame.node, &mut stack),
+
+            // 注释与 doctype 一律不要：注释能藏条件渲染的 payload，doctype 只对老页面有意义
+            NodeData::Comment { .. } | NodeData::Doctype { .. } => {}
+
+            NodeData::Text { contents } => {
+                write_text(&contents.borrow(), render, slots, out);
+            }
+
+            NodeData::Element { name, attrs, .. } => {
+                let tag: String = name.local.to_string();
+                // 先按小写找：HTML 标签名不区分大小写，而解析器已经把本地名归一过了
+                if skip_subtree(&tag) {
+                    continue;
+                }
+                let Some(rules) = allowed(&tag) else {
+                    // 不在白名单里的标签：**标签本身丢掉，children 留下**。
+                    // 这是净化器的常态 —— 作者写了个没人认得的自定义标签，里面的正文
+                    // 不该跟着一起消失。
+                    push_children(&frame.node, &mut stack);
+                    continue;
+                };
+                let open = format!("<{tag}");
+                out.push_str(&open);
+                let mut kept_attrs: Vec<(String, String)> = Vec::new();
+                for attr in attrs.borrow().iter() {
+                    let attr_name: String = attr.name.local.to_string();
+                    let attr_name = attr_name.to_ascii_lowercase();
+                    let Some(kept) = keep_attribute(&attr_name, rules, &attr.value) else {
+                        continue;
+                    };
+                    kept_attrs.push((attr_name, kept));
+                }
+                // `target="_blank"` 的新窗口要带上 `noopener`，否则被打开的页面
+                // 能通过 `window.opener` 反向操作这一页。现代浏览器默认有，
+                // 但产物不该把这件事交给浏览器版本。
+                finish_a_attrs(&tag, &mut kept_attrs);
+                for (attr_name, kept) in kept_attrs {
+                    // 布尔属性只写名字：`<details open>` 不是 `<details open="">`，
+                    // 而输出是我们自己拼的，就拼成作者写下的样子
+                    if BOOLEAN.contains(&attr_name.as_str()) {
+                        let _ = write!(out, " {attr_name}");
+                    } else {
+                        let _ = write!(out, " {attr_name}=\"{}\"", escape_attribute(&kept));
+                    }
+                }
+                out.push('>');
+                if !is_void(&tag) {
+                    stack.push(Frame {
+                        node: frame.node.clone(),
+                        close: Some(format!("</{tag}>")),
+                    });
+                    push_children(&frame.node, &mut stack);
+                }
+            }
+
+            // ProcessingInstruction 之类：HTML 里不该出现，丢了
+            _ => {}
+        }
     }
 }
 
-fn walk_node(node: &Handle, render: &dyn Fn(&str) -> String, slots: &[String], out: &mut String) {
-    match &node.data {
-        NodeData::Document => walk(node, render, slots, out),
-
-        // 注释与 doctype 一律不要：注释能藏条件渲染的 payload，doctype 只对老页面有意义
-        NodeData::Comment { .. } | NodeData::Doctype { .. } => {}
-
-        NodeData::Text { contents } => {
-            write_text(&contents.borrow(), render, slots, out);
-        }
-
-        NodeData::Element { name, attrs, .. } => {
-            let tag: String = name.local.to_string();
-            // 先按小写找：HTML 标签名不区分大小写，而解析器已经把本地名归一过了
-            if skip_subtree(&tag) {
-                return;
-            }
-            let Some(rules) = allowed(&tag) else {
-                // 不在白名单里的标签：**标签本身丢掉，children 留下**。
-                // 这是净化器的常态 —— 作者写了个没人认得的自定义标签，里面的正文
-                // 不该跟着一起消失。
-                walk(node, render, slots, out);
-                return;
-            };
-            let open = format!("<{tag}");
-            out.push_str(&open);
-            let mut kept_attrs: Vec<(String, String)> = Vec::new();
-            for attr in attrs.borrow().iter() {
-                let attr_name: String = attr.name.local.to_string();
-                let attr_name = attr_name.to_ascii_lowercase();
-                let Some(kept) = keep_attribute(&attr_name, rules, &attr.value) else {
-                    continue;
-                };
-                kept_attrs.push((attr_name, kept));
-            }
-            // `target="_blank"` 的新窗口要带上 `noopener`，否则被打开的页面
-            // 能通过 `window.opener` 反向操作这一页。现代浏览器默认有，
-            // 但产物不该把这件事交给浏览器版本。
-            finish_a_attrs(&tag, &mut kept_attrs);
-            for (attr_name, kept) in kept_attrs {
-                // 布尔属性只写名字：`<details open>` 不是 `<details open="">`，
-                // 而输出是我们自己拼的，就拼成作者写下的样子
-                if BOOLEAN.contains(&attr_name.as_str()) {
-                    let _ = write!(out, " {attr_name}");
-                } else {
-                    let _ = write!(out, " {attr_name}=\"{}\"", escape_attribute(&kept));
-                }
-            }
-            out.push('>');
-            if !is_void(&tag) {
-                walk(node, render, slots, out);
-                let _ = write!(out, "</{tag}>");
-            }
-        }
-
-        // ProcessingInstruction 之类：HTML 里不该出现，丢了
-        _ => {}
+fn push_children(node: &Handle, stack: &mut Vec<Frame>) {
+    let children = node.children.borrow();
+    for child in children.iter().rev() {
+        stack.push(Frame {
+            node: child.clone(),
+            close: None,
+        });
     }
 }
 
