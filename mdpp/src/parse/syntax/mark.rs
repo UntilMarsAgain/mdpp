@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn neighbours_are_unaffected() {
         let html = render("$a = 1$ 与 ~~删掉~~ 与 ==高亮==\n");
-        assert!(html.contains(r#"data-tex="a = 1""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-tex="a = 1""#), "{html}");
         assert!(html.contains("<s>删掉</s>"), "{html}");
         assert!(html.contains("<mark>高亮</mark>"), "{html}");
     }

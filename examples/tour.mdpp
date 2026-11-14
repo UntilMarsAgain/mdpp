@@ -1,4 +1,4 @@
-# 巡览：每一个内置块各来一次
+# 巡览：内置块与标准库模板各来一次
 
 > ```sh
 > cargo run -p mdpp-cli -- -T examples/templates examples/tour.mdpp
@@ -161,7 +161,7 @@
       <script>console.log("深色 HTML 脚本");</script>
 
 下面两节的 `::css` / `::js` / `::html js` 不会直接写进 `<style>`/`<script>`，
-而是被放进带 `data-theme` 的占位容器，由页面脚本按当前主题选择性注入。
+而是被放进带 `data-mdpp-theme` 的占位容器，由页面脚本按当前主题选择性注入。
 
 几节**一起摆出来**，一节就是一栏 —— 拿来并排比对。`[标签]` 默认当栏头，
 `labels=off` 就是纯版面：

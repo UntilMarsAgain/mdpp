@@ -1,0 +1,96 @@
+::guard
+  ::if condition-local-exist={{@title}}
+    [then]
+    [else]
+      ::if condition-local-exist={{@state}}
+        [then]
+          ::problem name=navbox why="没有 title= 就是嵌进去的样子，没有开关，所以 state= 在这儿没用：写 title= 才是一个完整的导航框"
+  ::if condition-local-exist={{@state}}
+    [then]
+      ::if condition-local-equals={{@state}} value=expanded
+        [then]
+        [else]
+          ::if condition-local-equals={{@state}} value=collapsed
+            [then]
+            [else]
+              ::if condition-local-equals={{@state}} value=plain
+                [then]
+                [else]
+                  ::if condition-local-equals={{@state}} value=off
+                    [then]
+                    [else]
+                      ::problem name=navbox why="state= 只认 expanded（展开）、collapsed（一上来折着）、plain（展开但不能折）；off 是 plain 的旧写法"
+  ::each skip=above,below,header required check name=navbox empty-why="导航框里一行也没有：写一个 [分组名]，下面写那一行的内容"
+    [__template__]
+    [__data__]
+      {{body}}
+  ::style-vars tag=div class=mdpp-navbox data-mdpp-state="{{?state}}" --navbox-group-bg="{{?group-bg}}" --navbox-title-bg="{{?title-bg}}" --navbox-head-bg="{{?header-bg}}"
+    ::if condition-local-exist={{@title}}
+      [then]
+        ::element tag=div class=mdpp-navbox__bar
+          ::element tag=span class=mdpp-navbox__title
+            ::inline
+              {{?title}}
+          ::if condition-local-equals={{@state}} value=plain
+            [then]
+            [else]
+              ::if condition-local-equals={{@state}} value=off
+                [then]
+                [else]
+                  ::if condition-local-equals={{@state}} value=collapsed
+                    [then]
+                      ::element tag=button class=mdpp-navbox__toggle type=button aria-expanded=false data-mdpp-label-show=显示 data-mdpp-label-hide=隐藏 inline=on
+                        显示
+                    [else]
+                      ::element tag=button class=mdpp-navbox__toggle type=button aria-expanded=true data-mdpp-label-show=显示 data-mdpp-label-hide=隐藏 inline=on
+                        隐藏
+    ::element tag=div class=mdpp-navbox__body
+      ::element tag=table class=mdpp-navbox__table
+        ::element tag=tbody
+          ::each only=above max=1 name=navbox
+            [__template__]
+              ::element tag=tr
+                ::element tag=td class=mdpp-navbox__above colspan=2
+                  {{@item.body}}
+            [__data__]
+              {{body}}
+          ::each skip=above,below name=navbox
+            [__template__]
+              ::if condition-prefix="{{@item.label}}" value=header
+                [then]
+                  ::problem name=navbox why="[header1] 这样的写法不认：这里不用编号，写 [header] 就好，写几条都是它"
+                [else]
+                  ::element tag=tr
+                    ::element tag=th class=mdpp-navbox__group scope=row
+                      ::inline
+                        {{@item.label}}
+                    ::element tag=td class=mdpp-navbox__cell
+                      {{@item.body}}
+            [__template__ header]
+              ::if condition-yes={{@item.body_empty}}
+                [then]
+                  ::problem name=navbox why="[header] 是空的：通栏就是它的标题"
+                [else]
+                  ::element tag=tr
+                    ::element tag=td class=mdpp-navbox__head colspan=2
+                      {{@item.body}}
+            [__template__ link]
+              ::if condition-yes={{@item.empty}}
+                [then]
+                  ::problem name=navbox why="[link] 后面没写页面名：写 [link 某页]，也可以写 [link 某页|显示的字]"
+                [else]
+                  ::element tag=tr
+                    ::element tag=th class=mdpp-navbox__group scope=row
+                      ::inline
+                        [[{{@item.label}}]]
+                    ::element tag=td class=mdpp-navbox__cell
+                      {{@item.body}}
+            [__data__]
+              {{body}}
+          ::each only=below max=1 name=navbox
+            [__template__]
+              ::element tag=tr
+                ::element tag=td class=mdpp-navbox__below colspan=2
+                  {{@item.body}}
+            [__data__]
+              {{body}}

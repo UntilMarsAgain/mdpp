@@ -27,6 +27,25 @@ use crate::block::template::TemplateVars;
 use crate::engine::{Features, Problems};
 use crate::runtime::asset::Sink;
 
+/// 一次问题框的简要说明。`::guard` 失败时用它重画一个不丢掉原因的框。
+#[derive(Debug, Clone)]
+pub(crate) struct ProblemDetail {
+    pub(crate) badge: String,
+    pub(crate) class: String,
+    pub(crate) name: String,
+    pub(crate) why: String,
+}
+
+/// guard 需要的环境快照：问题计数、首个问题的说明、资源。
+#[derive(Debug, Clone)]
+pub(crate) struct Snapshot {
+    problems: Problems,
+    diagnostics: usize,
+    detail: Option<ProblemDetail>,
+    assets: Sink,
+    features: Features,
+}
+
 /// 「在渲染途中再渲染一段 markdown」的能力。
 pub(crate) type Nested = Box<dyn Fn(&str) -> String>;
 
@@ -67,6 +86,11 @@ pub(crate) struct RenderEnv {
     pub(crate) features: Features,
     /// 这一趟渲染出来的问题框计数。
     pub(crate) problems: Problems,
+    /// 这一趟出现过多少个问题框。`problems` 只分「未知/误用」两类，
+    /// `diagnostics` 还包含模板页读不出来等诊断；guard 只看后者。
+    pub(crate) diagnostics: usize,
+    /// 第一个问题框的说明。guard 失败时用它保留具体原因。
+    pub(crate) problem_detail: Option<ProblemDetail>,
 }
 
 impl Default for RenderEnv {
@@ -83,6 +107,8 @@ impl Default for RenderEnv {
             render_depth: 0,
             features: Features::default(),
             problems: Problems::default(),
+            diagnostics: 0,
+            problem_detail: None,
         }
     }
 }
@@ -95,6 +121,66 @@ pub(crate) fn unknown_problem() {
 /// 记一个「块用法不对」问题框。
 pub(crate) fn misused_problem() {
     let _ = with(|env| env.problems.misused += 1);
+}
+
+/// 记一个实际写出的问题框，并留下第一份说明。
+///
+/// `diagnostics` 与 `problems` 分开：模板页读不出来也写问题框，但它不归入
+/// 「未知/误用」两项；guard 需要把这类诊断也算失败。
+pub(crate) fn note_problem(badge: &str, class: &str, name: &str, why: &str) {
+    let _ = with(|env| {
+        env.diagnostics += 1;
+        if env.problem_detail.is_none() {
+            env.problem_detail = Some(ProblemDetail {
+                badge: badge.to_string(),
+                class: class.to_string(),
+                name: name.to_string(),
+                why: why.to_string(),
+            });
+        }
+    });
+}
+
+/// 当前渲染环境的状态快照；不在渲染中时返回 `None`。
+pub(crate) fn snapshot() -> Option<Snapshot> {
+    with(|env| Snapshot {
+        problems: env.problems,
+        diagnostics: env.diagnostics,
+        detail: env.problem_detail.clone(),
+        assets: env.assets.clone(),
+        features: env.features,
+    })
+}
+
+/// 恢复快照。guard 用它丢弃失败分支写过的问题计数与资源。
+pub(crate) fn restore(snapshot: Snapshot) {
+    let _ = with(|env| {
+        env.problems = snapshot.problems;
+        env.diagnostics = snapshot.diagnostics;
+        env.problem_detail = snapshot.detail;
+        env.assets = snapshot.assets;
+        env.features = snapshot.features;
+    });
+}
+
+/// 从快照之后新增了多少个问题框。
+pub(crate) fn problems_since(snapshot: &Snapshot) -> usize {
+    with(|env| env.diagnostics.saturating_sub(snapshot.diagnostics)).unwrap_or(0)
+}
+
+/// 当前第一份问题说明。
+pub(crate) fn problem_detail() -> Option<ProblemDetail> {
+    with(|env| env.problem_detail.clone()).flatten()
+}
+
+/// 清空当前问题说明，供 guard 捕获自己那段内容的第一份诊断。
+pub(crate) fn clear_problem_detail() {
+    let _ = with(|env| env.problem_detail = None);
+}
+
+/// 恢复之前的问题说明。
+pub(crate) fn set_problem_detail(detail: Option<ProblemDetail>) {
+    let _ = with(|env| env.problem_detail = detail);
 }
 
 thread_local! {
@@ -143,6 +229,10 @@ impl Drop for Guard {
                 }
                 previous.features.merge(inner.features);
                 previous.problems.merge(inner.problems);
+                previous.diagnostics += inner.diagnostics;
+                if previous.problem_detail.is_none() {
+                    previous.problem_detail = inner.problem_detail;
+                }
             }
             set(Some(previous));
         }

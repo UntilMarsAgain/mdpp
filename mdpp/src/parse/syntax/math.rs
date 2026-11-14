@@ -1,6 +1,6 @@
 //! 数学公式：行内 `$…$`、独立一行的 `$$…$$`
 //!
-//! 这里只**认出**公式，把 TeX 原文放进 `data-tex`；排版（KaTeX）不在本库里。
+//! 这里只**认出**公式，把 TeX 原文放进 `data-mdpp-tex`；排版（KaTeX）不在本库里。
 //! 没渲染之前元素里显示的是**公式原文**（不是空白），所以取不到 KaTeX 也读得下去。
 //!
 //! 识别的规矩取「宁可漏认、也别把正文里的美元符号吞掉」：
@@ -37,7 +37,7 @@ impl NodeValue for Math {
             .to_string(),
         ));
         // 原文留一份在属性上：前端排版完会用元素内容换掉，重排时要拿得回来
-        attrs.push(("data-tex", self.tex.clone()));
+        attrs.push(("data-mdpp-tex", self.tex.clone()));
 
         fmt.open("span", &attrs);
         // 排版之前看到的就是原文
@@ -112,7 +112,7 @@ mod tests {
         Mdpp::new().render(src)
     }
 
-    /// 行内公式：原文**两处都在** —— `data-tex` 留给前端重排，元素内容留给「还没排版」
+    /// 行内公式：原文**两处都在** —— `data-mdpp-tex` 留给前端重排，元素内容留给「还没排版」
     #[test]
     fn inline_math_keeps_the_source_for_the_frontend() {
         let html = render("爱因斯坦说 $E = mc^2$ 是这样。\n");
@@ -120,7 +120,7 @@ mod tests {
             html.contains(r#"class="mdpp-math mdpp-math--inline""#),
             "{html}"
         );
-        assert!(html.contains(r#"data-tex="E = mc^2""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-tex="E = mc^2""#), "{html}");
         // 排版之前看到的是原文
         assert!(html.contains(">E = mc^2</span>"), "{html}");
     }
@@ -130,7 +130,10 @@ mod tests {
     fn double_dollars_ask_for_display_mode() {
         let html = render("$$\\int_0^1 x^2 dx$$\n");
         assert!(html.contains("math--display"), "{html}");
-        assert!(html.contains(r#"data-tex="\int_0^1 x^2 dx""#), "{html}");
+        assert!(
+            html.contains(r#"data-mdpp-tex="\int_0^1 x^2 dx""#),
+            "{html}"
+        );
     }
 
     /// 钱的写法不能被吞掉 —— 这是最容易误伤的一类

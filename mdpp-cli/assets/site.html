@@ -14,7 +14,7 @@
 .mdpp-content .mdpp-tabs__bar { display: none; }
 .mdpp-content .mdpp-tabs__panel[hidden] { display: block !important; }
 .mdpp-content .mdpp-tabs__panel::before {
-  content: attr(data-label);
+  content: attr(data-mdpp-label);
   display: block;
   margin: 0.8em 0 0.3em;
   font-weight: 600;
@@ -24,7 +24,8 @@
   border-top: 1px solid var(--mdpp-border);
   padding-top: 0.6em;
 }
-.mdpp-content .mdpp-navbox__body[hidden] { display: block !important; }
+.mdpp-content .mdpp-navbox__body[hidden],
+.mdpp-content .mdpp-navbox[data-mdpp-state='collapsed'] > .mdpp-navbox__body { display: block !important; }
 .mdpp-content .mdpp-navbox__toggle { display: none; }
 </style>
 </noscript>

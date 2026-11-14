@@ -35,7 +35,7 @@ impl LinkResolver for FakeVault {
 
         self.existing.contains(target).then(|| {
             ResolvedLink::Link(
-                LinkTarget::new(format!("/notes/{target}")).attr("data-page", target),
+                LinkTarget::new(format!("/notes/{target}")).attr("data-mdpp-page", target),
             )
         })
     }

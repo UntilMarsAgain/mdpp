@@ -73,7 +73,11 @@
   不输出内容。
 - `::each` 支持 `[__template__ 类型]`：数据标签写成 `[类型 数据]` 时选对应类型
   模板，`{{@item.label}}` 是类型后的数据、`{{@item.type}}` 是类型；没有对应模板
-  时整条标签走默认模板。
+  时整条标签走默认模板。另补 `item.empty` / `item.body_empty` 供模板做布尔判断。
+- 新增 `::guard`：把子内容先渲染到缓冲区；任一子块产生问题就丢弃整段输出、回滚
+  资源与计数，只留下一个诊断框。模板可借此保持「要么完整，要么只报问题」。
+- `::if` 增加 `condition-prefix` 与 `condition-local-exist` / `condition-local-equals`；
+  后者只看当前模板参数，不继承外层模板，避免嵌套 navbox 误读父级 `state`。
 - 新增 `::noinclude` / `::includeonly`：按当前有没有模板作用域判断，页面直接渲染时
   只输出 `noinclude`，作为模板引入时只输出 `includeonly`；两者都是透明的 Markdown
   容器，参数会报用法问题。
@@ -144,8 +148,12 @@
 - 内置块与标准库模板输出的类名统一加 `mdpp-` 前缀（如 `mdpp-callout`、
   `mdpp-navbox`、`mdpp-tabs`），`mdpp.css` / `site.css` / `mdpp.js` 同步更新；
   `language-*`、代码高亮 token 等第三方类名保持不变。
-- navbox 的标题与分组名改为严格的单段行内 Markdown，含列表/段落等块内容的标签
-  会在写出表格前报用法问题；包在 `::element` 等容器里的子 navbox 也会带分支记号。
+- navbox 从 Rust 迁成 `mdpp/stdlib/navbox.mdpp`：用 typed `each` 分流标题、分组与
+  链接，用 `guard` 保证参数/分节不合法时只留下一个诊断框；标题与分组名限定为
+  单段行内 Markdown。嵌套形态改由 CSS `:has()` 识别，不再输出分支记号。
+- 所有 mdpp 自有的 DOM 协议属性改为 `data-mdpp-*`（如 `data-mdpp-state`、
+  `data-mdpp-label`、`data-mdpp-tex`），`::element` 只放行这一前缀，不再靠裸
+  `data-*` 约定。
 
 - 站点模式自动生成当前页的侧边目录：从渲染后的 `h2` / `h3` 取锚点，宽屏常驻，
   窄于 `60rem` 时收成正文上方的 `<details>`；无标题页面不出空目录，单文件模式

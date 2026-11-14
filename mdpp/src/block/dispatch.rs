@@ -47,6 +47,7 @@ pub fn render(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
 /// 参数回显成等号写法，于是从输出上就能看出解析成了什么 —— 引号去了哪儿、空格是否
 /// 保住。
 pub fn render_unknown(block: &Block, fmt: &mut dyn Renderer) {
+    crate::env::note_problem("未知块", "mdpp-template--unknown", &block.name, "");
     fmt.cr();
     fmt.open(
         "div",
@@ -89,6 +90,7 @@ pub(crate) fn problem_box(
     why: &str,
     extra: impl FnOnce(&mut dyn Renderer),
 ) {
+    crate::env::note_problem(badge, class, &block.name, why);
     fmt.cr();
     fmt.open("div", &[("class", format!("mdpp-template {class}"))]);
     fmt.cr();

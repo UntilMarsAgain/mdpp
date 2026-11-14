@@ -47,7 +47,9 @@
 //! - `{{@item.body}}`：这一节的正文；
 //! - `{{@item.index}}`：下标（0 开始）；
 //! - `{{@item.count}}`：总节数；
-//! - `{{@item.first}}` / `{{@item.last}}`：是不是第一 / 最后一节（`yes` 或空）。
+//! - `{{@item.first}}` / `{{@item.last}}`：是不是第一 / 最后一节（`yes` 或空）；
+//! - `{{@item.empty}}` / `{{@item.body_empty}}`：标签的数据部分 / 正文是不是空的
+//!   （`yes` 或空），供模板做布尔判断，省得把可能带空格的文本塞进条件参数。
 //!
 //! `{{@body}}` 仍然是 caller 的完整正文，不会和 `item.body` 冲突。
 //!
@@ -445,6 +447,24 @@ pub(super) fn render_each(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
                 (format!("{}.label", params.as_name), item.label.to_string()),
                 (format!("{}.type", params.as_name), item.kind.to_string()),
                 (format!("{}.body", params.as_name), item.raw.body.clone()),
+                (
+                    format!("{}.empty", params.as_name),
+                    if item.label.trim().is_empty() {
+                        "yes"
+                    } else {
+                        ""
+                    }
+                    .to_string(),
+                ),
+                (
+                    format!("{}.body_empty", params.as_name),
+                    if item.raw.body.trim().is_empty() {
+                        "yes"
+                    } else {
+                        ""
+                    }
+                    .to_string(),
+                ),
                 (format!("{}.index", params.as_name), index.to_string()),
                 (format!("{}.count", params.as_name), count.to_string()),
                 (

@@ -84,7 +84,7 @@ impl Links {
     /// `[[入门]]` 这种只写文件名的写法，光看正文看不出它指的是哪个目录下的那一页
     fn link_to(&self, page: &Page) -> ResolvedLink {
         ResolvedLink::Link(
-            LinkTarget::new(href(&self.from, &page.key)).attr("data-page", page.key.clone()),
+            LinkTarget::new(href(&self.from, &page.key)).attr("data-mdpp-page", page.key.clone()),
         )
     }
 }

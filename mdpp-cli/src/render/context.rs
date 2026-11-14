@@ -24,7 +24,8 @@ struct Prefix {
 impl LinkResolver for Prefix {
     fn resolve(&self, target: &str) -> Option<ResolvedLink> {
         Some(ResolvedLink::Link(
-            LinkTarget::new(format!("{}{}", self.prefix, target)).attr("data-doc-target", target),
+            LinkTarget::new(format!("{}{}", self.prefix, target))
+                .attr("data-mdpp-doc-target", target),
         ))
     }
 }
@@ -116,13 +117,13 @@ mod tests {
     use mdpp::{Mdpp, RenderContext};
 
     /// 给了前缀，`[[甲]]` 就得是**真链接**：`href` 是「前缀 + 目标」拼起来，
-    /// 而 `data-doc` 上留的仍是作者写的那个目标
+    /// 而 `data-mdpp-doc` 上留的仍是作者写的那个目标
     #[test]
     fn a_prefix_turns_a_wikilink_into_an_href() {
         let context = RenderContext::new().with_links(link_resolver(Some("/notes/")).unwrap());
         let html = Mdpp::new().render_with("[[甲]]\n", &context);
         assert!(html.contains(r#"href="/notes/甲""#), "{html}");
-        assert!(html.contains(r#"data-doc="甲""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-doc="甲""#), "{html}");
     }
 
     /// 没有前缀就不递解析器 —— 那些 `[[…]]` 落成红链

@@ -57,9 +57,9 @@ fn the_script_binds_the_navbox_toggle_too() {
     let js = default_js();
     assert!(js.contains(".mdpp-navbox__toggle"), "{js}");
     assert!(js.contains(".mdpp-navbox__body"), "{js}");
-    // 按钮上那两个字由渲染器落在 data-label-* 上，脚本里不硬编码中文
-    assert!(js.contains("data-label-show"), "{js}");
-    assert!(js.contains("data-label-hide"), "{js}");
+    // 按钮上那两个字由渲染器落在 data-mdpp-label-* 上，脚本里不硬编码中文
+    assert!(js.contains("data-mdpp-label-show"), "{js}");
+    assert!(js.contains("data-mdpp-label-hide"), "{js}");
 }
 
 /// 公开的变体运行时：页面脚本可以读环境、跑/标记资源、监听切换
@@ -92,7 +92,7 @@ fn the_toggle_label_is_swapped_by_the_state_change() {
         .expect("脚本里该有 fold 那一步");
     let fold = &fold[..fold.find("\n  }").expect("fold 有个头")];
     assert!(
-        fold.contains("wasCollapsed ? \"data-label-hide\" : \"data-label-show\""),
+        fold.contains("wasCollapsed ? \"data-mdpp-label-hide\" : \"data-mdpp-label-show\""),
         "按钮的字没跟着状态换：\n{fold}"
     );
     assert!(fold.contains("textContent = next"), "\n{fold}");
@@ -193,7 +193,10 @@ fn the_shell_has_a_no_js_fallback() {
     let html = document(&site_page("x"));
     assert!(html.contains("<noscript>"), "{html}");
     assert!(html.contains(".mdpp-tabs__panel[hidden]"), "{html}");
-    assert!(html.contains(".mdpp-navbox__body[hidden]"), "{html}");
+    assert!(
+        html.contains(".mdpp-navbox[data-mdpp-state='collapsed'] > .mdpp-navbox__body"),
+        "{html}"
+    );
 }
 
 /// 外链那一路：页面里只有一个 `<link>` 一个 `<script src>`，资源由 `copy_assets` 拷出去
@@ -671,7 +674,7 @@ fn the_one_stylesheet_covers_every_block() {
         ("选项卡", "theme__part--dark"),
         ("导航框", "navbox__group"),
         ("图与公式", "math--display"),
-        ("打印", "attr(data-label)"),
+        ("打印", "attr(data-mdpp-label)"),
     ] {
         assert!(css.contains(needle), "{thing} 没进样式表（少 {needle}）");
     }
@@ -834,7 +837,7 @@ fn the_script_is_embedded_and_does_the_minimum() {
 #[test]
 fn every_generated_script_carries_the_generator_environment() {
     let html = document(&Page {
-        body: "<pre class=\"mdpp-mermaid\">graph TD; A-->B;</pre><div class=\"mdpp-math\" data-tex=\"x\"></div><pre class=\"language-rust\">fn main() {}</pre>",
+        body: "<pre class=\"mdpp-mermaid\">graph TD; A-->B;</pre><div class=\"mdpp-math\" data-mdpp-tex=\"x\"></div><pre class=\"language-rust\">fn main() {}</pre>",
         extra_js: &["// 我自己的".to_string()],
         features: mdpp::Features {
             highlight: true,

@@ -55,6 +55,8 @@ fn enter_render_env(
         render_depth,
         features: Features::default(),
         problems: crate::engine::Problems::default(),
+        diagnostics: 0,
+        problem_detail: None,
     };
     crate::env::enter(env)
 }

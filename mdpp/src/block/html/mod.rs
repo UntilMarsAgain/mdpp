@@ -235,6 +235,7 @@ fn render_slot(body: &str, render: &dyn Fn(&str) -> String, out: &mut String) {
 
 /// 「停在这里」那个框。**已经排好版的 HTML**，所以几处 `&lt;` 是直接写进去的。
 fn stopped(why: &str) -> String {
+    crate::env::note_problem("块的用法有问题", "mdpp-template--problem", "markdown", why);
     format!(
         "<div class=\"mdpp-template mdpp-template--problem\"><p class=\"mdpp-template__why\">{why}</p></div>"
     )

@@ -5,8 +5,8 @@
 //!
 //! 目前从原 Rust 实用块迁出来的是 `small` / `title` / `quote` / `signature` /
 //! `flatlist` / `banner` / `aside` / `note` / `tip` / `warning` / `danger` / `error` /
-//! `columns` / `fields` / `fold` / `theme` / `tabs` / `indent`；`callout` 是提示框共用的底模板。
-//! `problem` 已收进 Rust 侧，作为会进入渲染报告的诊断原语。以后可迁移的基础块也放这里，外围标准库和项目模板都通过同样的
+//! `columns` / `fields` / `fold` / `theme` / `tabs` / `indent` / `navbox`；`callout` 是提示框共用的底模板。
+//! `problem`、`guard` 等需要参与渲染过程的能力收在 Rust 侧。以后可迁移的基础块也放这里，外围标准库和项目模板都通过同样的
 //! [`TemplateSource`] 接口覆盖。
 //!
 //! 默认的 [`RenderContext`](crate::RenderContext) 已经带上这份来源；调用方用
@@ -19,6 +19,9 @@ use std::sync::{Arc, OnceLock};
 use include_dir::{Dir, include_dir};
 
 use crate::block::template::{TemplatePage, TemplatePages, TemplateSource};
+
+#[cfg(test)]
+mod navbox_tests;
 
 /// 编译期嵌入的模板目录（`mdpp/stdlib/`）。
 static STDLIB: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/stdlib");

@@ -19,9 +19,12 @@
 //! - `condition-defined`：存在即可（空值/裸 flag 也算）；
 //! - `condition-empty`：不存在或空白；
 //! - `condition-equals`：与 `value=` 去空白后完全相等，大小写敏感；
+//! - `condition-prefix`：以 `value=` 开头（去空白后比较）；
 //! - `condition-truthy`：存在且不是空串、`0`、`false`、`no`、`off`；
 //! - `condition-yes`：值（去空白、忽略大小写）是 `yes` / `on` / `true` / `1` 时为真；
-//! - `condition-no`：值是 `no` / `off` / `false` / `0` 时为真（空值与缺失都不算）。
+//! - `condition-no`：值是 `no` / `off` / `false` / `0` 时为真（空值与缺失都不算）；
+//! - `condition-local-exist` / `condition-local-equals`：只查当前这一层模板参数，
+//!   不继承外层；嵌套同名模板需要判断「这次到底传没传」时用它。
 //!
 //! `condition-not` 反转最后结果。多个测试会报用法问题；需要「且」时嵌套 `::if`，
 //! 需要「或」时等将来的 `::choose` 或表达式。
@@ -107,14 +110,17 @@ fn condition(block: &Block) -> Result<bool, String> {
         );
     };
 
-    let equals = test.key == "condition-equals";
-    if equals {
+    let needs_value = matches!(
+        test.key,
+        "condition-equals" | "condition-prefix" | "condition-local-equals"
+    );
+    if needs_value {
         if value_param.is_none() {
-            return Err("`condition-equals` 还要一个 `value=` 作为比较对象。".to_string());
+            return Err(format!("`{}` 还要一个 `value=` 作为比较对象。", test.key));
         }
     } else if value_param.is_some() {
         return Err(format!(
-            "`value=` 只跟 `condition-equals` 一起用；`{}` 不需要它。",
+            "`value=` 只跟 `condition-equals` / `condition-prefix` / `condition-local-equals` 一起用；`{}` 不需要它。",
             test.key
         ));
     }
@@ -129,14 +135,30 @@ fn condition(block: &Block) -> Result<bool, String> {
             left.zip(right)
                 .is_some_and(|(left, right)| left.trim() == right.trim())
         }
+        "condition-prefix" => {
+            let left = resolve(test.value)?;
+            let right = resolve(value_param.unwrap_or_default())?;
+            left.zip(right)
+                .is_some_and(|(left, right)| left.trim().starts_with(right.trim()))
+        }
+        "condition-local-exist" => {
+            resolve_local(test.value)?.is_some_and(|value| !value.trim().is_empty())
+        }
+        "condition-local-equals" => {
+            let left = resolve_local(test.value)?;
+            let right = resolve(value_param.unwrap_or_default())?;
+            left.zip(right)
+                .is_some_and(|(left, right)| left.trim() == right.trim())
+        }
         "condition-truthy" => resolve(test.value)?.is_some_and(|value| truthy(&value)),
         "condition-yes" => resolve(test.value)?.is_some_and(|value| yes(&value)),
         "condition-no" => resolve(test.value)?.is_some_and(|value| no(&value)),
         other => {
             return Err(format!(
                 "`::if` 不认条件 `{other}`；可写 condition-exist / condition-defined / \
-                 condition-empty / condition-equals / condition-truthy / condition-yes / \
-                 condition-no。"
+                 condition-empty / condition-equals / condition-prefix / condition-local-exist / \
+                 condition-local-equals / \
+                 condition-local-equals / condition-truthy / condition-yes / condition-no。"
             ));
         }
     };
@@ -150,6 +172,23 @@ fn condition(block: &Block) -> Result<bool, String> {
 ///   分得开；
 /// - 普通字面量：原样返回；
 /// - 混合文本：把引用换成值，缺变量时返回 `None`（按条件失败处理）。
+fn resolve_local(raw: &str) -> Result<Option<String>, String> {
+    let trimmed = raw.trim();
+    if let Some(name) = single_ref(trimmed) {
+        if context::template_vars().is_none() {
+            return Err(format!(
+                "`{{{{{name}}}}}` 只能在模板页里用：这里没有模板作用域。"
+            ));
+        }
+        return Ok(context::template_var_local(&name));
+    }
+    if trimmed.contains("{{") {
+        return Err("`::if` 的条件里请写 `{{@名字}}`（晚绑定），不要写 `{{名字}}`。".to_string());
+    }
+    Ok(Some(raw.to_string()))
+}
+
+/// 取一个条件值。
 fn resolve(raw: &str) -> Result<Option<String>, String> {
     let trimmed = raw.trim();
     if let Some(name) = single_ref(trimmed) {
