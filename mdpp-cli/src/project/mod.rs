@@ -20,7 +20,8 @@ pub mod new_page;
 pub mod serve;
 pub mod site;
 
-use std::path::{Path, PathBuf};
+use std::io::ErrorKind;
+use std::path::{Component, Path, PathBuf};
 
 use include_dir::{Dir, include_dir};
 
@@ -72,12 +73,21 @@ impl Project {
     }
 
     /// 已经知道根在哪（`mdpp init` 刚建出来的时候）
+    ///
+    /// 根会先换成真实路径：配置里的路径都相对它，而符号链接根下算出来的
+    /// 「项目内」不能是一条看起来像、实际却指向外面的路。
     pub fn load(root: &Path) -> Result<Project, String> {
-        let config = Config::load(root)?;
-        Ok(Project {
-            root: root.to_path_buf(),
-            config,
-        })
+        let root = root
+            .canonicalize()
+            .map_err(|error| format!("找不着项目目录 {}：{error}", root.display()))?;
+        let config = Config::load(&root)?;
+        Ok(Project { root, config })
+    }
+
+    /// 把配置里的一条相对路径接到项目根下，并确认它没有借 `..` 或符号链接
+    /// 跑到项目外面。`what` 只用于报错，写成配置字段名。
+    pub fn contained(&self, path: &Path, what: &str) -> Result<PathBuf, String> {
+        contained(&self.root, path, what)
     }
 
     /// 正文目录
@@ -102,13 +112,91 @@ impl Project {
     }
 }
 
-/// 把配置里的一个相对路径接到项目根下。绝对路径原样留着
+/// 把配置里的一个相对路径接到项目根下。**不检查边界**；只给已经验过的路径用。
 pub fn under(root: &Path, path: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
     } else {
         root.join(path)
     }
+}
+
+/// 把一条配置路径接到 `root` 下，并守住运行目录的边界。
+///
+/// 只认相对路径；`..` 一律拒绝（哪怕最终仍落在根里 —— 这种写法没有需要
+/// 支持的理由，拒绝比解释便宜）；路径上任何一段是符号链接也拒绝，因为链接
+/// 的下一跳可能就在项目外面。目标可以还不存在（例如 `build/`），这时检查
+/// 已经存在的那几段即可。
+pub fn contained(root: &Path, configured: &Path, what: &str) -> Result<PathBuf, String> {
+    let root = root
+        .canonicalize()
+        .map_err(|error| format!("找不着项目目录 {}：{error}", root.display()))?;
+    if configured.is_absolute() {
+        return Err(format!(
+            "{what}（{}）不能是绝对路径；只认项目目录里的相对路径",
+            configured.display()
+        ));
+    }
+
+    let mut relative = PathBuf::new();
+    for component in configured.components() {
+        match component {
+            Component::Normal(part) => relative.push(part),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                return Err(format!(
+                    "{what}（{}）不能用 `..` 绕到项目外面",
+                    configured.display()
+                ));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!(
+                    "{what}（{}）不能是绝对路径；只认项目目录里的相对路径",
+                    configured.display()
+                ));
+            }
+        }
+    }
+    if relative.as_os_str().is_empty() {
+        return Err(format!(
+            "{what} 不能是项目根目录本身（{}）",
+            configured.display()
+        ));
+    }
+
+    let mut at = root.clone();
+    for component in relative.components() {
+        at.push(component);
+        match std::fs::symlink_metadata(&at) {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err(format!(
+                    "{what}（{}）经过了符号链接 {}；项目外的东西不碰",
+                    configured.display(),
+                    shown(&at)
+                ));
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == ErrorKind::NotFound => break,
+            Err(error) => {
+                return Err(format!("看不了 {}：{error}", shown(&at)));
+            }
+        }
+    }
+
+    let candidate = root.join(&relative);
+    if candidate.exists() {
+        let real = candidate
+            .canonicalize()
+            .map_err(|error| format!("看不了 {}：{error}", shown(&candidate)))?;
+        if !real.starts_with(&root) {
+            return Err(format!(
+                "{what}（{}）指到了项目目录外面（{}）",
+                configured.display(),
+                shown(&real)
+            ));
+        }
+    }
+    Ok(candidate)
 }
 
 /// 把骨架里那几处的 [`SITE_NAME_TOKEN`] 换成给定的站点名
@@ -275,5 +363,69 @@ mod tests {
                 "骨架里的 {relative} 没有用 {SITE_NAME_TOKEN}"
             );
         }
+    }
+
+    /// 配置路径不能借 `..` 或绝对路径出项目；这是运行目录边界的第一道检查
+    #[test]
+    fn a_configured_path_may_not_leave_the_project() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        std::fs::write(
+            dir.path().join("mdpp.toml"),
+            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
+        )
+        .expect("写得下");
+        let project = Project::load(dir.path()).expect("读得动");
+
+        let error = project
+            .contained(Path::new("../victim"), "pages_dir")
+            .expect_err("`..` 该被拒绝");
+        assert!(error.contains(".."), "{error}");
+
+        let absolute = dir.path().join("outside");
+        let error = project
+            .contained(&absolute, "build_dir")
+            .expect_err("绝对路径该被拒绝");
+        assert!(error.contains("绝对路径"), "{error}");
+    }
+
+    /// 路径中间的任何一段是符号链接都不跟 —— 链接的下一跳可能就在项目外面
+    #[test]
+    fn a_symlinked_directory_is_not_a_way_out() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        std::fs::write(
+            dir.path().join("mdpp.toml"),
+            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
+        )
+        .expect("写得下");
+        std::fs::create_dir(dir.path().join("real")).expect("建得出");
+        std::os::unix::fs::symlink(dir.path().join("real"), dir.path().join("link"))
+            .expect("建得出符号链接");
+        let project = Project::load(dir.path()).expect("读得动");
+
+        let error = project
+            .contained(Path::new("link/页面.mdpp"), "pages_dir")
+            .expect_err("符号链接该被拒绝");
+        assert!(error.contains("符号链接"), "{error}");
+    }
+
+    /// 目标还不存在（例如第一次 build 的 `build/`）不算错，只要已存在的几段安全
+    #[test]
+    fn a_path_that_does_not_exist_yet_is_fine() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        std::fs::write(
+            dir.path().join("mdpp.toml"),
+            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
+        )
+        .expect("写得下");
+        let project = Project::load(dir.path()).expect("读得动");
+        assert_eq!(
+            project
+                .contained(Path::new("build/nested"), "build_dir")
+                .expect("可以"),
+            dir.path()
+                .canonicalize()
+                .expect("真路径")
+                .join("build/nested")
+        );
     }
 }

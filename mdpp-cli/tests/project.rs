@@ -1042,3 +1042,95 @@ fn a_full_page_loads_highlight_assets_for_a_fenced_block() {
     assert!(html.contains("highlight.min.js"), "{html}");
     assert!(html.contains("language-rust"), "{html}");
 }
+
+/// 配置里的 `pages_dir` 自己是一条指向项目外的符号链接：在读取任何页面之前拒绝
+#[test]
+fn a_symlinked_pages_dir_is_refused() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    std::fs::rename(root.join("pages"), root.join("real-pages")).expect("挪得动");
+    std::os::unix::fs::symlink(root.join("real-pages"), root.join("pages"))
+        .expect("建得出符号链接");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(!out.status.success(), "该拒绝：{out:?}");
+    let message = stderr_of(&out);
+    assert!(message.contains("pages_dir"), "{message}");
+    assert!(message.contains("符号链接"), "{message}");
+    assert!(!root.join("build/index.html").is_file(), "不该出站点");
+}
+
+/// 绝对路径同样不能把构建带到项目外面
+#[test]
+fn an_absolute_config_path_is_refused() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    let outside = dir.path().join("outside");
+    std::fs::create_dir_all(&outside).expect("建得出");
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(
+        &config,
+        text.replace(
+            "build_dir = \"build\"",
+            &format!("build_dir = \"{}\"", outside.display()),
+        ),
+    )
+    .expect("改得下");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(!out.status.success(), "该拒绝：{out:?}");
+    let message = stderr_of(&out);
+    assert!(message.contains("build_dir"), "{message}");
+    assert!(message.contains("绝对路径"), "{message}");
+    assert!(!outside.join("index.html").exists(), "不该写到项目外");
+}
+
+/// `mdpp new` 的页名可以带子目录，但那一层若是符号链接，不能把文件写到项目外
+#[test]
+fn new_refuses_a_symlinked_subdirectory() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    let outside = dir.path().join("outside");
+    std::fs::create_dir_all(&outside).expect("建得出");
+    std::os::unix::fs::symlink(&outside, root.join("pages/链接")).expect("建得出符号链接");
+
+    let out = mdpp(&root, &["new", "链接/新页"]);
+    assert!(!out.status.success(), "该拒绝：{out:?}");
+    let message = stderr_of(&out);
+    assert!(message.contains("符号链接"), "{message}");
+    assert!(!outside.join("新页.mdpp").exists(), "不该写到项目外");
+}
+
+/// 配置里附带的 CSS 也在运行目录边界内 —— 项目外的一律不读
+#[test]
+fn extra_css_outside_the_project_is_refused() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    let outside = dir.path().join("外面.css");
+    std::fs::write(&outside, "body { color: red }").expect("写得下");
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(&config, format!("{text}\nextra_css = [\"../外面.css\"]\n")).expect("改得下");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(!out.status.success(), "该拒绝：{out:?}");
+    let message = stderr_of(&out);
+    assert!(message.contains("extra_css[0]"), "{message}");
+    assert!(message.contains(".."), "{message}");
+}
+
+/// 连 `mdpp.toml` 自己也不能是通往项目外的符号链接
+#[test]
+fn a_symlinked_config_file_is_refused() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    let outside = dir.path().join("外面.toml");
+    std::fs::rename(root.join("mdpp.toml"), &outside).expect("挪得动");
+    std::os::unix::fs::symlink(&outside, root.join("mdpp.toml")).expect("建得出符号链接");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(!out.status.success(), "该拒绝：{out:?}");
+    let message = stderr_of(&out);
+    assert!(message.contains("符号链接"), "{message}");
+}

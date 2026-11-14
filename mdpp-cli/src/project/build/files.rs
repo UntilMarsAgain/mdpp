@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::project::{self, Project, ensure_dir, shown, under};
+use crate::project::{Project, ensure_dir, shown};
 use crate::render::page;
 
 pub(super) fn favicon(project: &Project, site_dir: &Path) -> Result<Option<String>, String> {
@@ -36,7 +36,7 @@ pub(super) fn copy_asset_into(
     let Some(configured) = configured else {
         return Ok(None);
     };
-    let from = under(&project.root, configured);
+    let from = project.contained(configured, what)?;
     let name = configured
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -58,12 +58,11 @@ pub(super) fn copy_asset_into(
 /// `footer` 会用 `parser` 做一遍 mdpp 解析，于是 `footer` 里能写 `::note`、
 /// `[[内部链接]]`、`**粗体**` 之类的 mdpp 语法；解析后的 HTML 存进
 /// `copyright_html`，原始文本仍留在 `copyright` 里作为兜底。
-pub(super) fn copy_override(
-    override_dir: &Path,
-    root: &Path,
-    site_dir: &Path,
-) -> Result<(), String> {
-    let from = project::under(root, override_dir);
+pub(super) fn copy_override(project: &Project, site_dir: &Path) -> Result<(), String> {
+    let Some(configured) = project.config.override_dir.as_deref() else {
+        return Ok(());
+    };
+    let from = project.contained(configured, "override_dir")?;
     if !from.exists() {
         return Ok(());
     }
