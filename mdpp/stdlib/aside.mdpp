@@ -1,18 +1,18 @@
 ::if condition-equals={{@align}} value=center
   [then]
-    ::element tag=aside class="aside aside--center {{?@class}}"
+    ::element tag=aside class="mdpp-aside mdpp-aside--center {{?@class}}"
       ::if condition-exist={{@title}}
         [then]
-          ::element tag=p class=aside__title inline=on
+          ::element tag=p class=mdpp-aside__title inline=on
             {{?title}}
       {{body}}
   [else]
     ::if condition-equals={{@align}} value=left
       [then]
-        ::element tag=aside class="aside aside--left {{?@class}}"
+        ::element tag=aside class="mdpp-aside mdpp-aside--left {{?@class}}"
           ::if condition-exist={{@title}}
             [then]
-              ::element tag=p class=aside__title inline=on
+              ::element tag=p class=mdpp-aside__title inline=on
                 {{?title}}
           {{body}}
       [else]
@@ -20,18 +20,18 @@
           [then]
             ::if condition-equals={{@align}} value=right
               [then]
-                ::element tag=aside class="aside {{?@class}}"
+                ::element tag=aside class="mdpp-aside {{?@class}}"
                   ::if condition-exist={{@title}}
                     [then]
-                      ::element tag=p class=aside__title inline=on
+                      ::element tag=p class=mdpp-aside__title inline=on
                         {{?title}}
                   {{body}}
               [else]
                 ::problem name=aside why="align= 只认 right / center / left；写成了 {{?@align}}"
           [else]
-            ::element tag=aside class="aside {{?@class}}"
+            ::element tag=aside class="mdpp-aside {{?@class}}"
               ::if condition-exist={{@title}}
                 [then]
-                  ::element tag=p class=aside__title inline=on
+                  ::element tag=p class=mdpp-aside__title inline=on
                     {{?title}}
               {{body}}

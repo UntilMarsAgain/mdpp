@@ -227,7 +227,7 @@ mod tests {
     fn the_default_context_has_the_library_standard_library() {
         let context = RenderContext::new();
         let html = Mdpp::new().render_with("::small\n  这里是小字\n", &context);
-        assert!(html.contains(r#"<div class="small">"#), "{html}");
+        assert!(html.contains(r#"<div class="mdpp-small">"#), "{html}");
         assert!(html.contains("这里是小字"), "{html}");
     }
 

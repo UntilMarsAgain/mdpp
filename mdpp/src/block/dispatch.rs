@@ -50,7 +50,7 @@ pub fn render_unknown(block: &Block, fmt: &mut dyn Renderer) {
     fmt.cr();
     fmt.open(
         "div",
-        &[("class", "template template--unknown".to_string())],
+        &[("class", "mdpp-template mdpp-template--unknown".to_string())],
     );
     fmt.cr();
     head(fmt, "未知块", block);
@@ -69,7 +69,7 @@ pub fn render_problem(block: &Block, fmt: &mut dyn Renderer, why: &str) {
         block,
         fmt,
         "块的用法有问题",
-        "template--problem",
+        "mdpp-template--problem",
         why,
         |fmt| {
             body_as_code(block, fmt);
@@ -90,7 +90,7 @@ pub(crate) fn problem_box(
     extra: impl FnOnce(&mut dyn Renderer),
 ) {
     fmt.cr();
-    fmt.open("div", &[("class", format!("template {class}"))]);
+    fmt.open("div", &[("class", format!("mdpp-template {class}"))]);
     fmt.cr();
     head(fmt, badge, block);
     fmt.cr();
@@ -107,15 +107,15 @@ pub(crate) fn problem_box(
 /// 用户块展开那两个框（[`crate::block::expand`]）也用它 —— 两处各拼一份的话，
 /// 改一个 class 名必然只改一半，而那种不一致是静悄悄的
 pub(crate) fn head(fmt: &mut dyn Renderer, badge: &str, block: &Block) {
-    fmt.open("p", &[("class", "template__head".to_string())]);
-    fmt.open("span", &[("class", "template__badge".to_string())]);
+    fmt.open("p", &[("class", "mdpp-template__head".to_string())]);
+    fmt.open("span", &[("class", "mdpp-template__badge".to_string())]);
     fmt.text(badge);
     fmt.close("span");
-    fmt.open("code", &[("class", "template__name".to_string())]);
+    fmt.open("code", &[("class", "mdpp-template__name".to_string())]);
     fmt.text(&block.name);
     fmt.close("code");
     for (key, value) in &block.params {
-        fmt.open("code", &[("class", "template__param".to_string())]);
+        fmt.open("code", &[("class", "mdpp-template__param".to_string())]);
         let shown = if value.is_empty() {
             key.clone()
         } else {
@@ -129,7 +129,7 @@ pub(crate) fn head(fmt: &mut dyn Renderer, badge: &str, block: &Block) {
 
 /// 那句「为什么」—— 框里的第三行。`render_problem` 与用户块展开那两个框共用
 pub(crate) fn why_line(fmt: &mut dyn Renderer, text: &str) {
-    fmt.open("p", &[("class", "template__why".to_string())]);
+    fmt.open("p", &[("class", "mdpp-template__why".to_string())]);
     fmt.text(text);
     fmt.close("p");
 }
@@ -171,7 +171,7 @@ mod tests {
     fn an_unknown_block_echoes_its_name_its_params_and_its_body() {
         let html = Mdpp::new().render("::没有这个块 key=\"1 2\"\n  正文一行\n");
         assert!(html.contains("template--unknown"), "{html}");
-        assert!(html.contains("template__name"), "{html}");
+        assert!(html.contains("mdpp-template__name"), "{html}");
         assert!(html.contains("没有这个块"), "{html}");
         assert!(html.contains("key=1 2"), "{html}");
         assert!(html.contains("正文一行"), "{html}");
@@ -184,12 +184,12 @@ mod tests {
     fn the_two_failure_boxes_are_not_the_same_box() {
         let unknown = Mdpp::new().render("::没有这个块\n  甲\n");
         assert!(unknown.contains("template--unknown"), "{unknown}");
-        assert!(!unknown.contains("template--problem"), "{unknown}");
+        assert!(!unknown.contains("mdpp-template--problem"), "{unknown}");
 
         // 名字是注册过的，错在用法：`[link]` 后面没写页面名
         let problem = Mdpp::new().render("::navbox title=x\n  [link]\n    甲\n");
-        assert!(problem.contains("template--problem"), "{problem}");
+        assert!(problem.contains("mdpp-template--problem"), "{problem}");
         assert!(!problem.contains("template--unknown"), "{problem}");
-        assert!(problem.contains("template__why"), "{problem}");
+        assert!(problem.contains("mdpp-template__why"), "{problem}");
     }
 }

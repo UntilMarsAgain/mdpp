@@ -1,21 +1,25 @@
 //! 模板遍历原语：`::each`。
 //!
 //! 它把一段**模板**套在另一组分节上重复渲染。块本身是严格的
-//! [`ContentMode::Sections`](crate::registry::ContentMode)，只认两节：
+//! [`ContentMode::Sections`](crate::registry::ContentMode)：
 //!
 //! ```mdpp
 //! ::each
 //!   [__template__]
-//!     ... 每一节的模板，必须缩进 ...
+//!     ... 默认模板，必须缩进 ...
+//!   [__template__ link]
+//!     ... 类型为 link 的模板 ...
 //!   [__data__]
-//!     [甲]
+//!     [link 甲]
 //!       第一节
 //!     [乙]
 //!       第二节
 //! ```
 //!
-//! - `[__template__]` 的正文是模板；
-//! - `[__data__]` 的正文才是数据；它自己再按普通分节规则切成 `[甲]` / `[乙]`。
+//! - `[__template__]` 是默认模板，必须有且只能有一个；
+//! - `[__template__ 类型]` 是可选模板，按数据标签的第一个词选择；
+//! - `[__data__]` 的正文才是数据；它自己再按普通分节规则切成 `[类型 数据]`
+//!   或 `[标签]`。类型没有对应模板时，整条标签走默认模板。
 //!
 //! 模板页里通常把 caller 的正文放在 `[__data__]` 下面：
 //!
@@ -30,11 +34,16 @@
 //! 数据区的正文由 Rust 的分节扫描器切，`each` 只负责遍历；每一节的内容仍然
 //! 缩进在自己的标签下面。
 //!
+//! 数据的标签如果是 `[类型 数据]`，并且有对应的 `[__template__ 类型]`，就使用
+//! 那个模板，`{{@item.label}}` 拿到的是 `数据` 部分，`{{@item.type}}` 拿到的是
+//! `类型`。没有对应模板时，仍用默认模板，`{{@item.label}}` 是整条标签。
+//!
 //! ## 每一节的变量
 //!
 //! 模板里用 `{{@item.…}}`（`as=` 可以改名）：
 //!
-//! - `{{@item.label}}`：标签；
+//! - `{{@item.label}}`：标签；使用类型模板时是类型后面的数据；
+//! - `{{@item.type}}`：类型；使用默认模板时为空；
 //! - `{{@item.body}}`：这一节的正文；
 //! - `{{@item.index}}`：下标（0 开始）；
 //! - `{{@item.count}}`：总节数；
@@ -44,7 +53,7 @@
 //!
 //! ## 过滤
 //!
-//! - `only=甲,乙`：只遍历这些标签；
+//! - `only=甲,乙`：只遍历这些标签；匹配的是数据标签的原文；
 //! - `skip=above,below`：跳过这些标签；
 //! - `required`：过滤后一节不剩就报用法问题；
 //! - `min=` / `max=`：过滤后的节数范围；
@@ -196,6 +205,139 @@ fn named(block: &Block, name: &str) -> Block {
     block
 }
 
+/// 模板类块的三部分：默认模板、类型模板、数据节。
+struct Templates<'a> {
+    default: &'a str,
+    typed: Vec<(&'a str, &'a str)>,
+    data: &'a section::Section,
+}
+
+/// 解析 `[__template__]`、`[__template__ 类型]`、`[__data__]`。
+///
+/// 模板节可以写在数据节之前，顺序随意；数据节必须最后。默认模板必须有，
+/// 类型模板可以没有。类型只认第一个词，且不能为空或再含空白。
+fn templates_and_data<'a>(node: &'a Node, what: &str) -> Result<Templates<'a>, String> {
+    let mut default = None;
+    let mut typed: Vec<(&str, &str)> = Vec::new();
+    let mut data = None;
+    let mut seen_data = false;
+    let mut labels: Vec<&str> = Vec::new();
+
+    for child in &node.children {
+        let Some(section) = child.cast::<section::Section>() else {
+            continue;
+        };
+        labels.push(section.label.as_str());
+        if seen_data {
+            return Err(format!(
+                "`::{what}` 的 [__data__] 必须是最后一节；后面还有 [{}]",
+                section.label
+            ));
+        }
+        if section.label == "__data__" {
+            if data.is_some() {
+                return Err(format!("`::{what}` 只能有一个 [__data__]"));
+            }
+            data = Some(section);
+            seen_data = true;
+            continue;
+        }
+
+        let kind = if section.label == "__template__" {
+            None
+        } else if let Some(rest) = section.label.strip_prefix("__template__ ") {
+            let kind = rest.trim();
+            if kind.is_empty() {
+                return Err(format!(
+                    "`::{what}` 的类型模板缺少类型：[{}]",
+                    section.label
+                ));
+            }
+            if kind.chars().any(char::is_whitespace) {
+                return Err(format!(
+                    "`::{what}` 的类型只能是一个词：[{}]",
+                    section.label
+                ));
+            }
+            Some(kind)
+        } else {
+            return Err(format!(
+                "`::{what}` 只认 [__template__]、[__template__ 类型] 和 [__data__]；这里读到的是 [{}]",
+                section.label
+            ));
+        };
+
+        match kind {
+            None => {
+                if default.is_some() {
+                    return Err(format!("`::{what}` 只能有一个默认 [__template__]"));
+                }
+                default = Some(section);
+            }
+            Some(kind) => {
+                if typed.iter().any(|(seen, _)| *seen == kind) {
+                    return Err(format!("`::{what}` 的类型模板 `{kind}` 写了两次"));
+                }
+                typed.push((kind, section.body.as_str()));
+            }
+        }
+    }
+
+    let default = default
+        .ok_or_else(|| format!("`::{what}` 缺少默认 [__template__]；读到的是 {labels:?}"))?;
+    let data = data.ok_or_else(|| format!("`::{what}` 缺少 [__data__]；读到的是 {labels:?}"))?;
+
+    Ok(Templates {
+        default: default.body.as_str(),
+        typed,
+        data,
+    })
+}
+
+/// 把数据标签拆成 `(类型, 数据)`；没有空格时数据就是整条标签。
+fn split_label(label: &str) -> (&str, &str) {
+    let mut parts = label.splitn(2, char::is_whitespace);
+    let head = parts.next().unwrap_or(label);
+    let rest = parts.next().unwrap_or("").trim_start();
+    (head, rest)
+}
+
+/// 一节选中的模板和它暴露给模板的标签。
+struct Item<'a> {
+    raw: &'a section::RawSection,
+    template: &'a str,
+    kind: &'a str,
+    label: &'a str,
+}
+
+fn select<'a>(items: &'a [section::RawSection], templates: &'a Templates<'a>) -> Vec<Item<'a>> {
+    items
+        .iter()
+        .map(|item| {
+            let (head, rest) = split_label(&item.label);
+            if let Some((kind, template)) = templates.typed.iter().find(|(kind, _)| *kind == head) {
+                Item {
+                    raw: item,
+                    template,
+                    kind,
+                    label: rest,
+                }
+            } else {
+                Item {
+                    raw: item,
+                    template: templates.default,
+                    kind: "",
+                    label: &item.label,
+                }
+            }
+        })
+        .collect()
+}
+
+fn keep_item(item: &Item<'_>, params: &Params<'_>) -> bool {
+    keep(&item.raw.label, params)
+}
+
 /// `::each` —— 把模板套在分节上重复渲染。
 pub(super) fn render_each(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     let params = match parse(block) {
@@ -206,14 +348,14 @@ pub(super) fn render_each(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         }
     };
 
-    let (template, data) = match section::template_and_data(node, "each") {
-        Ok((template, data)) => (template.body.as_str(), data.body.as_str()),
+    let templates = match templates_and_data(node, "each") {
+        Ok(templates) => templates,
         Err(why) => {
             render_problem(&named(block, params.name), fmt, &why);
             return;
         }
     };
-    if template.trim().is_empty() && !params.check {
+    if templates.default.trim().is_empty() && !params.check {
         render_problem(
             &named(block, params.name),
             fmt,
@@ -222,10 +364,10 @@ pub(super) fn render_each(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         return;
     }
 
-    let items = if data.trim().is_empty() {
+    let raw_items = if templates.data.body.trim().is_empty() {
         Vec::new()
     } else {
-        match section::parse(data) {
+        match section::parse(&templates.data.body) {
             Ok(items) => items,
             Err(why) => {
                 render_problem(&named(block, params.name), fmt, &why);
@@ -233,9 +375,9 @@ pub(super) fn render_each(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
             }
         }
     };
-    let items: Vec<_> = items
-        .iter()
-        .filter(|item| keep(&item.label, &params))
+    let items: Vec<_> = select(&raw_items, &templates)
+        .into_iter()
+        .filter(|item| keep_item(item, &params))
         .collect();
     if items.len() < params.min {
         render_problem(&named(block, params.name), fmt, params.empty_why);
@@ -252,16 +394,34 @@ pub(super) fn render_each(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         return;
     }
     if params.nonempty
-        && let Some(item) = items.iter().find(|item| item.body.trim().is_empty())
+        && let Some(item) = items.iter().find(|item| item.raw.body.trim().is_empty())
     {
         render_problem(
             &named(block, params.name),
             fmt,
-            &format!("`::each` 的 [{}] 是空的：这一节不能没有正文", item.label),
+            &format!(
+                "`::each` 的 [{}] 是空的：这一节不能没有正文",
+                item.raw.label
+            ),
         );
         return;
     }
-    if params.check || items.is_empty() {
+    if params.check {
+        return;
+    }
+    if let Some(item) = items.iter().find(|item| item.template.trim().is_empty()) {
+        let why = if item.kind.is_empty() {
+            "`::each` 的 [__template__] 是空的：模板正文要缩进在它下面".to_string()
+        } else {
+            format!(
+                "`::each` 的 [__template__ {}] 是空的：模板正文要缩进在它下面",
+                item.kind
+            )
+        };
+        render_problem(&named(block, params.name), fmt, &why);
+        return;
+    }
+    if items.is_empty() {
         return;
     }
 
@@ -282,8 +442,9 @@ pub(super) fn render_each(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         let vars = TemplateVars::new(
             &template_name,
             vec![
-                (format!("{}.label", params.as_name), item.label.clone()),
-                (format!("{}.body", params.as_name), item.body.clone()),
+                (format!("{}.label", params.as_name), item.label.to_string()),
+                (format!("{}.type", params.as_name), item.kind.to_string()),
+                (format!("{}.body", params.as_name), item.raw.body.clone()),
                 (format!("{}.index", params.as_name), index.to_string()),
                 (format!("{}.count", params.as_name), count.to_string()),
                 (
@@ -299,7 +460,7 @@ pub(super) fn render_each(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
             parent.clone(),
         );
         let _scope = context::enter_template_vars(std::sync::Arc::new(vars));
-        match fill::resolve_late_refs(template, Some(params.as_name)) {
+        match fill::resolve_late_refs(item.template, Some(params.as_name)) {
             Ok(fragment) => {
                 expanded.push_str(&fragment);
                 expanded.push('\n');
@@ -455,6 +616,79 @@ mod tests {
         assert!(html.contains("template--problem"), "{html}");
         assert!(html.contains("没有数据"), "{html}");
     }
+    /// 类型模板按数据标签的第一个词选择；`item.label` 只剩数据部分。
+    #[test]
+    fn typed_templates_select_by_the_first_word_of_the_label() {
+        let template = "::each\n  [__template__]\n    ::text\n      默认:{{@item.type}}/{{@item.label}}\n  [__template__ link]\n    ::text\n      链接:{{@item.type}}/{{@item.label}}\n  [__data__]\n    {{body}}\n";
+        let html = render_page(
+            "类型",
+            template,
+            "::类型\n  [link 甲|甲页]\n    甲文\n  [乙 二]\n    乙文\n",
+        );
+        assert!(html.contains("链接:link/甲|甲页"), "{html}");
+        assert!(html.contains("默认:/乙 二"), "{html}");
+        assert!(!html.contains("默认:/link"), "{html}");
+    }
+
+    /// 类型模板可以没有数据部分；`[header]` 仍能选到 header 模板。
+    #[test]
+    fn a_typed_template_can_take_an_empty_data_part() {
+        let template = "::each\n  [__template__]\n    ::text\n      组:{{@item.label}}\n  [__template__ header]\n    ::text\n      头:{{@item.body}}\n  [__data__]\n    {{body}}\n";
+        let html = render_page(
+            "头",
+            template,
+            "::头\n  [header]\n    通栏\n  [分类]\n    内容\n",
+        );
+        assert!(html.contains("头:通栏"), "{html}");
+        assert!(html.contains("组:分类"), "{html}");
+        assert!(!html.contains("header"), "{html}");
+    }
+
+    /// 数据节里的标签仍按原文走 only/skip；类型模板不改变过滤口径。
+    #[test]
+    fn typed_templates_do_not_change_the_filter_labels() {
+        let template = "::each skip=header\n  [__template__]\n    ::text\n      {{@item.label}}\n  [__template__ header]\n    ::text\n      {{@item.body}}\n  [__data__]\n    {{body}}\n";
+        let html = render_page(
+            "过滤",
+            template,
+            "::过滤\n  [header]\n    通栏\n  [分类]\n    内容\n",
+        );
+        assert!(!html.contains("通栏"), "{html}");
+        assert!(html.contains("分类"), "{html}");
+    }
+
+    /// 类型模板重复、类型为空或出现不认识的模板节，都应在写 DOM 前报错。
+    #[test]
+    fn malformed_typed_templates_are_refused() {
+        let duplicate = "::each\n  [__template__]\n    默认\n  [__template__ link]\n    一\n  [__template__ link]\n    二\n  [__data__]\n    {{body}}\n";
+        let html = render_page("重复", duplicate, "::重复\n  [link 甲]\n    文\n");
+        assert!(html.contains("template--problem"), "{html}");
+        assert!(html.contains("写了两次"), "{html}");
+
+        let spaced = "::each\n  [__template__]\n    默认\n  [__template__ two words]\n    错\n  [__data__]\n    {{body}}\n";
+        let html = render_page("空类型", spaced, "::空类型\n  [甲]\n    文\n");
+        assert!(html.contains("template--problem"), "{html}");
+        assert!(html.contains("类型只能是一个词"), "{html}");
+
+        let unknown = "::each\n  [__template__]\n    默认\n  [__template link]\n    错\n  [__data__]\n    {{body}}\n";
+        let html = render_page("错节", unknown, "::错节\n  [甲]\n    文\n");
+        assert!(html.contains("template--problem"), "{html}");
+        assert!(html.contains("只认"), "{html}");
+    }
+
+    /// 选中的类型模板为空时，不能把它当成空模板静默跳过。
+    #[test]
+    fn an_empty_selected_typed_template_is_reported() {
+        let template = "::each\n  [__template__]\n    默认\n  [__template__ link]\n  [__data__]\n    {{body}}\n";
+        let html = render_page(
+            "空模板",
+            template,
+            "::空模板\n  [link 甲]\n    正文\n  [乙]\n    正文\n",
+        );
+        assert!(html.contains("template--problem"), "{html}");
+        assert!(html.contains("[__template__ link]"), "{html}");
+    }
+
     /// `check` 只校验不输出；`max` / `min` / `nonempty` 都在写 DOM 前拦住
     #[test]
     fn check_validates_counts_and_empty_bodies_without_rendering() {

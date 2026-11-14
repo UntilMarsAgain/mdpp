@@ -1,2 +1,2 @@
-::element class="small {{?@class}}"
+::element class="mdpp-small {{?@class}}"
   {{body}}

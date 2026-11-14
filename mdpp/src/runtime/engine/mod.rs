@@ -76,7 +76,7 @@ pub fn render_nested(source: &str) -> String {
 
     let out = if exceeded {
         format!(
-            "<div class=\"template template--problem\"><p class=\"template__why\">\
+            "<div class=\"mdpp-template mdpp-template--problem\"><p class=\"mdpp-template__why\">\
              嵌套渲染超过 {MAX_RENDER_DEPTH} 层（是不是自己嵌自己？）</p></div>"
         )
     } else {

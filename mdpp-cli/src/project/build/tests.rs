@@ -153,7 +153,7 @@ fn nav_for_marks_the_current_page_and_uses_relative_hrefs() {
 fn the_toc_body_lists_every_page() {
     let (_dir, site) = site_of(&["index.mdpp", "指南/入门.mdpp"]);
     let body = toc_body(&site, "桥梁笔记", "目录");
-    assert!(body.contains("<ul class=\"toc\">"), "{body}");
+    assert!(body.contains("<ul class=\"mdpp-toc-page\">"), "{body}");
     assert!(body.contains(">桥梁笔记<"), "首页该显示站点名：{body}");
     assert!(body.contains(">入门<"), "{body}");
     assert!(body.contains("指南/入门"), "键该陪着链接显示：{body}");

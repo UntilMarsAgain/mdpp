@@ -231,27 +231,27 @@ body {
 /* ---- 目录页 ----------------------------------------------------------- */
 
 /* 目录页（`toc` 生成的那一页）里的清单 */
-.mdpp-content .toc {
+.mdpp-content .mdpp-toc-page {
   list-style: none;
   padding-left: 0;
   margin: 1rem 0;
 }
 
-.mdpp-content .toc li {
+.mdpp-content .mdpp-toc-page li {
   padding: 0.45rem 0.2rem;
   border-bottom: 1px solid var(--mdpp-border);
 }
 
-.mdpp-content .toc li:last-child {
+.mdpp-content .mdpp-toc-page li:last-child {
   border-bottom: 0;
 }
 
-.mdpp-content .toc a {
+.mdpp-content .mdpp-toc-page a {
   font-weight: 500;
   text-decoration: none;
 }
 
-.mdpp-content .toc__path {
+.mdpp-content .mdpp-toc-page__path {
   color: var(--mdpp-text-dim);
   font-size: 0.85em;
   margin-left: 0.6em;

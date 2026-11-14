@@ -46,7 +46,7 @@ impl CoreRule for UniqueHeadingAnchors {
     }
 }
 
-/// 给**站外链接**挂 `class="external"`，并把链接文字包进
+/// 给**站外链接**挂 `class="mdpp-external"`，并把链接文字包进
 /// `.external__text`：链接本身不画下划线，只给文字画；末尾那个图标由 CSS
 /// 的 `::after` 补，于是复制链接不会把图标带走，图标也不会跟着下划线跑。
 ///
@@ -57,7 +57,7 @@ impl CoreRule for UniqueHeadingAnchors {
 /// 它是站内导航，哪怕解析出来是个绝对地址也不该画「出站」符号。
 ///
 /// 每层 `md.parse` 的 core 阶段都会走整棵树（嵌套块的子解析已挂过一次），
-/// 所以加之前先看类里有没有 —— 否则嵌套一深就是 `class="external external"`。
+/// 所以加之前先看类里有没有 —— 否则嵌套一深就是 `class="mdpp-external external"`。
 pub(super) struct MarkExternalLinks;
 
 /// 外链文字的那层 span：`text-decoration` 只画在它上面，不画到 `::after` 图标上
@@ -66,7 +66,7 @@ struct ExternalText;
 
 impl NodeValue for ExternalText {
     fn render(&self, node: &Node, fmt: &mut dyn markdown_it::Renderer) {
-        fmt.open("span", &[("class", "external__text".to_string())]);
+        fmt.open("span", &[("class", "mdpp-external__text".to_string())]);
         fmt.contents(&node.children);
         fmt.close("span");
     }
@@ -91,11 +91,11 @@ impl CoreRule for MarkExternalLinks {
             }
 
             if let Some((_, class)) = node.attrs.iter_mut().find(|(name, _)| *name == "class") {
-                if !class.split_whitespace().any(|item| item == "external") {
+                if !class.split_whitespace().any(|item| item == "mdpp-external") {
                     class.push_str(" external");
                 }
             } else {
-                node.attrs.push(("class", "external".to_string()));
+                node.attrs.push(("class", "mdpp-external".to_string()));
             }
 
             // 嵌套解析会把同一棵树再过一遍：已经包过就别再套一层

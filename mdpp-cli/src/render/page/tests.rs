@@ -46,7 +46,7 @@ fn a_full_document_carries_the_stylesheet_the_script_and_the_body() {
 /// `data-mdpp-block` 之类的约定 —— 而那也只是形状上的线索。
 #[test]
 fn the_script_is_there_so_the_page_is_usable() {
-    let html = document(&page("<div class=\"tabs\"></div>", Assets::Inline));
+    let html = document(&page("<div class=\"mdpp-tabs\"></div>", Assets::Inline));
     assert!(html.contains("DOMContentLoaded"), "{html}");
     assert!(html.contains("tabs__tab--on"), "{html}");
 }
@@ -55,8 +55,8 @@ fn the_script_is_there_so_the_page_is_usable() {
 #[test]
 fn the_script_binds_the_navbox_toggle_too() {
     let js = default_js();
-    assert!(js.contains(".navbox__toggle"), "{js}");
-    assert!(js.contains(".navbox__body"), "{js}");
+    assert!(js.contains(".mdpp-navbox__toggle"), "{js}");
+    assert!(js.contains(".mdpp-navbox__body"), "{js}");
     // 按钮上那两个字由渲染器落在 data-label-* 上，脚本里不硬编码中文
     assert!(js.contains("data-label-show"), "{js}");
     assert!(js.contains("data-label-hide"), "{js}");
@@ -192,8 +192,8 @@ fn system_theme_leaves_the_html_element_without_an_attribute() {
 fn the_shell_has_a_no_js_fallback() {
     let html = document(&site_page("x"));
     assert!(html.contains("<noscript>"), "{html}");
-    assert!(html.contains(".tabs__panel[hidden]"), "{html}");
-    assert!(html.contains(".navbox__body[hidden]"), "{html}");
+    assert!(html.contains(".mdpp-tabs__panel[hidden]"), "{html}");
+    assert!(html.contains(".mdpp-navbox__body[hidden]"), "{html}");
 }
 
 /// 外链那一路：页面里只有一个 `<link>` 一个 `<script src>`，资源由 `copy_assets` 拷出去
@@ -429,7 +429,7 @@ fn the_nav_bar_gives_every_item_the_same_class_and_only_marks_the_current_one() 
     );
     // 没有导航就不渲染那一行
     let plain = document(&site_page("x"));
-    assert!(!plain.contains("mdpp-nav"), "{plain}");
+    assert!(!plain.contains("mdpp-nav__link"), "{plain}");
 }
 
 /// 导航链接里的文字与地址都要转义 —— 配置是人写的，带引号/尖括号不该跑出来
@@ -645,8 +645,8 @@ fn the_stylesheet_is_embedded_and_not_empty() {
 fn the_stylesheet_keeps_a_meaningful_internal_order() {
     let css = default_css();
     let base = css.find(":root").expect("变量那层");
-    let callout = css.find(".callout {").expect("提示框");
-    let tabs = css.find(".tabs__bar").expect("选项卡");
+    let callout = css.find(".mdpp-callout {").expect("提示框");
+    let tabs = css.find(".mdpp-tabs__bar").expect("选项卡");
     let print = css.find("@media print").expect("打印");
     assert!(base < callout, "变量要在用它的那些之前");
     assert!(callout < tabs, "按拼进来的次序");
@@ -662,11 +662,11 @@ fn the_one_stylesheet_covers_every_block() {
         ("配色变量", "--mdpp-accent"),
         ("提示框", "callout--warning"),
         ("可折叠提示框", "callout__details"),
-        ("平行列表", ".flatlist.hlist"),
-        ("折叠", ".fold {"),
+        ("平行列表", ".mdpp-flatlist.mdpp-hlist"),
+        ("折叠", ".mdpp-fold {"),
         ("标题带", "title-block"),
-        ("基础盒子", ".surface"),
-        ("缩进", ".indent"),
+        ("基础盒子", ".mdpp-surface"),
+        ("缩进", ".mdpp-indent"),
         ("媒体", "figcaption"),
         ("选项卡", "theme__part--dark"),
         ("导航框", "navbox__group"),
@@ -834,7 +834,7 @@ fn the_script_is_embedded_and_does_the_minimum() {
 #[test]
 fn every_generated_script_carries_the_generator_environment() {
     let html = document(&Page {
-        body: "<pre class=\"mermaid\">graph TD; A-->B;</pre><div class=\"math\" data-tex=\"x\"></div><pre class=\"language-rust\">fn main() {}</pre>",
+        body: "<pre class=\"mdpp-mermaid\">graph TD; A-->B;</pre><div class=\"mdpp-math\" data-tex=\"x\"></div><pre class=\"language-rust\">fn main() {}</pre>",
         extra_js: &["// 我自己的".to_string()],
         features: mdpp::Features {
             highlight: true,
@@ -935,12 +935,12 @@ fn the_template_still_has_the_placeholders_the_filler_fills() {
     }
 }
 
-/// 页面里若用了 `::mermaid`（`class="mermaid"`），默认 `cdn` 模式会把
+/// 页面里若用了 `::mermaid`（`class="mdpp-mermaid"`），默认 `cdn` 模式会把
 /// mermaid.js 的 `<script src="…">` 写进页面；`none` 模式则不写。
 #[test]
 fn external_script_cdn_injects_mermaid_when_needed() {
     let page = Page {
-        body: "<pre class=\"mermaid\">graph TD; A-->B;</pre>",
+        body: "<pre class=\"mdpp-mermaid\">graph TD; A-->B;</pre>",
         external_script: ExternalScript::Cdn,
         features: mdpp::Features {
             mermaid: true,
@@ -956,12 +956,12 @@ fn external_script_cdn_injects_mermaid_when_needed() {
     assert!(!html.contains("katex"), "{html}");
 }
 
-/// 页面里若用了 `::math`（`class="math"`），默认 `cdn` 模式会把
+/// 页面里若用了 `::math`（`class="mdpp-math"`），默认 `cdn` 模式会把
 /// KaTeX 的 `<script src="…">` 写进页面。
 #[test]
 fn external_script_cdn_injects_katex_when_needed() {
     let page = Page {
-        body: "<div class=\"math math--display\">E=mc^2</div>",
+        body: "<div class=\"mdpp-math math--display\">E=mc^2</div>",
         external_script: ExternalScript::Cdn,
         features: mdpp::Features {
             math: true,
@@ -986,7 +986,7 @@ fn external_script_cdn_injects_katex_when_needed() {
 #[test]
 fn external_script_none_injects_nothing() {
     let page = Page {
-        body: "<pre class=\"mermaid\">graph TD; A-->B;</pre><div class=\"math\">x</div>",
+        body: "<pre class=\"mdpp-mermaid\">graph TD; A-->B;</pre><div class=\"mdpp-math\">x</div>",
         external_script: ExternalScript::None,
         features: mdpp::Features {
             highlight: true,

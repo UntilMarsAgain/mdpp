@@ -101,15 +101,20 @@ fn slot_of(label: &str) -> Result<Slot, String> {
 ///
 /// 参数走的是整块解析，所以 `求问百科` 出来是 `<p>求问百科</p>`；而标题栏与按钮里要
 /// 的是 `求问百科` 那一段 —— `<button>` 里塞 `<p>` 既不合法也不好看。
-pub(super) fn inline_html(text: &str) -> String {
+pub(super) fn inline_html(text: &str) -> Result<String, String> {
     let rendered = crate::engine::render_nested(text);
     let trimmed = rendered.trim();
+    if trimmed.is_empty() {
+        return Ok(String::new());
+    }
     match trimmed
         .strip_prefix("<p>")
         .and_then(|rest| rest.strip_suffix("</p>"))
     {
-        Some(inner) if !inner.contains("</p>") => inner.to_string(),
-        _ => trimmed.to_string(),
+        Some(inner) if !inner.contains("</p>") => Ok(inner.to_string()),
+        _ => Err(
+            "导航框的标题和分组名只支持行内 Markdown：不能包含段落、列表或其他块级内容".to_string(),
+        ),
     }
 }
 
@@ -125,11 +130,11 @@ pub(super) fn inline_html(text: &str) -> String {
 /// 半边的 `[a [b]` 会让整个分节错位，页面从此莫名其妙。分开写没这个风险。
 fn group_label_html(label: &str) -> Result<String, String> {
     let Some(rest) = label.strip_prefix("link") else {
-        return Ok(inline_html(label));
+        return inline_html(label);
     };
     // `linkage` / `linked` 那些是普通分组名，不是链接写法
     if !rest.is_empty() && !rest.starts_with(char::is_whitespace) {
-        return Ok(inline_html(label));
+        return inline_html(label);
     }
     let page = rest.trim();
     if page.is_empty() {
@@ -137,7 +142,7 @@ fn group_label_html(label: &str) -> Result<String, String> {
             "[{label}] 后面没写页面名：写 [link 某页]，也可以写 [link 某页|显示的字]"
         ));
     }
-    Ok(inline_html(&format!("[[{page}]]")))
+    inline_html(&format!("[[{page}]]"))
 }
 
 /// 那三个**底色**参数。只认 `#rgb` / `#rrggbb` —— 与 [`::banner`](super::text) 的
@@ -197,15 +202,20 @@ fn bg_of(block: &Block, key: &str) -> Result<Option<String>, String> {
 
 /// 这一节的子节点里有没有一个 `::navbox` —— 即这一格装着一个子导航框。
 ///
-/// 只数**直接**子节点：写在列表项里的（懒延续那种）不算，那整个子导航框会先被
-/// markdown 收成列表项的文字（见 [`crate::block::scanner`] 的测试），这里认了
-/// 反而会在一个「压根没嵌进去」的格子上打记号。
+/// 会递归进 `::element` 之类的块容器；但写在列表项里的（懒延续那种）不算，
+/// 那整个子导航框会先被 markdown 收成列表项的文字（见
+/// [`crate::block::scanner`] 的测试），这里认了反而会在一个「压根没嵌进去」的
+/// 格子上打记号。
 pub(super) fn holds_nested_navbox(section: &Node) -> bool {
-    section.children.iter().any(|child| {
-        child
-            .cast::<BlockNode>()
-            .is_some_and(|b| b.0.name == "navbox")
-    })
+    fn holds(node: &Node) -> bool {
+        node.children.iter().any(|child| {
+            child
+                .cast::<BlockNode>()
+                .is_some_and(|b| b.0.name == "navbox")
+                || holds(child)
+        })
+    }
+    holds(section)
 }
 
 /// [`prepare`] 的产物：渲染那一半要的每一样，**都已经认过一遍**。
@@ -215,6 +225,8 @@ pub(super) fn holds_nested_navbox(section: &Node) -> bool {
 pub(super) struct Prepared<'a> {
     /// `title=`（trim 过、空的算没给）
     pub(super) title: Option<&'a str>,
+    /// 标题已经按行内 Markdown 渲染好 —— 写错在 `prepare` 这一轮就报
+    pub(super) title_html: Option<String>,
     pub(super) state: State,
     /// 折起来没有 —— 由 [`State`] 定，不在渲染那半另算一遍
     pub(super) collapsed: bool,
@@ -341,8 +353,20 @@ pub(super) fn prepare<'a>(
         return None;
     }
 
+    let title_html = match title {
+        Some(title) => match inline_html(title) {
+            Ok(html) => Some(html),
+            Err(why) => {
+                render_problem(block, fmt, &why);
+                return None;
+            }
+        },
+        None => None,
+    };
+
     Some(Prepared {
         title,
+        title_html,
         state,
         collapsed: state == State::Collapsed,
         palette,

@@ -1,4 +1,4 @@
-::surface color={{?@color}} class="surface std-card std-card--brand {{?@class}}"
+::surface color={{?@color}} class="mdpp-surface std-card std-card--brand {{?@class}}"
   ::if condition-defined={{@title}}
     [then]
       **{{?title}}**

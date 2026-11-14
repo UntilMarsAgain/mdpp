@@ -1,2 +1,2 @@
-::element class="signature {{?@class}}"
+::element class="mdpp-signature {{?@class}}"
   {{body}}

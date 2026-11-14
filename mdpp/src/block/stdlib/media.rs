@@ -37,7 +37,10 @@ pub(super) fn render_image(block: &Block, _node: &Node, fmt: &mut dyn Renderer) 
     let style = size_style(block);
 
     fmt.cr();
-    fmt.open("figure", &[("class", format!("image image--{align}"))]);
+    fmt.open(
+        "figure",
+        &[("class", format!("mdpp-image mdpp-image--{align}"))],
+    );
     fmt.cr();
     let mut attrs: Vec<(&str, String)> = vec![
         ("src", source),
@@ -82,7 +85,10 @@ fn render_media(block: &Block, _node: &Node, fmt: &mut dyn Renderer, kind: &str)
     fmt.cr();
     fmt.open(
         "figure",
-        &[("class", format!("media media--{kind} media--{align}"))],
+        &[(
+            "class",
+            format!("mdpp-media mdpp-media--{kind} mdpp-media--{align}"),
+        )],
     );
     fmt.cr();
     let mut attrs: Vec<(&str, String)> = vec![
@@ -203,7 +209,7 @@ mod tests {
     fn image_carries_alignment_and_limits() {
         let html = render("::image src=/logo.svg align=right width=320 caption=\"桥体\"\n");
         assert!(
-            html.contains(r#"<figure class="image image--right">"#),
+            html.contains(r#"<figure class="mdpp-image mdpp-image--right">"#),
             "{html}"
         );
         assert!(html.contains(r#"src="/logo.svg""#), "{html}");

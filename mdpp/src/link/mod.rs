@@ -81,7 +81,7 @@ impl LinkTarget {
 ///
 /// impl NodeRenderer for Mark {
 ///     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-///         fmt.open("a", &[("class", "wikilink".to_string())]);
+///         fmt.open("a", &[("class", "mdpp-wikilink".to_string())]);
 ///         fmt.contents(&node.children);
 ///         fmt.close("a");
 ///     }
@@ -150,13 +150,13 @@ pub(crate) mod tests {
     #[test]
     fn link_target_chains_attrs() {
         let target = LinkTarget::new("/x")
-            .attr("class", "wikilink")
+            .attr("class", "mdpp-wikilink")
             .attr("data-id", "7");
         assert_eq!(target.url, "/x");
         assert_eq!(
             target.attrs,
             vec![
-                ("class".to_string(), "wikilink".to_string()),
+                ("class".to_string(), "mdpp-wikilink".to_string()),
                 ("data-id".to_string(), "7".to_string())
             ]
         );

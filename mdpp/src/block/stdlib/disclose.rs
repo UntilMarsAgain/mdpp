@@ -308,10 +308,12 @@ mod tests {
     /// 最基本的形状：details / summary / 标题 / 正文
     #[test]
     fn renders_details_summary_and_body() {
-        let html = render("::disclose title=草稿 class=fold button-class=fold--custom\n  正文\n");
-        assert!(html.contains(r#"<details class="fold">"#), "{html}");
+        let html = render(
+            "::disclose title=草稿 class=mdpp-fold button-class=mdpp-fold--custom\n  正文\n",
+        );
+        assert!(html.contains(r#"<details class="mdpp-fold">"#), "{html}");
         assert!(
-            html.contains(r#"<summary class="fold--custom">草稿</summary>"#),
+            html.contains(r#"<summary class="mdpp-fold--custom">草稿</summary>"#),
             "{html}"
         );
         assert!(html.contains("正文"), "{html}");
@@ -347,10 +349,11 @@ mod tests {
     /// 标题前的记号带 `aria-hidden`，并可以用单独的类
     #[test]
     fn prefix_is_a_hidden_span() {
-        let html = render("::disclose title=说明 prefix=ℹ prefix-class=callout__mark\n  正文\n");
+        let html =
+            render("::disclose title=说明 prefix=ℹ prefix-class=mdpp-callout__mark\n  正文\n");
         assert!(
             html.contains(
-                r#"<span class="callout__mark" aria-hidden="true">ℹ</span>说明</summary>"#
+                r#"<span class="mdpp-callout__mark" aria-hidden="true">ℹ</span>说明</summary>"#
             ),
             "{html}"
         );
@@ -380,7 +383,7 @@ mod tests {
         assert!(html.contains("template--problem"), "{html}");
         assert!(html.contains("没有内容"), "{html}");
         assert!(
-            html.contains(r#"<code class="template__name">fold</code>"#),
+            html.contains(r#"<code class="mdpp-template__name">fold</code>"#),
             "{html}"
         );
     }
@@ -395,10 +398,11 @@ mod tests {
             "没有 button-class 时不该凭空冒类名：{plain}"
         );
 
-        let off =
-            render("::disclose collapsible=off button-class=callout__title title=说明\n  正文\n");
+        let off = render(
+            "::disclose collapsible=off button-class=mdpp-callout__title title=说明\n  正文\n",
+        );
         assert!(!off.contains("<details"), "{off}");
-        assert!(off.contains(r#"<p class="callout__title">"#), "{off}");
+        assert!(off.contains(r#"<p class="mdpp-callout__title">"#), "{off}");
     }
 
     /// `collapsible=on` / `closed` 走 details；`closed` 不带 open

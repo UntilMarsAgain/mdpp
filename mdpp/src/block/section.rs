@@ -39,9 +39,10 @@ impl NodeValue for Section {
     }
 }
 
-/// 取 `[__template__]` / `[__data__]` 两节：模板类块的固定两节。
+/// 取 `[__template__]` / `[__data__]` 两节：`rows` 这类固定两节的模板块。
 ///
-/// `what` 是块名（`each` / `rows`），只用于错误消息。顺序固定，多一节少一节都报错。
+/// `what` 是块名（例如 `rows`），只用于错误消息。顺序固定，多一节少一节都报错。
+/// `each` 支持类型模板，自己解析这三类节。
 pub(crate) fn template_and_data<'a>(
     node: &'a Node,
     what: &str,

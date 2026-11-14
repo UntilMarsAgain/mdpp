@@ -1,4 +1,4 @@
-::element tag=table class="fields {{?@class}}"
+::element tag=table class="mdpp-fields {{?@class}}"
   ::element tag=tbody
     ::rows max=2
       [__template__]

@@ -82,9 +82,9 @@ const ELEMENT_TAGS: &[&str] = &[
 
 /// `::surface color=#0055a4 text=auto rounded=on height=120px indent=2 mini=off class=... [tag=auto] [inline=on] [name=surface]`
 ///
-/// `class=` 写了就按原样使用（不写默认 `surface`）；`surface` 不再追加
-/// `surface--sized` / `surface--square` / `surface--mini`，这些效果改为行内样式。
-/// `indent=` 只落 `--mdpp-indent` 等级；`1.6em` 的比例在 `mdpp.css` 的 `.indent` 里。
+/// `class=` 写了就按原样使用（不写默认 `mdpp-surface`）；不再追加
+/// `mdpp-surface--sized` / `mdpp-surface--square` / `mdpp-surface--mini`，这些效果改为行内样式。
+/// `indent=` 只落 `--mdpp-indent` 等级；`1.6em` 的比例在 `mdpp.css` 的 `.mdpp-indent` 里。
 /// `tag=auto` 按正文形状选标签：单段落 `p`，多段/含块 `div`。
 pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     // 模板页可以给诊断框一个更贴近的名字（`indent` / `banner` …）
@@ -92,7 +92,7 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
         .param("name")
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or("surface");
+        .unwrap_or("mdpp-surface");
     let mut problem_block = block.clone();
     problem_block.name = name.to_string();
 
@@ -108,7 +108,7 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
         .param("class")
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .unwrap_or("surface")
+        .unwrap_or("mdpp-surface")
         .to_string();
     let mut style = String::new();
 
@@ -165,7 +165,7 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
             return;
         };
         push_decl(&mut style, &rule);
-        // 原来由 `.surface--sized` 负责的居中，现在直接落成样式
+        // 原来由 `.mdpp-surface--sized` 负责的居中，现在直接落成样式
         push_decl(
             &mut style,
             "display: flex; align-items: center; justify-content: center;",
@@ -185,7 +185,7 @@ pub(super) fn render_surface(block: &Block, node: &Node, fmt: &mut dyn Renderer)
             );
             return;
         };
-        // 只落一个等级；1.6em 的比例在 `mdpp.css` 的 `.indent` 里
+        // 只落一个等级；1.6em 的比例在 `mdpp.css` 的 `.mdpp-indent` 里
         push_decl(&mut style, &format!("--mdpp-indent: {value};"));
     }
 
@@ -680,7 +680,7 @@ mod tests {
     #[test]
     fn surface_defaults_to_the_surface_class() {
         let html = render("::surface\n  正文\n");
-        assert!(html.contains("class=\"surface\""), "{html}");
+        assert!(html.contains("class=\"mdpp-surface\""), "{html}");
     }
 
     /// `mini` 现在是行内样式，不再生成 `surface--mini`
@@ -691,12 +691,12 @@ mod tests {
         assert!(!html.contains("surface--mini"), "{html}");
     }
 
-    /// `indent=` 只落等级变量，比例交给 CSS 的 `.indent`
+    /// `indent=` 只落等级变量，比例交给 CSS 的 `.mdpp-indent`
     #[test]
     fn surface_carries_an_indent_level() {
-        let html = render("::surface class=indent indent=2\n  正文\n");
+        let html = render("::surface class=mdpp-indent indent=2\n  正文\n");
         assert!(html.contains("--mdpp-indent: 2;"), "{html}");
-        assert!(html.contains("class=\"indent\""), "{html}");
+        assert!(html.contains("class=\"mdpp-indent\""), "{html}");
 
         for bad in ["-1", "也许", "1px"] {
             let html = render(&format!("::surface indent={bad}\n  正文\n"));
@@ -707,8 +707,8 @@ mod tests {
     /// `tag=p` 也允许：banner 一类后来可以把它当行内盒子用
     #[test]
     fn surface_can_use_a_paragraph_tag() {
-        let html = render("::surface tag=p class=banner inline=on\n  正文\n");
-        assert!(html.contains("<p class=\"banner\">"), "{html}");
+        let html = render("::surface tag=p class=mdpp-banner inline=on\n  正文\n");
+        assert!(html.contains("<p class=\"mdpp-banner\">"), "{html}");
         assert!(html.contains("正文"), "{html}");
         assert!(!html.contains("<p><p>"), "{html}");
     }
@@ -716,18 +716,18 @@ mod tests {
     /// `tag=auto`：单段落用 p，多段用 div —— 这是 banner 需要的结构判断
     #[test]
     fn auto_tag_follows_the_content_shape() {
-        let single = render("::surface tag=auto class=banner\n  一行\n");
-        assert!(single.contains("<p class=\"banner\">"), "{single}");
-        assert!(!single.contains("<div class=\"banner\">"), "{single}");
+        let single = render("::surface tag=auto class=mdpp-banner\n  一行\n");
+        assert!(single.contains("<p class=\"mdpp-banner\">"), "{single}");
+        assert!(!single.contains("<div class=\"mdpp-banner\">"), "{single}");
         assert!(!single.contains("<p><p>"), "{single}");
 
-        let multi = render("::surface tag=auto class=banner\n  第一段\n\n  第二段\n");
-        assert!(multi.contains("<div class=\"banner\">"), "{multi}");
+        let multi = render("::surface tag=auto class=mdpp-banner\n  第一段\n\n  第二段\n");
+        assert!(multi.contains("<div class=\"mdpp-banner\">"), "{multi}");
         assert!(multi.contains("<p>第一段</p>"), "{multi}");
         assert!(multi.contains("<p>第二段</p>"), "{multi}");
 
-        let element = render("::element tag=auto class=banner\n  一行\n");
-        assert!(element.contains("<p class=\"banner\">"), "{element}");
+        let element = render("::element tag=auto class=mdpp-banner\n  一行\n");
+        assert!(element.contains("<p class=\"mdpp-banner\">"), "{element}");
     }
 
     /// 裸 flag 已经解析成 `on`；显式空值才走默认值：

@@ -113,8 +113,8 @@
       if (el.getAttribute("role") === "tab") {
         el.setAttribute("aria-selected", on ? "true" : "false");
       }
-      if (el.classList.contains("tabs__tab")) {
-        el.classList.toggle("tabs__tab--on", on);
+      if (el.classList.contains("mdpp-tabs__tab")) {
+        el.classList.toggle("mdpp-tabs__tab--on", on);
       }
     });
 
@@ -378,7 +378,7 @@
 
   function fold(navbox, toggle) {
     var wasCollapsed = toggle.getAttribute("aria-expanded") === "false";
-    var body = navbox.querySelector(":scope > .navbox__body");
+    var body = navbox.querySelector(":scope > .mdpp-navbox__body");
     if (!body) {
       return;
     }
@@ -396,8 +396,8 @@
   }
 
   function bindNavbox(navbox) {
-    var bar = navbox.querySelector(":scope > .navbox__bar");
-    var toggle = bar ? bar.querySelector(":scope > .navbox__toggle") : null;
+    var bar = navbox.querySelector(":scope > .mdpp-navbox__bar");
+    var toggle = bar ? bar.querySelector(":scope > .mdpp-navbox__toggle") : null;
     if (!toggle || navbox.hasAttribute("data-mdpp-bound")) {
       return;
     }
@@ -411,13 +411,17 @@
 
   function bindDiagrams() {
     if (window.mermaid) {
-      window.mermaid.initialize({ startOnLoad: true });
+      window.mermaid.initialize({ startOnLoad: false });
+      window.mermaid.run({ querySelector: ".mdpp-mermaid" });
     }
     if (window.katex) {
-      document.querySelectorAll(".math").forEach(function (el) {
+      document.querySelectorAll(".mdpp-math").forEach(function (el) {
         var tex = el.getAttribute("data-tex");
         if (tex) {
-          window.katex.render(tex, el, { throwOnError: false });
+          window.katex.render(tex, el, {
+            throwOnError: false,
+            displayMode: el.classList.contains("mdpp-math--display")
+          });
         }
       });
     }
@@ -488,7 +492,7 @@
   // ===== 8. 启动 ======================================================
 
   function bindAll(root) {
-    root.querySelectorAll(".navbox").forEach(bindNavbox);
+    root.querySelectorAll(".mdpp-navbox").forEach(bindNavbox);
     scanGroups(root);
     if (!document.documentElement.hasAttribute(PAGE_MARK)) {
       document.documentElement.setAttribute(PAGE_MARK, "");

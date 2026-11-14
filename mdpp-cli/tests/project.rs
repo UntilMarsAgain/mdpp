@@ -105,7 +105,7 @@ fn a_page_links_to_another_one_and_a_missing_one_stays_red() {
         "站内链接没指到那一页：{html}"
     );
     assert!(
-        html.contains(r#"class="wikilink wikilink--missing""#),
+        html.contains(r#"class="mdpp-wikilink mdpp-wikilink--missing""#),
         "指不到的那一页该是红链：{html}"
     );
     // 报告里逐条说清是哪一页的哪个目标
@@ -1020,7 +1020,7 @@ fn code_that_looks_like_a_problem_box_is_not_counted() {
     let root = init(dir.path());
     std::fs::write(
         root.join("pages/甲.mdpp"),
-        "正文里写着 template--problem。\n\n```html\n<div class=\"template--unknown\">x</div>\n```\n",
+        "正文里写着 template--problem。\n\n```html\n<div class=\"mdpp-template--unknown\">x</div>\n```\n",
     )
     .expect("写得下");
     let out = mdpp(&root, &["build"]);

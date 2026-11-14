@@ -319,7 +319,7 @@ pub(super) fn render_variants(block: &Block, node: &Node, fmt: &mut dyn Renderer
             class.push_str(base);
             if params.panel_variant_class && part.value != ALWAYS {
                 // 变体类是**基类的最后一个**加后缀：`theme__part` 落成
-                // `theme__part theme__part--light`，两个类都留着
+                // `mdpp-theme__part mdpp-theme__part--light`，两个类都留着
                 let variant = base.split_whitespace().last().unwrap_or(base);
                 class.push(' ');
                 class.push_str(variant);
@@ -371,8 +371,8 @@ mod tests {
     #[test]
     fn standard_library_templates_use_the_primitive() {
         let tabs = render("::tabs\n  [甲]\n    甲文\n  [乙]\n    乙文\n");
-        assert!(tabs.contains(r#"class="tabs__bar""#), "{tabs}");
-        assert!(tabs.contains(r#"class="tabs__panel""#), "{tabs}");
+        assert!(tabs.contains(r#"class="mdpp-tabs__bar""#), "{tabs}");
+        assert!(tabs.contains(r#"class="mdpp-tabs__panel""#), "{tabs}");
         assert!(tabs.contains("data-mdpp-option=\"0\""), "{tabs}");
         assert!(tabs.contains("甲文") && tabs.contains("乙文"), "{tabs}");
 
@@ -386,10 +386,10 @@ mod tests {
     #[test]
     fn theme_has_no_control_bar_and_keeps_every_panel() {
         let html = render(
-            "::variants control=theme group=theme class=theme panel-class=theme__part \
+            "::variants control=theme group=theme class=mdpp-theme panel-class=mdpp-theme__part \
              panel-variant-class=on\n  [light]\n    甲\n  [dark]\n    乙\n",
         );
-        assert!(html.contains(r#"class="theme""#), "{html}");
+        assert!(html.contains(r#"class="mdpp-theme""#), "{html}");
         assert!(html.contains(r#"data-mdpp-control="theme""#), "{html}");
         assert!(!html.contains("<button"), "{html}");
         assert!(html.contains("theme__part--light"), "{html}");
@@ -402,12 +402,12 @@ mod tests {
     #[test]
     fn choice_renders_buttons_panels_and_legacy_hooks() {
         let html = render(
-            "::variants control=choice group=tabs class=tabs bar-class=tabs__bar \
-             button-class=tabs__tab button-on-class=tabs__tab--on panel-class=tabs__panel\n  [甲]\n    甲文\n  [乙]\n    乙文\n",
+            "::variants control=choice group=tabs class=mdpp-tabs bar-class=mdpp-tabs__bar \
+             button-class=mdpp-tabs__tab button-on-class=mdpp-tabs__tab--on panel-class=mdpp-tabs__panel\n  [甲]\n    甲文\n  [乙]\n    乙文\n",
         );
         assert!(html.contains(r#"data-mdpp-control="choice""#), "{html}");
         assert!(
-            html.contains(r#"class="tabs__tab tabs__tab--on""#),
+            html.contains(r#"class="mdpp-tabs__tab mdpp-tabs__tab--on""#),
             "{html}"
         );
         assert!(html.contains(r#"aria-selected="true""#), "{html}");
@@ -443,7 +443,7 @@ mod tests {
     #[test]
     fn assets_are_scoped_to_the_option() {
         let html = render(
-            "::variants control=choice group=tabs class=tabs\n  [甲]\n    ::css\n      .a { }\n  [乙]\n    ::js\n      console.log(1);\n",
+            "::variants control=choice group=tabs class=mdpp-tabs\n  [甲]\n    ::css\n      .a { }\n  [乙]\n    ::js\n      console.log(1);\n",
         );
         assert!(html.contains("data-mdpp-group=\"tabs-1\""), "{html}");
         assert!(html.contains("data-mdpp-value=\"0\""), "{html}");
@@ -451,7 +451,7 @@ mod tests {
         assert!(html.contains("data-mdpp-asset=\"js\""), "{html}");
 
         let both = render(
-            "::variants control=theme group=theme class=theme\n  [both]\n    两边都显示\n    ::css\n      .a { }\n  [dark]\n    深色\n",
+            "::variants control=theme group=theme class=mdpp-theme\n  [both]\n    两边都显示\n    ::css\n      .a { }\n  [dark]\n    深色\n",
         );
         assert!(both.contains("data-mdpp-value=\"*\""), "{both}");
     }
@@ -461,7 +461,7 @@ mod tests {
     fn tabs_nest() {
         let nested =
             render("::tabs\n  [甲]\n    ::tabs\n      [内]\n        内文\n  [乙]\n    乙文\n");
-        assert_eq!(nested.matches("class=\"tabs\"").count(), 2, "{nested}");
+        assert_eq!(nested.matches("class=\"mdpp-tabs\"").count(), 2, "{nested}");
         assert!(
             nested.contains("内文") && nested.contains("乙文"),
             "{nested}"
@@ -472,7 +472,7 @@ mod tests {
     #[test]
     fn tabs_hide_the_other_panels_and_parse_markdown() {
         let html = render("::tabs\n  [一]\n    **加粗**\n  [二]\n    乙\n");
-        assert_eq!(html.matches("class=\"tabs__tab").count(), 2, "{html}");
+        assert_eq!(html.matches("class=\"mdpp-tabs__tab").count(), 2, "{html}");
         assert!(html.contains("<strong>加粗</strong>"), "{html}");
         assert!(html.contains("hidden"), "{html}");
     }

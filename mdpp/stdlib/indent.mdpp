@@ -2,5 +2,5 @@
   [then]
     ::problem name=indent why="indent= 缺失：写 ::indent indent=2"
   [else]
-    ::surface class="indent {{?@class}}" indent={{@indent}} name=indent
+    ::surface class="mdpp-indent {{?@class}}" indent={{@indent}} name=indent
       {{body}}

@@ -524,7 +524,7 @@ mod tests {
             r#"<img src="data:image/png;base64,AAA">"#,
             r##"<img src="/绝对/地址.png">"##,
             r##"<a href="#小节">锚点</a>"##,
-            r#"<a class="wikilink" href="另一页/">站内</a>"#,
+            r#"<a class="mdpp-wikilink" href="另一页/">站内</a>"#,
         );
         let scan = scan(html, &context(&pages, &pages, &assets));
         assert_eq!(scan.html, html, "不该动的动了");

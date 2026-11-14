@@ -6,7 +6,7 @@
 // |---|---|
 // | `ResolvedLink::Link` | 带 `href` 的普通链 |
 // | `ResolvedLink::Node` | 整个节点归那个函数写（连 `<a>` 都由它决定） |
-// | `None`，或压根没递解析器 | **红链**：`class="wikilink wikilink--missing"` |
+// | `None`，或压根没递解析器 | **红链**：`class="mdpp-wikilink mdpp-wikilink--missing"` |
 
 use std::collections::HashSet;
 use std::sync::Arc;

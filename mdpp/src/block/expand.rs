@@ -48,7 +48,7 @@ pub(crate) fn expand_user_block(
         warn!(name, limit, "块嵌套超过上限，多半是自嵌");
         return reported_node(
             "块嵌套太深",
-            "template--problem",
+            "mdpp-template--problem",
             name,
             &format!("块嵌套超过 {limit} 层（是不是自己嵌自己？）"),
         );
@@ -73,7 +73,7 @@ pub(crate) fn expand_user_block(
     let filled = match fill::substitute_checked(&source, &block, &body) {
         Ok(filled) => filled,
         Err(why) => {
-            return reported_node("模板参数缺失", "template--problem", name, &why);
+            return reported_node("模板参数缺失", "mdpp-template--problem", name, &why);
         }
     };
 
@@ -149,7 +149,7 @@ struct Reported {
 
 impl NodeValue for Reported {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        if self.class == "template--problem" {
+        if self.class == "mdpp-template--problem" {
             crate::env::misused_problem();
         }
         // 外壳、徽标与「为什么」都交给分发那边写：几个框的 class 名与结构在一处
@@ -161,7 +161,7 @@ impl NodeValue for Reported {
             self.class,
             &self.block.body,
             |fmt| {
-                fmt.open("p", &[("class", "template__where".to_string())]);
+                fmt.open("p", &[("class", "mdpp-template__where".to_string())]);
                 fmt.contents(&node.children);
                 fmt.close("p");
             },
@@ -186,7 +186,7 @@ fn reported_node(badge: &'static str, class: &'static str, name: &str, why: &str
 
 /// 那一页存在，但这一刻读不出来
 fn unreadable_node(name: &str, reason: &str) -> Node {
-    reported_node("模板页读不出来", "template--unreadable", name, reason)
+    reported_node("模板页读不出来", "mdpp-template--unreadable", name, reason)
 }
 
 /// 页名的链接：用户在正文里能跟着它去把那一页改掉。
@@ -238,7 +238,7 @@ mod tests {
             },
         );
         assert!(!html.contains("template--unknown"), "{html}");
-        assert!(html.contains("template--unreadable"), "{html}");
+        assert!(html.contains("mdpp-template--unreadable"), "{html}");
         assert!(html.contains("模板页读不出来"), "{html}");
         assert!(html.contains("读不了：权限不够"), "{html}");
         // 框里顺带把**那一页的名字**指给作者：下一步就是去改它
@@ -257,7 +257,7 @@ mod tests {
         // 那句话是给人看的建议，不是把内容吞了 —— 还给了那一页的名字
         assert!(html.contains("是不是自己嵌自己"), "{html}");
         assert!(html.contains("template:转圈"), "{html}");
-        assert!(!html.contains("template--unreadable"), "{html}");
+        assert!(!html.contains("mdpp-template--unreadable"), "{html}");
     }
 
     /// `::demo` 会在渲染期再解析正文，过去能绕过模板深度保护把栈打穿。
@@ -318,11 +318,11 @@ mod tests {
     #[test]
     fn a_missing_template_parameter_is_reported_unless_it_is_optional() {
         let required = render("卡片", TemplatePage::Ready("标题：{{title}}".into()));
-        assert!(required.contains("template--problem"), "{required}");
+        assert!(required.contains("mdpp-template--problem"), "{required}");
         assert!(required.contains("title"), "{required}");
 
         let optional = render("卡片", TemplatePage::Ready("标题：{{?title}}".into()));
-        assert!(!optional.contains("template--problem"), "{optional}");
+        assert!(!optional.contains("mdpp-template--problem"), "{optional}");
         assert!(optional.contains("标题："), "{optional}");
         assert!(!optional.contains("{{"), "{optional}");
     }
@@ -351,6 +351,6 @@ mod tests {
     fn no_such_page_falls_through_to_the_unknown_box() {
         let html = Mdpp::new().render("::压根没有这一页\n");
         assert!(html.contains("template--unknown"), "{html}");
-        assert!(!html.contains("template--unreadable"), "{html}");
+        assert!(!html.contains("mdpp-template--unreadable"), "{html}");
     }
 }

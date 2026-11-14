@@ -51,7 +51,7 @@ pub(super) fn render_problem(block: &Block, _node: &Node, fmt: &mut dyn Renderer
         &shown,
         fmt,
         "块的用法有问题",
-        "template--problem",
+        "mdpp-template--problem",
         why.unwrap_or_default(),
         ignore_extra,
     );
@@ -73,7 +73,7 @@ mod tests {
     fn a_problem_box_is_counted() {
         let rendered = report("::problem name=aside why=\"align= 写错了\"\n");
         assert!(
-            rendered.html.contains("template--problem"),
+            rendered.html.contains("mdpp-template--problem"),
             "{}",
             rendered.html
         );
@@ -88,7 +88,7 @@ mod tests {
     fn a_problem_from_a_standard_library_template_is_counted() {
         let rendered = report("::aside align=maybe\n  正文\n");
         assert!(
-            rendered.html.contains("template--problem"),
+            rendered.html.contains("mdpp-template--problem"),
             "{}",
             rendered.html
         );
@@ -109,7 +109,7 @@ mod tests {
     fn malformed_problem_params_are_reported_once() {
         let rendered = report("::problem name=a name=b\n  正文\n");
         assert!(
-            rendered.html.contains("template--problem"),
+            rendered.html.contains("mdpp-template--problem"),
             "{}",
             rendered.html
         );

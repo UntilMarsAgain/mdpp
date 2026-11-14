@@ -38,7 +38,7 @@
 //!
 //! let mdpp = Mdpp::new();
 //! let html = mdpp.render("::note title=\"提醒\"\n  这里可以写 **markdown**。\n");
-//! assert!(html.contains(r#"class="callout callout--note""#));
+//! assert!(html.contains(r#"class="mdpp-callout mdpp-callout--note""#));
 //! assert!(html.contains("<strong>markdown</strong>"));
 //!
 //! // 内部链接交给自己的解析器
@@ -126,13 +126,13 @@ pub fn builtin_blocks() -> Vec<&'static str> {
 
 /// 从一段渲染好的 HTML 里数「出问题的框」：`(未知块, 误用块)`。
 ///
-/// `block::dispatch` 用 `template--unknown` 渲染「没这个名字」的块、用
-/// `template--problem` 渲染「名字对、用法不对」的块。命令行（`--stats`、`build` 报告）
+/// `block::dispatch` 用 `mdpp-template--unknown` 渲染「没这个名字」的块、用
+/// `mdpp-template--problem` 渲染「名字对、用法不对」的块。命令行（`--stats`、`build` 报告）
 /// 都数这两个类名 —— 类名由渲染那侧一处写死，这里直接数，不抄第二份（抄一份在
 /// 两处的话，改个类名就要改两处，而漏改一处是静悄悄的）。
 pub fn count_problem_boxes(html: &str) -> (usize, usize) {
     (
-        html.matches("template--unknown").count(),
-        html.matches("template--problem").count(),
+        html.matches("mdpp-template--unknown").count(),
+        html.matches("mdpp-template--problem").count(),
     )
 }

@@ -1,7 +1,7 @@
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
 
-use super::parse::{Prepared, Segment, State, holds_nested_navbox, inline_html, prepare};
+use super::parse::{Prepared, Segment, State, holds_nested_navbox, prepare};
 use super::{HIDE, SHOW};
 
 /// `::navbox` —— 见模块头。
@@ -14,6 +14,7 @@ pub(crate) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     };
     let Prepared {
         title,
+        title_html,
         state,
         collapsed,
         palette,
@@ -23,9 +24,9 @@ pub(crate) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
         groups,
     } = ready;
 
-    let mut class = "navbox".to_string();
+    let mut class = "mdpp-navbox".to_string();
     if title.is_none() {
-        class.push_str(" navbox--nested");
+        class.push_str(" mdpp-navbox--nested");
     }
     let mut root: Vec<(&str, String)> =
         vec![("class", class), ("data-state", state.attr().to_string())];
@@ -39,18 +40,18 @@ pub(crate) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     fmt.open("div", &root);
 
     // 标题栏：标题是标题，开关是**另一个**写着字的小按钮
-    if let Some(title) = title {
+    if let Some(title_html) = title_html {
         fmt.cr();
-        fmt.open("div", &[("class", "navbox__bar".to_string())]);
-        fmt.open("span", &[("class", "navbox__title".to_string())]);
-        fmt.text_raw(&inline_html(title));
+        fmt.open("div", &[("class", "mdpp-navbox__bar".to_string())]);
+        fmt.open("span", &[("class", "mdpp-navbox__title".to_string())]);
+        fmt.text_raw(&title_html);
         fmt.close("span");
         if state != State::Plain {
             fmt.cr();
             fmt.open(
                 "button",
                 &[
-                    ("class", "navbox__toggle".to_string()),
+                    ("class", "mdpp-navbox__toggle".to_string()),
                     ("type", "button".to_string()),
                     (
                         "aria-expanded",
@@ -72,7 +73,7 @@ pub(crate) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     // 折起来时用 `hidden` 而不是 CSS —— 打印规则要能把它放出来（见
     // `mdpp-cli/assets/mdpp.css` 的 `@media print` 那一节），而 `display: none`
     // 打印时救不回来
-    let mut body: Vec<(&str, String)> = vec![("class", "navbox__body".to_string())];
+    let mut body: Vec<(&str, String)> = vec![("class", "mdpp-navbox__body".to_string())];
     if collapsed {
         body.push(("hidden", "hidden".to_string()));
     }
@@ -81,17 +82,17 @@ pub(crate) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     fmt.cr();
 
     // 一张两列的表：左边分组名、右边内容 —— 与 `::fields` 同一个骨架
-    fmt.open("table", &[("class", "navbox__table".to_string())]);
+    fmt.open("table", &[("class", "mdpp-navbox__table".to_string())]);
     fmt.open("tbody", &[]);
 
     if let Some(section) = above {
-        full_row(fmt, "navbox__above", section);
+        full_row(fmt, "mdpp-navbox__above", section);
     }
 
     for segment in &segments {
         match segment {
             // 通栏横跨两列
-            Segment::Header(section) => full_row(fmt, "navbox__head", section),
+            Segment::Header(section) => full_row(fmt, "mdpp-navbox__head", section),
             // 分组名就是标签本身
             Segment::Group(name, section) => {
                 // 标签在上面认标签那一轮就渲染好了 —— 那时写错就整块报出来，
@@ -101,9 +102,9 @@ pub(crate) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
                 // 「父格文字大间距、子导航框贴左小间距」（维基模式），两套间距必须
                 // 分开给 —— 记号由看得见结构的这一侧给
                 let cell_class = if holds_nested_navbox(section) {
-                    "navbox__cell navbox__cell--branch"
+                    "mdpp-navbox__cell mdpp-navbox__cell--branch"
                 } else {
-                    "navbox__cell"
+                    "mdpp-navbox__cell"
                 }
                 .to_string();
                 fmt.cr();
@@ -111,7 +112,7 @@ pub(crate) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
                 fmt.open(
                     "th",
                     &[
-                        ("class", "navbox__group".to_string()),
+                        ("class", "mdpp-navbox__group".to_string()),
                         // `th` 是这一行的表头，屏幕阅读器据此把单元格与行标签对上
                         ("scope", "row".to_string()),
                     ],
@@ -127,7 +128,7 @@ pub(crate) fn render_navbox(block: &Block, node: &Node, fmt: &mut dyn Renderer) 
     }
 
     if let Some(section) = below {
-        full_row(fmt, "navbox__below", section);
+        full_row(fmt, "mdpp-navbox__below", section);
     }
 
     fmt.cr();

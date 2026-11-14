@@ -11,7 +11,7 @@
 //!   与将来的模板都可以复用同一套 `data-mdpp-*` 协议；
 //! - 诊断：名字不认识/参数用错时那两个框。
 //!
-//! 具体块的 DOM（`.tabs`、`.callout`、`<figure>` …）**不在这里** —— 那是
+//! 具体块的 DOM（`.mdpp-tabs`、`.mdpp-callout`、`<figure>` …）**不在这里** —— 那是
 //! [`crate::block::stdlib`] 的呈现选择，不是扩展契约。要复用分节数据、自己摆
 //! DOM，就拿 [`sections`]；要让现成的交互脚本认领，就把
 //! [`Group::container_attrs`](crate::variants::Group::container_attrs) /

@@ -11,21 +11,21 @@
 <style>
 /* 没有 JS 时把「一次只露一节」的结构展开：选项卡全部显示并带上节标题，
  * 折叠的导航框也展开。与 mdpp.css 的 @media print 是同一套降级。 */
-.mdpp-content .tabs__bar { display: none; }
-.mdpp-content .tabs__panel[hidden] { display: block !important; }
-.mdpp-content .tabs__panel::before {
+.mdpp-content .mdpp-tabs__bar { display: none; }
+.mdpp-content .mdpp-tabs__panel[hidden] { display: block !important; }
+.mdpp-content .mdpp-tabs__panel::before {
   content: attr(data-label);
   display: block;
   margin: 0.8em 0 0.3em;
   font-weight: 600;
 }
-.mdpp-content .tabs__panel + .tabs__panel {
+.mdpp-content .mdpp-tabs__panel + .mdpp-tabs__panel {
   margin-top: 0.8em;
   border-top: 1px solid var(--mdpp-border);
   padding-top: 0.6em;
 }
-.mdpp-content .navbox__body[hidden] { display: block !important; }
-.mdpp-content .navbox__toggle { display: none; }
+.mdpp-content .mdpp-navbox__body[hidden] { display: block !important; }
+.mdpp-content .mdpp-navbox__toggle { display: none; }
 </style>
 </noscript>
 </head>
