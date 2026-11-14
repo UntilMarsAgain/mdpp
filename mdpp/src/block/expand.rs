@@ -152,22 +152,20 @@ impl NodeValue for Reported {
         if self.class == "template--problem" {
             crate::env::misused_problem();
         }
-        fmt.cr();
-        fmt.open("div", &[("class", format!("template {}", self.class))]);
-        fmt.cr();
-        // 徽标那一行与「为什么」那一段都交给**分发那边**写：两个框的 class 名与
-        // 结构在一处定死，改一处就两处一起改（各拼一份的话，不一致是静悄悄的）
-        dispatch::head(fmt, self.badge, &self.block);
-        fmt.cr();
-        dispatch::why_line(fmt, &self.block.body);
-        fmt.cr();
-        // 能做的下一步就是去把那一页打开
-        fmt.open("p", &[("class", "template__where".to_string())]);
-        fmt.contents(&node.children);
-        fmt.close("p");
-        fmt.cr();
-        fmt.close("div");
-        fmt.cr();
+        // 外壳、徽标与「为什么」都交给分发那边写：几个框的 class 名与结构在一处
+        // 定死，改一处就一起改；这里只补「下一步去改哪一页」。
+        dispatch::problem_box(
+            &self.block,
+            fmt,
+            self.badge,
+            self.class,
+            &self.block.body,
+            |fmt| {
+                fmt.open("p", &[("class", "template__where".to_string())]);
+                fmt.contents(&node.children);
+                fmt.close("p");
+            },
+        );
     }
 }
 

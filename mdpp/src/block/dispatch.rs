@@ -65,17 +65,38 @@ pub fn render_unknown(block: &Block, fmt: &mut dyn Renderer) {
 /// 一个是「名字对、参数不对」。
 pub fn render_problem(block: &Block, fmt: &mut dyn Renderer, why: &str) {
     crate::env::misused_problem();
-    fmt.cr();
-    fmt.open(
-        "div",
-        &[("class", "template template--problem".to_string())],
+    problem_box(
+        block,
+        fmt,
+        "块的用法有问题",
+        "template--problem",
+        why,
+        |fmt| {
+            body_as_code(block, fmt);
+        },
     );
+}
+
+/// 问题框的公共外壳：徽标、块头、原因，再由调用方补最后一段内容。
+///
+/// Rust 分发、用户块展开与内置诊断原语 `::problem` 都从这里出去，class 与结构
+/// 只有一份；计数由各自的入口负责，这里只管写，避免同一个框被数两次。
+pub(crate) fn problem_box(
+    block: &Block,
+    fmt: &mut dyn Renderer,
+    badge: &str,
+    class: &str,
+    why: &str,
+    extra: impl FnOnce(&mut dyn Renderer),
+) {
     fmt.cr();
-    head(fmt, "块的用法有问题", block);
+    fmt.open("div", &[("class", format!("template {class}"))]);
+    fmt.cr();
+    head(fmt, badge, block);
     fmt.cr();
     why_line(fmt, why);
     fmt.cr();
-    body_as_code(block, fmt);
+    extra(fmt);
     fmt.cr();
     fmt.close("div");
     fmt.cr();
