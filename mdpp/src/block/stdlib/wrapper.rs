@@ -22,7 +22,7 @@ use markdown_it::plugins::cmark::block::paragraph::Paragraph;
 use markdown_it::{Node, Renderer};
 
 use super::super::dispatch::render_problem;
-use super::{hex_why, normalize_hex, size_rule, text_on};
+use super::{css_size, hex_why, normalize_hex, size_rule, text_on};
 use crate::block::fill;
 use crate::registry::Block;
 
@@ -261,23 +261,6 @@ fn css_var_name(name: &str) -> bool {
                 .chars()
                 .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'))
     })
-}
-
-/// 尺寸值：数字 + 白名单单位。与 `size_rule` 同一条安全边界。
-fn css_size(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    let digits: String = trimmed
-        .chars()
-        .take_while(|ch| ch.is_ascii_digit() || *ch == '.')
-        .collect();
-    if digits.is_empty() || digits.parse::<f64>().is_err() {
-        return None;
-    }
-    let unit = &trimmed[digits.len()..];
-    if !matches!(unit, "" | "px" | "%" | "em" | "rem" | "vh" | "vw") {
-        return None;
-    }
-    Some(format!("{digits}{unit}"))
 }
 
 /// 自定义属性的值：颜色或尺寸；`-bg` / `-fg` 另有色彩配对规则。

@@ -136,11 +136,25 @@ pub fn names() -> Vec<&'static str> {
     NAMES.to_vec()
 }
 
-/// 尺寸参数 → 一条 CSS 声明。只认「数字 + 可选白名单单位」，别的写法一律不认。
+/// 非空白的参数值（前后空白去掉）；空串等于没写。
+pub(crate) fn present(value: &str) -> Option<&str> {
+    let value = value.trim();
+    (!value.is_empty()).then_some(value)
+}
+
+/// 模板变量前缀：不能为空，也不能含空白/控制字符或模板语法字符。
+pub(crate) fn valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && !name
+            .chars()
+            .any(|ch| ch.is_whitespace() || ch.is_control() || matches!(ch, '.' | '@' | '{' | '}'))
+}
+
+/// 尺寸值：数字 + 白名单单位。`default_px` 决定空单位是否补 `px`。
 ///
 /// 严格是有理由的：这个值会被写进 `style` 属性，宽松了就等于允许往里面塞任意声明
 /// （比如 `width="1px; background: url(//追踪地址)"`）。
-pub(crate) fn size_rule(name: &str, value: &str) -> Option<String> {
+fn size_value(value: &str, default_px: bool) -> Option<String> {
     let trimmed = value.trim();
     let digits: String = trimmed
         .chars()
@@ -153,8 +167,22 @@ pub(crate) fn size_rule(name: &str, value: &str) -> Option<String> {
     if !matches!(unit, "" | "px" | "%" | "em" | "rem" | "vh" | "vw") {
         return None;
     }
-    let unit = if unit.is_empty() { "px" } else { unit };
-    Some(format!("{name}: {digits}{unit};"))
+    let unit = if unit.is_empty() && default_px {
+        "px"
+    } else {
+        unit
+    };
+    Some(format!("{digits}{unit}"))
+}
+
+/// 尺寸参数 → 一条 CSS 声明；空单位按 `px` 处理。
+pub(crate) fn size_rule(name: &str, value: &str) -> Option<String> {
+    Some(format!("{name}: {};", size_value(value, true)?))
+}
+
+/// 自定义属性里的尺寸值：保留空单位（`--gap: 2` 可能给 `calc()` 用）。
+pub(crate) fn css_size(value: &str) -> Option<String> {
+    size_value(value, false)
 }
 
 /// `#abc` / `#aabbcc` → 规范的 `#aabbcc`；别的写法一律不认。

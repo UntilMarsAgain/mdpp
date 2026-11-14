@@ -17,7 +17,7 @@ pub(crate) mod table;
 mod tokenize;
 
 pub use block::{Block, ContentMode};
-pub use scope::{Guard, current, enter, lookup};
+pub use scope::{current, lookup};
 pub use spec::{BlockRenderer, BlockRendererFn, BlockSpec, ContentModeFn};
 pub use table::BlockRegistry;
 pub use tokenize::tokenize;

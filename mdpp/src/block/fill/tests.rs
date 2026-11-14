@@ -240,7 +240,7 @@ fn script_end_cannot_close_its_own_tag() {
 /// 显式 `js=` 是空值，不再算打开（裸 flag 在解析时已经落成 `on`）
 #[test]
 fn switches_read_the_usual_spellings() {
-    for spelling in ["true", "yes", "on", "ON"] {
+    for spelling in ["true", "yes", "on", "ON", "1"] {
         let item = block("x", &[("js", spelling)], "");
         assert!(allows_js(&item), "js={spelling:?} 应当算打开");
     }
