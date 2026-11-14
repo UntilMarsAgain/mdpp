@@ -334,10 +334,9 @@ pub(super) fn render_variants(block: &Block, node: &Node, fmt: &mut dyn Renderer
         match params.control {
             Control::Choice => {
                 attrs.push(("role", "tabpanel".to_string()));
-                // 旧版钩子；新代码认 `data-mdpp-panel`。
-                attrs.push(("data-mdpp-panel", part.value.clone()));
-                // 打印时每一节都要有标题（见 `mdpp.css` 的 `@media print`）
+                // 打印时每一节都要有标题（见模板里的 `@media print`）
                 attrs.push(("data-mdpp-label", part.label.to_string()));
+                // `data-mdpp-panel` 与 `hidden` 都来自这一处，避免重复属性。
                 attrs.extend(group.panel_attrs(&part.value));
             }
             Control::Theme => {
@@ -414,6 +413,10 @@ mod tests {
         assert!(html.contains(r#"data-mdpp-tab="0""#), "{html}");
         assert!(html.contains(r#"data-mdpp-panel="1""#), "{html}");
         assert!(html.contains(r#"data-mdpp-label="乙""#), "{html}");
+        assert!(
+            !html.contains(r#"data-mdpp-panel="1" data-mdpp-panel"#),
+            "{html}"
+        );
         assert!(html.contains("hidden"), "{html}");
     }
 

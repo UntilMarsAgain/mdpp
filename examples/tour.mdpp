@@ -115,6 +115,15 @@
 ::fold color=#0055a4 title=深蓝底
   底色自定义，字色由亮度决定。
 
+
+# 原语：原生折叠
+
+`::disclose` 是 `fold` 与提示框折叠的底座：它只吐原生 `<details>` / `<summary>`，
+类名、标题、记号由调用者给。`fold` 只是替它补上默认样式的一套模板。
+
+::disclose title=原语折叠
+  原生 details 没有额外的折叠脚本。
+
 # 属性表
 
 逐行 `标签 | 值`。值是**原文**，不解析 markdown。
@@ -123,6 +132,22 @@
   地址 | 福建省某村
   分类 | 古建筑
   年代 | 清
+
+
+# 原语：行数据
+
+`::rows` 把一段按 `|` 分列的数据逐行套模板；`fields` 就是在它上面盖了一张两列表格。
+模板里用 `{{@row.0}}` / `{{@row.1}}` 取列。
+
+::rows
+  [__template__]
+    ::element tag=div class=mdpp-row-demo
+      ::text
+        {{@row.0}} · {{@row.1}}
+
+  [__data__]
+    地址 | 福建省某村
+    分类 | 古建筑
 
 # 选项卡、深浅色与分栏
 
@@ -231,6 +256,32 @@
 ::indent indent=2
   这段会被缩进 3.2em（indent × 1.6em）。
 
+
+# 受控样式变量与行内
+
+`::style-vars` 只接受 `--名字=值` 形式的受控变量；这里用 `::css` 把变量真正用起来。
+
+::style-vars tag=div class=mdpp-style-demo --demo-bg=#eef4ff
+  盒子自己的 `style` 里落了 `--demo-bg`，以及按底色算出的 `--demo-fg`。
+
+::css
+  .mdpp-style-demo {
+    background: var(--demo-bg);
+    color: var(--demo-fg);
+    border-radius: 0.4rem;
+    padding: 0.6rem 0.8rem;
+  }
+
+`::inline` 只接受单段行内内容；`::small type=inline` 则演示模板调用处的
+`type=inline` 契约 —— 同一个 `small` 模板在块位置仍是块。
+
+::element tag=p
+  ::inline
+    这一段由 `::inline` 收成行内，之后的 **强调** 仍照常解析。
+
+::small type=inline
+  这一行小字走的是 `::small` 的 inline 分支。
+
 # 代码、图、公式
 
 这四个块**一个字都不解析** —— 里面的记号是它自己的，按 markdown 走一遍就毁了。
@@ -300,6 +351,22 @@
   [else]
     条件不成立时出现。
 
+
+# 原语：守卫与包含条件
+
+`::guard` 把一段内容先渲染到缓冲区；其中任何一块报错，整段就被替换成一条诊断。
+`::noinclude` 只在页面直接渲染时出现，`::includeonly` 只在模板展开时出现 ——
+所以下面第二段在这里看不到。
+
+::guard
+  守卫里的正常内容会整体通过。
+
+::noinclude
+  这一行只在直接打开的页面里出现。
+
+::includeonly
+  这一行只在模板页展开时出现。
+
 # 模板遍历
 
 `::each` 把一段模板套在分节上重复渲染。`[__template__]` 的正文必须缩进；后面
@@ -330,3 +397,37 @@
 
 ::panel title="另一个模板页"
   模板页也可以分节 —— 它里面写的就是一个 `::tabs` 块。
+
+# 报错演示
+
+下面每一段都是**故意写错**的。它们会留下诊断框，但不会中断整页渲染；
+`mdpp render --stats` 会把它们计入「未知块 / 误用」。
+
+::no-such-block
+  未注册的块名。
+
+::element tag=span
+  ::element tag=div
+    行内标签里塞了块内容。
+
+::small type=inline
+  ::element tag=div
+    行内模板里塞了块内容。
+
+::inline
+  ::element tag=div
+    行内原语里塞了块内容。
+
+::note color=not-a-color
+  非法的颜色值。
+
+::each
+  [__data__]
+    [甲]
+      缺少模板。
+
+::guard
+  ::note color=not-a-color
+    守卫会把整段替换成一条诊断，而不是半截内容。
+
+::problem name=示例 why="这是主动构造的诊断，不会中断页面。"

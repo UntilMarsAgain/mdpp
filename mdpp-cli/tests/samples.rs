@@ -1,6 +1,7 @@
-//! 示例文件**防腐烂**：`examples/` 下每一份都要能渲染，且渲染得一个错都没有。
+//! 示例文件**防腐烂**：`examples/` 下每一份都要能渲染，且除巡览的
+//! 「报错演示」外一个错都没有。
 //!
-//! 断言的是**渲染结果里有没有那两个框**（`template--unknown` / `template--problem`），
+//! 断言的是**渲染结果里有没有那两个框**（`mdpp-template--unknown` / `mdpp-template--problem`），
 //! 而不是比对 HTML 文本 —— 那两个类名由 `mdpp::block::dispatch` 一处写死，逐字符
 //! 比对则会在任何一处无害的排版改动下全红。
 //!
@@ -77,6 +78,11 @@ fn every_sample_renders_without_a_single_problem() {
     );
 
     for sample in &samples {
+        // 巡览里专门有一节「报错演示」；它由下面的单独测试盯着，
+        // 其余示例仍然必须一个诊断框都没有。
+        if sample.file_name().and_then(|name| name.to_str()) == Some("tour.mdpp") {
+            continue;
+        }
         let html = render(sample);
         assert!(
             !html.contains("template--unknown"),
@@ -144,6 +150,14 @@ fn the_tour_visits_every_builtin_block() {
         // 「是模板页来的」还是「是别处来的」。
         ("card", "<strong>一个模板页</strong>"),
         ("panel", "<p>另一个模板页</p>"),
+        ("rows", r#"class="mdpp-row-demo""#),
+        ("disclose", "原语折叠"),
+        ("style-vars", "--demo-bg: #eef4ff"),
+        ("inline", "收成行内"),
+        ("small", r#"class="mdpp-small""#),
+        ("noinclude", "这一行只在直接打开的页面里出现"),
+        ("guard", "守卫里的正常内容会整体通过。"),
+        ("problem", "这是主动构造的诊断"),
     ];
 
     let missing: Vec<&str> = marks
@@ -152,6 +166,38 @@ fn the_tour_visits_every_builtin_block() {
         .map(|(name, _)| *name)
         .collect();
     assert!(missing.is_empty(), "巡览里没走到：{missing:?}");
+}
+
+/// 巡览末尾的「报错演示」要真的把各种诊断都演出来，而不是悄悄坏了。
+#[test]
+fn the_tour_shows_intentional_problem_examples() {
+    let Some(dir) = examples_dir() else {
+        return;
+    };
+    let tour = dir.join("tour.mdpp");
+    if !tour.is_file() {
+        return;
+    }
+
+    let html = render(&tour);
+    assert_eq!(html.matches("mdpp-template--unknown").count(), 1, "{html}");
+    assert_eq!(
+        html.matches("mdpp-template--problem-inline").count(),
+        3,
+        "{html}"
+    );
+    assert_eq!(
+        html.matches(r#"class="mdpp-template mdpp-template--problem""#)
+            .count(),
+        4,
+        "{html}"
+    );
+    assert!(html.contains("no-such-block"), "{html}");
+    assert!(html.contains("行内模板只能输出行内内容"), "{html}");
+    assert!(html.contains("这是主动构造的诊断"), "{html}");
+
+    // `includeonly` 在直接渲染时应当消失；正文里提到它的那句话仍可存在。
+    assert!(!html.contains("这一行只在模板页展开时出现"), "{html}");
 }
 
 /// 链接那份要真的把 `[[…]]` 解析成带 `href` 的 —— 没有前缀时它落成不带 href 的
