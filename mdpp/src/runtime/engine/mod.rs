@@ -131,7 +131,8 @@ impl Mdpp {
     /// 渲染一段 markdown，用默认上下文：没有链接解析器，标准库模板可用；所有 `[[…]]`
     /// 落成红链，标准库之外的非内置 `::名字` 落成「未知块」框。
     ///
-    /// `::css` 收集到页面级 `<style>`；`::js` / `::html js` 按内容哈希去重后内联。
+    /// `::css` 收集到页面级 `<style>`；`::js` / `::html js` 收集到片段末尾的
+    /// `<script>`，两者都按内容去重。
     pub fn render(&self, source: &str) -> String {
         self.render_with(source, &RenderContext::new())
     }
@@ -140,15 +141,17 @@ impl Mdpp {
     /// [`RenderContext`] 里。两者进入时装上、返回时还原，所以本方法可以递归调用
     /// （`::html` 里的 `<markdown>` 就是这么做的），外层那一趟不受影响。
     ///
-    /// `::css` 收集到页面级 `<style>`；`::js` / `::html js` 按内容哈希去重后内联。
+    /// `::css` 收集到页面级 `<style>`；`::js` / `::html js` 收集到片段末尾的
+    /// `<script>`，两者都按内容去重。
     pub fn render_with(&self, source: &str, context: &RenderContext) -> String {
         self.render_report(source, context).html_with_styles()
     }
 
-    /// 单页模式渲染，但把结构信息一起返回：标题、特性、问题计数、整页 CSS。
+    /// 单页模式渲染，但把结构信息一起返回：标题、特性、问题计数、整页 CSS 与脚本。
     ///
-    /// `report.html` 不含收集到的 `<style>`；需要片段时用
-    /// [`Rendered::html_with_styles`]，需要整页外壳时把 `report.styles` 交给外壳。
+    /// `report.html` 不含收集到的 `<style>` / `<script>`；需要片段时用
+    /// [`Rendered::html_with_styles`]，需要整页外壳时把 `report.styles` 交给外壳，
+    /// 脚本附在正文后。
     pub fn render_report(&self, source: &str, context: &RenderContext) -> Rendered {
         let (html, assets, report) = render_parts(
             &self.parser,
@@ -161,7 +164,8 @@ impl Mdpp {
     }
 
     /// 站点模式渲染：`::css` 仍收集到 [`Rendered::styles`]；`::js` / `::html js`
-    /// 按 `asset_prefix` 生成 `<script src>`，内容随 [`Rendered::assets`] 返回。
+    /// 按 `asset_prefix` 生成 `<script src>` 收进 [`Rendered::scripts`]，内容随
+    /// [`Rendered::assets`] 返回。
     ///
     /// `asset_prefix` 是**相对这一页**的前缀（如 `assets` 或 `../../assets`），
     /// 由调用方按页面深度算好传进来 —— 库不知道页面在站点的哪一层。
@@ -211,6 +215,7 @@ impl Mdpp {
             template_vars: None,
             render_depth: 0,
             styles: Vec::new(),
+            scripts: Vec::new(),
             features: Features::default(),
             problems: Problems::default(),
             diagnostics: 0,
@@ -323,6 +328,8 @@ pub struct Rendered {
     pub assets: Vec<Asset>,
     /// 这一页全局收集的 CSS，按首次登记顺序、按内容去重
     pub styles: Vec<String>,
+    /// 这一页全局收集的脚本标签，按首次登记顺序
+    pub scripts: Vec<String>,
     /// 文档大纲，按标题出现顺序；不含嵌套模板页自己的标题
     pub outline: Vec<Heading>,
     /// 需要外部前端资源的特性
@@ -345,16 +352,18 @@ impl Rendered {
             html,
             assets,
             styles: report.styles,
+            scripts: report.scripts,
             outline: report.outline,
             features: report.features,
             problems: report.problems,
         }
     }
 
-    /// 把收集到的 CSS 放到片段开头。`html` 本身不含 `<style>`，站点/整页
-    /// 外壳应把 [`Self::styles`] 放进 `<head>`。
+    /// 把收集到的 CSS 放到片段开头，脚本放到末尾。`html` 本身不含这两者；
+    /// 站点/整页外壳应把 [`Self::styles`] 放进 `<head>`，正文用 `html`，
+    /// 再把 [`Self::scripts`] 附在正文后。
     pub fn html_with_styles(&self) -> String {
-        if self.styles.is_empty() {
+        if self.styles.is_empty() && self.scripts.is_empty() {
             return self.html.clone();
         }
         let mut out = String::new();
@@ -364,6 +373,9 @@ impl Rendered {
             out.push_str("\n</style>\n");
         }
         out.push_str(&self.html);
+        for script in &self.scripts {
+            out.push_str(script);
+        }
         out
     }
 }
@@ -375,6 +387,7 @@ pub(super) struct RenderReport {
     pub(super) features: Features,
     pub(super) problems: Problems,
     pub(super) styles: Vec<String>,
+    pub(super) scripts: Vec<String>,
 }
 
 #[cfg(test)]

@@ -1,3 +1,86 @@
+::css
+  /* ---- 提示框 ------------------------------------------------------- */
+
+  .mdpp-callout {
+    margin: var(--mdpp-gap, 1em) 0;
+    padding: 0.7rem 1rem;
+    border-left: 4px solid currentColor;
+    border-radius: var(--mdpp-radius, 8px);
+    background: var(--mdpp-surface, #f6f7f9);
+  }
+
+  .mdpp-callout > :first-child {
+    margin-top: 0;
+  }
+
+  .mdpp-callout > :last-child {
+    margin-bottom: 0;
+  }
+
+  .mdpp-callout__title {
+    display: flex;
+    gap: 0.5em;
+    align-items: baseline;
+    margin: 0 0 0.4em;
+    font-weight: 600;
+  }
+
+  .mdpp-callout__mark {
+    font-weight: 400;
+  }
+
+  /* 可折叠的提示框：标题就是 summary，默认的三角收起来，自己画一个。
+   * 与 `::fold` 同一个做法；不折叠时 `disclose` 输出的是普通 `<p>`，不碰这里。 */
+  .mdpp-callout__details > summary.mdpp-callout__title {
+    cursor: pointer;
+    list-style: none;
+    /* 折着时下面没有正文，标题的底部间距会变成一整块空白；展开时的间距由
+     * 正文第一项的 margin-top 给，两处不叠 */
+    margin-bottom: 0;
+  }
+
+  .mdpp-callout__details > summary.mdpp-callout__title::-webkit-details-marker {
+    display: none;
+  }
+
+  .mdpp-callout__details > summary.mdpp-callout__title::marker {
+    content: "";
+  }
+
+  .mdpp-callout__details > summary.mdpp-callout__title::after {
+    content: " ▾";
+    margin-left: auto;
+    font-size: 0.8em;
+    font-weight: 400;
+    opacity: 0.6;
+  }
+
+  .mdpp-callout__details[open] > summary.mdpp-callout__title::after {
+    content: " ▴";
+  }
+
+  .mdpp-callout__details > :not(summary) {
+    margin-top: 0.4em;
+  }
+
+  .mdpp-callout__details > :not(summary):last-child {
+    margin-bottom: 0;
+  }
+
+  .mdpp-callout--note { background: var(--mdpp-note-bg, #eaf1fb); color: var(--mdpp-note-fg, #24487f); }
+  .mdpp-callout--tip { background: var(--mdpp-tip-bg, #e9f6ee); color: var(--mdpp-tip-fg, #1f6b40); }
+  .mdpp-callout--warning { background: var(--mdpp-warning-bg, #fdf3df); color: var(--mdpp-warning-fg, #7a5606); }
+  .mdpp-callout--danger { background: var(--mdpp-danger-bg, #fbe9e8); color: var(--mdpp-danger-fg, #8f211c); }
+  .mdpp-callout--error { background: var(--mdpp-error-bg, #f3e7f7); color: var(--mdpp-error-fg, #6d2a86); }
+
+
+
+  @media print {
+    .mdpp-callout {
+      page-break-inside: avoid;
+    }
+  }
+
 ::if condition-exist={{@body}}
   [then]
     ::surface class="mdpp-callout mdpp-callout--{{?@tone}} {{?@class}}" color={{?@color}}

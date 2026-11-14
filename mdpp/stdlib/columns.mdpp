@@ -1,3 +1,29 @@
+::css
+  /* ---- 分栏 --------------------------------------------------------- */
+
+  /* 几栏一起摆出来（`::columns`）。等宽、随内容伸缩；每栏给了 `12em` 的
+   * 起步宽度，挤不下时 `wrap` 自动把多出来的栏换到下一行 —— 窄屏因此
+   * 自然堆成一竖列，不必问渲染器屏幕多宽。 */
+  .mdpp-columns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--mdpp-gap, 1em);
+    align-items: flex-start;
+    margin: var(--mdpp-gap, 1em) 0;
+  }
+
+  .mdpp-columns__col {
+    flex: 1 1 12em;
+    min-width: 0; /* 栏里的长代码/表格能自己滚，不把栏撑破 */
+  }
+
+  .mdpp-columns__head {
+    font-weight: 600;
+    font-size: 0.9em;
+    color: var(--mdpp-text-dim, #5c636b);
+    margin-bottom: 0.4em;
+  }
+
 ::element class="mdpp-columns {{?@class}}"
   ::each name=columns required empty-why="分栏是空的：每一节要以 [标签] 开头"
     [__template__]

@@ -266,7 +266,10 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
 
         let assets_prefix = assets_href(&page.key);
         let title = body.title;
-        let body_html = body.html;
+        let mut body_html = body.html;
+        for script in &body.scripts {
+            body_html.push_str(script);
+        }
         // 正文收集到的 ::css 先于作者配置的 --css/extra_css，后者仍然最后覆盖
         let mut page_css = Vec::with_capacity(body.styles.len() + extra_css.len());
         page_css.extend(body.styles);

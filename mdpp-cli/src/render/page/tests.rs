@@ -651,12 +651,12 @@ fn the_stylesheet_is_embedded_and_not_empty() {
 fn the_stylesheet_keeps_a_meaningful_internal_order() {
     let css = default_css();
     let base = css.find(":root").expect("变量那层");
-    let callout = css.find(".mdpp-callout {").expect("提示框");
-    let tabs = css.find(".mdpp-tabs__bar").expect("选项卡");
+    let surface = css.find(".mdpp-surface {").expect("基础盒子");
+    let math = css.find(".mdpp-math").expect("公式");
     let print = css.find("@media print").expect("打印");
-    assert!(base < callout, "变量要在用它的那些之前");
-    assert!(callout < tabs, "按拼进来的次序");
-    assert!(tabs < print, "打印规则是覆盖，要压过前面的");
+    assert!(base < surface, "变量要在用它的那些之前");
+    assert!(surface < math, "按拼进来的次序");
+    assert!(math < print, "打印规则是覆盖，要压过前面的");
 }
 
 /// 基础样式表得覆盖不随模板走的那些块 —— 少一节是静默的：
@@ -666,17 +666,10 @@ fn the_base_stylesheet_covers_non_template_blocks() {
     let css = default_css();
     for (thing, needle) in [
         ("配色变量", "--mdpp-accent"),
-        ("提示框", "callout--warning"),
-        ("可折叠提示框", "callout__details"),
-        ("平行列表", ".mdpp-flatlist.mdpp-hlist"),
-        ("折叠", ".mdpp-fold {"),
-        ("标题带", "title-block"),
         ("基础盒子", ".mdpp-surface"),
-        ("缩进", ".mdpp-indent"),
         ("媒体", "figcaption"),
-        ("选项卡", "theme__part--dark"),
         ("图与公式", "math--display"),
-        ("打印", "attr(data-mdpp-label)"),
+        ("打印", "@media print"),
     ] {
         assert!(css.contains(needle), "{thing} 没进样式表（少 {needle}）");
     }

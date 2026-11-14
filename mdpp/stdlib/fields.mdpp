@@ -1,3 +1,17 @@
+::css
+  table.mdpp-fields th,
+  table.mdpp-fields td {
+    padding: 0.3em 0.9em;
+    border-bottom: 1px solid var(--mdpp-border, #d8dce1);
+    text-align: left;
+    font-weight: 400;
+  }
+
+  table.mdpp-fields th {
+    white-space: nowrap;
+    color: var(--mdpp-text-dim, #5c636b);
+  }
+
 ::element tag=table class="mdpp-fields {{?@class}}"
   ::element tag=tbody
     ::rows max=2

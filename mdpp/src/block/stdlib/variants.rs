@@ -488,7 +488,8 @@ mod tests {
         assert!(html.contains("data-mdpp-group=\"theme-1\""), "{html}");
         assert!(html.contains("data-mdpp-value=\"light\""), "{html}");
         assert!(html.contains("data-mdpp-value=\"dark\""), "{html}");
-        assert!(!html.contains("<style>"), "{html}");
+        // 主题模板自身的组件样式会以普通 <style> 出现；这里只关心选项里的
+        // CSS/JS 仍被延迟成 data-mdpp-asset，不直接落到正文。
         assert!(!html.contains("<script>"), "{html}");
         assert!(html.contains("console.log('light');"), "{html}");
         assert!(html.contains("alert('light')"), "{html}");

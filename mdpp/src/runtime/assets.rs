@@ -3,8 +3,8 @@
 //! `::js` / `::html js` 不再直接往页面里写 `<script>`，而是先算内容哈希、记入
 //! 当次渲染的收集器，再按 [`AssetMode`] 决定输出什么：
 //!
-//! - [`AssetMode::Inline`]（单页）：第一次出现时内联，重复的跳过；
-//! - [`AssetMode::Linked`]（站点）：第一次出现时输出链接，内容交给调用方写盘。
+//! - [`AssetMode::Inline`]（单页）：第一次出现时内联进 `Rendered.scripts`，重复的跳过；
+//! - [`AssetMode::Linked`]（站点）：第一次出现时输出链接标签到 `scripts`，内容交给调用方写盘。
 //!
 //! 非变体作用域的 `::css` 不进这里：它由内部的渲染环境收集成整页
 //! [`crate::Rendered::styles`]，去重后放在页面 `<head>`。只有变体作用域里的

@@ -1,3 +1,67 @@
+::css
+  /* ---- 信息栏 / 落款 / 属性表 --------------------------------------- */
+
+  .mdpp-aside {
+    float: right;
+    width: 18rem;
+    max-width: 100%;
+    margin: 0 0 var(--mdpp-gap, 1em) var(--mdpp-gap, 1em);
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--mdpp-border, #d8dce1);
+    border-radius: var(--mdpp-radius, 8px);
+    background: var(--mdpp-bg, #ffffff);
+    font-size: 0.94em;
+  }
+
+  /* aside 里嵌套的 banner：与 aside 背景区分，更深一点 */
+  .mdpp-aside .mdpp-banner {
+    background: var(--mdpp-surface, #f6f7f9);
+    border: 1px solid var(--mdpp-border, #d8dce1);
+  }
+
+  .mdpp-aside__title {
+    margin: 0 0 0.4em;
+    font-weight: 600;
+  }
+
+  /* 窄屏上取消浮动：正文会绕着一条窄栏走，那在手机上没法读 */
+  @media (max-width: 40em) {
+    .mdpp-aside {
+      float: none;
+      width: auto;
+      margin: var(--mdpp-gap, 1em) 0;
+    }
+  }
+
+  /* align=center 时不浮动，居中显示，宽度随内容 —— 维基式「居中信息框」 */
+  .mdpp-aside.mdpp-aside--center {
+    float: none;
+    display: block;
+    margin: var(--mdpp-gap, 1em) auto;
+    width: fit-content;
+    max-width: 28rem;
+  }
+
+  /* align=left 时左浮动：显式覆盖 .mdpp-aside 的 float: right */
+  .mdpp-aside.mdpp-aside--left {
+    float: left !important;
+    width: fit-content;
+    max-width: 28rem;
+  }
+
+
+
+  @media print {
+    /* 信息栏在屏幕上浮在右边绕着正文走，纸上浮动只会让它只占半页 */
+    .mdpp-aside {
+      float: none;
+      width: auto;
+      margin: 0.8em 0;
+      page-break-inside: avoid;
+    }
+  }
+
+
 ::if condition-equals={{@align}} value=center
   [then]
     ::element tag=aside class="mdpp-aside mdpp-aside--center {{?@class}}"

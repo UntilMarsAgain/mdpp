@@ -161,8 +161,10 @@
 - `::tabs` 的面板资源也按选项延迟挂载：未选中的面板不再在页面加载时直接
   执行其中的 CSS / JS。
 - `::css` 改为整页样式：不再套 `.mdpp-content`，由渲染环境按内容去重后收集到
-  `Rendered.styles`，片段放开头、整页/站点放 `<head>`；组件样式改由标准库模板
-  自己的 `::css` 提供，navbox 已先迁移，`mdpp.css` 退为基础主题与排版。
+  `Rendered.styles`，片段放开头、整页/站点放 `<head>`；标准库组件的样式全部改由
+  各自模板的 `::css` 提供，`mdpp.css` 退为可选的基础主题与排版。
+- `::js` / `::html js` 同样先扫描、去重、收集到 `Rendered.scripts`，片段的脚本统一
+  落到末尾，整页/站点由外壳附在正文后；变体作用域里的脚本仍按选项延迟挂载。
 - 所有由 mdpp 生成的 `<script>` 都带 `data-mdpp-version` 与 `data-mdpp-mode`；
   延迟脚本还带 `data-mdpp-group` / `value` / `key` / `run`。`mdpp.js` 提供
   `window.mdppVariants` 的 `get` / `set` / `refresh` / `rescan` / `onChange` /

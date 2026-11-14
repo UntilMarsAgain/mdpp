@@ -25,8 +25,9 @@ use markdown_it::{Node, Renderer};
 /// 注入的脚本里若出现 `</script`，HTML 解析器会当场收尾，后面的字会漏到页面上，
 /// 所以那一处先转义（见 [`fill::escape_script_end`]）。
 ///
-/// 单页模式下同一份脚本按内容哈希去重后内联；站点模式下输出 `<script src="…">`，
-/// 内容随 [`crate::Rendered::assets`] 返回交给调用方写盘。
+/// 普通脚本不在调用点落地，而是收集到 [`crate::Rendered::scripts`]，统一放到
+/// 片段末尾；站点模式下外链标签同样进 `scripts`，内容随
+/// [`crate::Rendered::assets`] 返回交给调用方写盘。
 ///
 /// 在变体作用域里（`::theme` / `::tabs` / 自定义组）时，输出通用惰性占位符，
 /// 由页面脚本在选项激活时挂载。所有脚本都带 `data-mdpp-version` 与
@@ -52,7 +53,7 @@ pub(super) fn render_js(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
         AssetPolicy::EveryActivation
     };
     let escaped = fill::escape_script_end(&filled);
-    write_script(fmt, use_asset_with(AssetKind::Js, escaped, pol));
+    settle_script(fmt, use_asset_with(AssetKind::Js, escaped, pol));
 }
 
 /// `::mermaid` —— 画一张图（[mermaid](https://mermaid.js.org) 的语法）。
@@ -223,7 +224,7 @@ pub(super) fn render_html(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
             } else {
                 AssetPolicy::EveryActivation
             };
-            write_script(fmt, use_asset_with(AssetKind::Js, escaped, pol));
+            settle_script(fmt, use_asset_with(AssetKind::Js, escaped, pol));
         }
         let html_without_scripts = remove_script_tags(&filled);
         if !html_without_scripts.is_empty() {
@@ -237,6 +238,50 @@ pub(super) fn render_html(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     fmt.cr();
     fmt.text_raw(&html);
     fmt.cr();
+}
+
+/// 把一份 JS 资源登记到页面末尾；变体作用域里的延迟资源仍留在原位。
+///
+/// 普通脚本不在调用点输出：先收集，最后由渲染器统一放到片段末尾（整页/站点
+/// 同样由外层拼在正文后）。这样 `::js` 不会把脚本插在段落中间，顺序也稳定。
+fn settle_script(fmt: &mut dyn Renderer, use_: AssetUse) {
+    match use_ {
+        AssetUse::Inline(content) => {
+            let tag = inline_script_tag(&content);
+            if !crate::env::register_script(tag.clone()) {
+                fmt.cr();
+                fmt.text_raw(&tag);
+                fmt.cr();
+            }
+        }
+        AssetUse::Linked(url) => {
+            let tag = linked_script_tag(&url);
+            if !crate::env::register_script(tag.clone()) {
+                fmt.cr();
+                fmt.text_raw(&tag);
+                fmt.cr();
+            }
+        }
+        AssetUse::Deferred(_) | AssetUse::Duplicate => write_script(fmt, use_),
+    }
+}
+
+/// 内联脚本标签；内容已由调用方转义 `</script`。
+fn inline_script_tag(content: &str) -> String {
+    format!(
+        "<script class=\"mdpp-js\" data-mdpp-version=\"{}\" data-mdpp-mode=\"inline\" data-mdpp-runtime=\"asset\">\n{}\n</script>\n",
+        escape_attr(crate::VERSION),
+        content
+    )
+}
+
+/// 外链脚本标签。
+fn linked_script_tag(url: &str) -> String {
+    format!(
+        "<script src=\"{}\" class=\"mdpp-js\" data-mdpp-version=\"{}\" data-mdpp-mode=\"linked\" data-mdpp-runtime=\"asset\"></script>\n",
+        escape_attr(url),
+        escape_attr(crate::VERSION)
+    )
 }
 
 /// 把一份 JS 资源落成页面里的标签。
@@ -381,8 +426,8 @@ mod tests {
         assert!(shouted.contains("<\\/SCRIPT>"), "{shouted}");
     }
 
-    /// 注入的 CSS 与正文在同一份文档里：主题的那些变量 `var()` 直接就取得到，
-    /// 作用域则收在正文那一层
+    /// 注入的 CSS 与正文在同一份页面里：主题的那些变量 `var()` 直接就取得到，
+    /// 片段开头会统一收集`<style>`
     #[test]
     fn css_template_injects_style_and_our_variables() {
         let html = render("::css\n  .我有自己的样式 { color: var(--mdpp-accent); }\n");
@@ -428,7 +473,7 @@ mod tests {
         assert!(html.contains("color: red"), "{html}");
     }
 
-    /// 单页模式：重复的 `::css` 按内容哈希去重，只内联一次
+    /// 单页模式：重复的 `::css` 按内容去重，只收集一次
     #[test]
     fn duplicate_css_is_inlined_once() {
         let html = render("::css\n  .a { color: red }\n\n::css\n  .a { color: red }\n");
@@ -445,6 +490,15 @@ mod tests {
         let html = render("::html js\n  <script>alert(1)</script>\n");
         assert!(html.contains(r#"data-mdpp-version="0.1.0""#), "{html}");
         assert!(html.contains(r#"data-mdpp-mode="inline""#), "{html}");
+    }
+
+    /// 脚本不在调用点出现，而是统一放到片段末尾；普通正文在它前面
+    #[test]
+    fn js_is_moved_to_the_end_of_the_fragment() {
+        let html = render("正文\n\n::js\n  console.log(1)\n");
+        let body = html.find("<p>正文</p>").expect("正文");
+        let script = html.find("<script").expect("脚本");
+        assert!(script > body, "{html}");
     }
 
     /// 单页模式：重复的 `::js` 只内联一次
@@ -472,16 +526,9 @@ mod tests {
             "assets",
         );
         assert_eq!(rendered.styles, vec![".a { color: red }"]);
-        assert!(
-            rendered.html.contains("<script src=\"assets/mdpp-"),
-            "{}",
-            rendered.html
-        );
-        assert!(
-            rendered.html.contains("data-mdpp-version=\"0.1.0\""),
-            "{}",
-            rendered.html
-        );
+        let html = rendered.html_with_styles();
+        assert!(html.contains("<script src=\"assets/mdpp-"), "{}", html);
+        assert!(html.contains("data-mdpp-version=\"0.1.0\""), "{}", html);
         assert_eq!(rendered.assets.len(), 1, "{:?}", rendered.assets);
         assert_eq!(rendered.assets[0].kind, AssetKind::Js);
     }
@@ -510,11 +557,8 @@ mod tests {
             &RenderContext::new(),
             "../../assets",
         );
-        assert!(
-            rendered.html.contains("src=\"../../assets/mdpp-"),
-            "{}",
-            rendered.html
-        );
+        let html = rendered.html_with_styles();
+        assert!(html.contains("src=\"../../assets/mdpp-"), "{}", html);
     }
 
     /// 行号、起始行与强调行只作为 `data-*` 提示交出去，怎么摆出来是界面那一层的事
