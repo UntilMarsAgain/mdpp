@@ -20,6 +20,10 @@ pub(super) struct PageBody {
     pub(super) assets: Vec<mdpp::Asset>,
     pub(super) wanted: Vec<assets::Wanted>,
     pub(super) absent: Vec<String>,
+    /// 正文实际用到的前端特性，供整页外壳决定是否引 CDN
+    pub(super) features: mdpp::Features,
+    /// 正文里的块问题计数，供构建报告汇总
+    pub(super) problems: mdpp::Problems,
 }
 
 /// 读一页正文 → 渲染 → 扫地址，**不写盘**。
@@ -62,7 +66,7 @@ pub(super) fn render_page(
         },
     );
     Ok(PageBody {
-        title: document_title(project, &source, page.stem()),
+        title: document_title(project, rendered.title(), page.stem()),
         sidebar: toc::sidebar(&scan.html),
         html: scan.html,
         assets: rendered.assets,
@@ -72,19 +76,23 @@ pub(super) fn render_page(
             .iter()
             .map(|value| format!("{} → {value}", page.key))
             .collect(),
+        features: rendered.features,
+        problems: rendered.problems,
     })
 }
 
 /// 目录页的正文是现成生成的，不读文件
 pub(super) fn generated_body(project: &Project, site: &Site, page: &Page) -> PageBody {
     PageBody {
-        title: document_title(project, "", page.stem()),
+        title: document_title(project, None, page.stem()),
         html: toc_body(site, &project.config.site_name, &page.key),
         // 目录页的正文是一份站点清单，不是「这一页的章节」——没有侧边目录
         sidebar: String::new(),
         assets: Vec::new(),
         wanted: Vec::new(),
         absent: Vec::new(),
+        features: mdpp::Features::default(),
+        problems: mdpp::Problems::default(),
     }
 }
 
@@ -142,40 +150,10 @@ pub(super) fn chrome(
 ///
 /// 解析不出来的**报错**而不是当红链报：导航是作者手写的配置，写错了该当场知道，
 /// 不该让整站的导航悄悄少一项。
-pub(super) fn document_title(project: &Project, source: &str, fallback: &str) -> String {
-    let title = first_heading(source).unwrap_or_else(|| fallback.to_string());
+pub(super) fn document_title(project: &Project, title: Option<&str>, fallback: &str) -> String {
+    let title = title.unwrap_or(fallback);
     match project.title_suffix() {
         Some(site) => format!("{title} —— {site}"),
-        None => title,
+        None => title.to_string(),
     }
-}
-
-/// 第一个 `# ` 开头的行，跳过围栏代码块内部
-pub(super) fn first_heading(source: &str) -> Option<String> {
-    let mut fence: Option<char> = None;
-    for line in source.lines() {
-        let trimmed = line.trim_start();
-        let marker = trimmed.chars().next().filter(|ch| *ch == '`' || *ch == '~');
-        if let Some(marker) = marker {
-            let run = trimmed.chars().take_while(|ch| *ch == marker).count();
-            if run >= 3 {
-                fence = match fence {
-                    Some(open) if open == marker => None,
-                    None => Some(marker),
-                    _ => fence,
-                };
-                continue;
-            }
-        }
-        if fence.is_some() {
-            continue;
-        }
-        if let Some(text) = line.strip_prefix("# ") {
-            let text = text.trim();
-            if !text.is_empty() {
-                return Some(text.to_string());
-            }
-        }
-    }
-    None
 }

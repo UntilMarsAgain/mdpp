@@ -221,6 +221,8 @@ pub struct Page<'a> {
     pub assets: Assets,
     /// mermaid / math / 代码高亮 前端资源的加载方式
     pub external_script: ExternalScript,
+    /// 正文实际用到的前端特性；由库在渲染时记下，页面外壳不再数 HTML 类名
+    pub features: mdpp::Features,
 }
 
 /// 按模板填出一个整页。
@@ -236,12 +238,11 @@ pub fn document(page: &Page) -> String {
             .collect::<Vec<_>>()
             .join("\n"),
     };
-    // 有没有高亮要引：页面里有 `class="language-…"`（围栏代码块、`::code` 都产出
-    // 它）才算。JS 与它的主题样式同进同出，判一次，两处都用。
-    let highlight_on =
-        page.external_script == ExternalScript::Cdn && page.body.contains("class=\"language-");
+    // 有没有高亮要引：以库里记下的渲染特性为准。JS 与它的主题样式同进同出，
+    // 判一次，两处都用。
+    let highlight_on = page.external_script == ExternalScript::Cdn && page.features.highlight;
     // 数学公式同理：JS 排版 + KaTeX 自己的样式表，缺一不可。
-    let math_on = page.external_script == ExternalScript::Cdn && page.body.contains("class=\"math");
+    let math_on = page.external_script == ExternalScript::Cdn && page.features.math;
     let katex_css = if math_on {
         vec![format!(
             "<link rel=\"stylesheet\" href=\"{KATEX_CSS_CDN}\">"
@@ -285,7 +286,7 @@ pub fn document(page: &Page) -> String {
     // `highlight_on` 已经判过 —— JS 与那两份主题样式同进同出。
     let mut diagram_scripts = String::new();
     if page.external_script == ExternalScript::Cdn {
-        if page.body.contains("class=\"mermaid\"") {
+        if page.features.mermaid {
             diagram_scripts.push_str(&format!(
                 "<script src=\"{}\" data-mdpp-version=\"{}\" data-mdpp-mode=\"cdn\" data-mdpp-runtime=\"mermaid\"></script>\n",
                 MERMAID_CDN,

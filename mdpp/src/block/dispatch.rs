@@ -36,6 +36,7 @@ pub fn render(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         None => {
             // 这一条是最常被搜到的日志：「为什么我写的块没生效」
             debug!(name = %block.name, "没注册这个块，渲染成未知块框");
+            crate::env::unknown_problem();
             render_unknown(block, fmt)
         }
     }
@@ -63,6 +64,7 @@ pub fn render_unknown(block: &Block, fmt: &mut dyn Renderer) {
 /// 名字认识、但用法不对时的提示。与「未知块」分开，是因为一个是「没这个名字」、
 /// 一个是「名字对、参数不对」。
 pub fn render_problem(block: &Block, fmt: &mut dyn Renderer, why: &str) {
+    crate::env::misused_problem();
     fmt.cr();
     fmt.open(
         "div",

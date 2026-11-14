@@ -998,3 +998,47 @@ fn deferred_tab_assets_stay_inline_in_a_full_page() {
     // 运行时本身也在页面里
     assert!(html.contains("mdppVariants"), "{html}");
 }
+
+/// 标题来自渲染报告里的标题结构：缩进的 `#` 也算，不再靠列首扫描
+#[test]
+fn an_indented_heading_becomes_the_page_title() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    std::fs::write(root.join("pages/甲.mdpp"), "   # 缩进标题\n\n正文\n").expect("写得下");
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "build 失败：{}", stderr_of(&out));
+    let html = std::fs::read_to_string(root.join("build/甲/index.html")).expect("读得动");
+    assert!(html.contains("<title>缩进标题"), "{html}");
+    assert!(html.contains("<h1"), "{html}");
+}
+
+/// 报告里的块问题来自渲染现场，不是数 HTML 里的类名 —— 代码/正文里写着
+/// `template--problem` 不能被算成问题
+#[test]
+fn code_that_looks_like_a_problem_box_is_not_counted() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    std::fs::write(
+        root.join("pages/甲.mdpp"),
+        "正文里写着 template--problem。\n\n```html\n<div class=\"template--unknown\">x</div>\n```\n",
+    )
+    .expect("写得下");
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "build 失败：{}", stderr_of(&out));
+    let report = stderr_of(&out);
+    assert!(!report.contains("块有问题"), "{report}");
+    assert!(report.contains("没有红链，也没有块问题"), "{report}");
+}
+
+/// `render --full` 的前端资源也看渲染特性：围栏代码块要带 highlight.js
+#[test]
+fn a_full_page_loads_highlight_assets_for_a_fenced_block() {
+    let dir = empty_dir();
+    let source = dir.path().join("页面.mdpp");
+    std::fs::write(&source, "```rust\nfn main() {}\n```\n").expect("写得下");
+    let out = mdpp(dir.path(), &["render", "--full", source.to_str().unwrap()]);
+    assert!(out.status.success(), "render 失败：{}", stderr_of(&out));
+    let html = stdout_of(&out);
+    assert!(html.contains("highlight.min.js"), "{html}");
+    assert!(html.contains("language-rust"), "{html}");
+}

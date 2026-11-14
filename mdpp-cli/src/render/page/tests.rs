@@ -14,6 +14,7 @@ fn page<'a>(body: &'a str, assets: Assets) -> Page<'a> {
         extra_js: &[],
         assets,
         external_script: ExternalScript::Cdn,
+        features: mdpp::Features::default(),
     }
 }
 
@@ -835,6 +836,11 @@ fn every_generated_script_carries_the_generator_environment() {
     let html = document(&Page {
         body: "<pre class=\"mermaid\">graph TD; A-->B;</pre><div class=\"math\" data-tex=\"x\"></div><pre class=\"language-rust\">fn main() {}</pre>",
         extra_js: &["// 我自己的".to_string()],
+        features: mdpp::Features {
+            highlight: true,
+            math: true,
+            mermaid: true,
+        },
         ..page("x", Assets::Inline)
     });
     for segment in html.split("<script ").skip(1) {
@@ -936,6 +942,10 @@ fn external_script_cdn_injects_mermaid_when_needed() {
     let page = Page {
         body: "<pre class=\"mermaid\">graph TD; A-->B;</pre>",
         external_script: ExternalScript::Cdn,
+        features: mdpp::Features {
+            mermaid: true,
+            ..mdpp::Features::default()
+        },
         ..site_page("x")
     };
     let html = document(&page);
@@ -953,6 +963,10 @@ fn external_script_cdn_injects_katex_when_needed() {
     let page = Page {
         body: "<div class=\"math math--display\">E=mc^2</div>",
         external_script: ExternalScript::Cdn,
+        features: mdpp::Features {
+            math: true,
+            ..mdpp::Features::default()
+        },
         ..site_page("x")
     };
     let html = document(&page);
@@ -974,6 +988,11 @@ fn external_script_none_injects_nothing() {
     let page = Page {
         body: "<pre class=\"mermaid\">graph TD; A-->B;</pre><div class=\"math\">x</div>",
         external_script: ExternalScript::None,
+        features: mdpp::Features {
+            highlight: true,
+            math: true,
+            mermaid: true,
+        },
         ..site_page("x")
     };
     let html = document(&page);
@@ -999,6 +1018,10 @@ fn external_script_cdn_injects_hljs_with_both_themes() {
     let page = Page {
         body: "<pre><code class=\"language-rust\">fn main() {}</code></pre>",
         external_script: ExternalScript::Cdn,
+        features: mdpp::Features {
+            highlight: true,
+            ..mdpp::Features::default()
+        },
         ..site_page("x")
     };
     let html = document(&page);
@@ -1043,6 +1066,10 @@ fn hljs_theme_yields_to_the_users_own_css() {
         body: "<pre><code class=\"language-rust\">fn main() {}</code></pre>",
         external_script: ExternalScript::Cdn,
         extra_css: &[extra],
+        features: mdpp::Features {
+            highlight: true,
+            ..mdpp::Features::default()
+        },
         ..site_page("x")
     };
     let html = document(&page);

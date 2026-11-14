@@ -115,7 +115,7 @@ pub use assets::{
 pub use block::fill::substitute_placeholders;
 pub use block::template::{TemplatePage, TemplateSource};
 pub use context::RenderContext;
-pub use engine::{Mdpp, MdppBuilder, Rendered};
+pub use engine::{Features, Heading, Mdpp, MdppBuilder, Problems, Rendered};
 pub use link::{LinkResolver, LinkTarget, NodeRenderer, ResolvedLink};
 pub use registry::{Block, BlockRegistry, BlockSpec, ContentMode};
 
