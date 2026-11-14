@@ -39,6 +39,10 @@ fn create(project: &Project, options: &New) -> Result<(), String> {
 
     let key = check(&options.name)?;
     let path = pages.join(source_of(&key));
+    let relative = path
+        .strip_prefix(&project.root)
+        .map_err(|_| format!("新页路径不在项目里：{}", shown(&path)))?;
+    let path = project.contained(relative, "新页")?;
 
     let title = options
         .title

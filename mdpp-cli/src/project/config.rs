@@ -209,12 +209,21 @@ impl Config {
     /// 读一份配置。读不了或写错了就说清是**哪一处**写错了
     pub fn load(root: &Path) -> Result<Config, String> {
         let path = root.join(FILE_NAME);
+        let meta = std::fs::symlink_metadata(&path)
+            .map_err(|error| format!("读不了 {}：{error}", path.display()))?;
+        if meta.file_type().is_symlink() {
+            return Err(format!(
+                "{} 是符号链接；项目配置必须在项目目录里，不从外面读",
+                path.display()
+            ));
+        }
         let text = std::fs::read_to_string(&path)
             .map_err(|error| format!("读不了 {}：{error}", path.display()))?;
         let mut config: Config = toml::from_str(&text)
             .map_err(|error| format!("{} 里写错了：\n{error}", path.display()))?;
         config.normalize();
         config.check()?;
+        config.check_paths(root)?;
         Ok(config)
     }
 
@@ -252,6 +261,33 @@ impl Config {
         if self.theme_color.trim().is_empty() {
             self.theme_color = default_theme_color();
         }
+    }
+
+    /// 配置里的每条路径都必须落在项目根里面。`pages_dir` / `templates_dir` /
+    /// `build_dir` 是项目内容，`favicon` / `logo` / 覆盖层 / 附加样式也一样；
+    /// 绝对路径、`..` 和符号链接都可能把构建读到项目外面去。
+    ///
+    /// 与 [`Config::check`] 分开：那个只做不依赖文件系统的格式校验，测试与
+    /// `mdpp init` 的骨架都可以单独用。
+    pub fn check_paths(&self, root: &Path) -> Result<(), String> {
+        for (what, path) in [
+            ("pages_dir", Some(&self.pages_dir)),
+            ("templates_dir", Some(&self.templates_dir)),
+            ("build_dir", Some(&self.build_dir)),
+            ("favicon", self.favicon.as_ref()),
+            ("logo", self.logo.as_ref()),
+            ("override_dir", self.override_dir.as_ref()),
+        ] {
+            if let Some(path) = path {
+                crate::project::contained(root, path, what)?;
+            }
+        }
+        for (what, paths) in [("extra_css", &self.extra_css), ("extra_js", &self.extra_js)] {
+            for (index, path) in paths.iter().enumerate() {
+                crate::project::contained(root, path, &format!("{what}[{index}]"))?;
+            }
+        }
+        Ok(())
     }
 
     /// 能在解析时查出来的错就在解析时查 —— 「主题只能是那三个值」这种事，

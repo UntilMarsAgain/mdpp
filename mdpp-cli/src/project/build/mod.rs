@@ -109,8 +109,8 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
 
     let site = Site::collect(&pages_dir)?;
     let templates = templates_of(project)?;
-    let extra_css = read_all(&project.config.extra_css, &project.root)?;
-    let extra_js = read_all(&project.config.extra_js, &project.root)?;
+    let extra_css = read_all(project, &project.config.extra_css, "extra_css")?;
+    let extra_js = read_all(project, &project.config.extra_js, "extra_js")?;
 
     if options.clean {
         clean(project, site_dir, options.allow_outside)?;
@@ -301,9 +301,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
     }
 
     // 覆盖层：把 `override/` 里的东西原样拷到产物里，重复就覆盖
-    if let Some(override_dir) = &project.config.override_dir {
-        copy_override(override_dir, &project.root, site_dir)?;
-    }
+    copy_override(project, site_dir)?;
 
     let mut links: Vec<String> = missing
         .lock()
@@ -360,11 +358,12 @@ fn templates_of(project: &Project) -> Result<Option<mdpp::block::template::Templ
 }
 
 /// 读配置里附的那几个 CSS / JS
-fn read_all(paths: &[PathBuf], root: &Path) -> Result<Vec<String>, String> {
+fn read_all(project: &Project, paths: &[PathBuf], what: &str) -> Result<Vec<String>, String> {
     paths
         .iter()
-        .map(|path| {
-            let full = project::under(root, path);
+        .enumerate()
+        .map(|(index, path)| {
+            let full = project.contained(path, &format!("{what}[{index}]"))?;
             crate::support::limits::read_text(&full)
         })
         .collect()
