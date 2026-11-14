@@ -214,6 +214,16 @@ fn nesting_stops_instead_of_running_forever() {
     assert!(html.contains("已经停在这里"), "{html}");
 }
 
+/// 深层嵌套的普通 HTML 不能把净化器的调用栈打爆
+#[test]
+fn deeply_nested_html_does_not_overflow_the_stack() {
+    let levels = 10_000;
+    let source = format!("{}中间{}", "<div>".repeat(levels), "</div>".repeat(levels));
+    let html = clean(&source);
+    assert!(html.contains("中间"), "{}", html.len());
+    assert!(html.starts_with("<div>"), "{}", &html[..20.min(html.len())]);
+}
+
 /// 没闭合的 `<markdown>` 当普通文字留着，不吞掉后面所有内容
 #[test]
 fn an_unclosed_markdown_element_does_not_swallow_the_page() {

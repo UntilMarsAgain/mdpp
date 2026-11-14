@@ -200,6 +200,15 @@ fn conditional_rules_are_scoped_inside() {
     );
 }
 
+/// 未闭合的块不能原样漏出去：浏览器会把文件结尾当成 `}`，于是整页都被改掉
+#[test]
+fn an_unclosed_block_is_dropped_instead_of_escaping_the_scope() {
+    let css = scope_css("body { background: red");
+    assert!(!css.contains("body"), "{css}");
+    assert!(!css.contains("background"), "{css}");
+    assert!(css.contains("未闭合"), "{css}");
+}
+
 /// `@import` 必须先丢 —— 留着它，正文里一行 CSS 就能把页面支到外部去拉样式
 #[test]
 fn imports_are_dropped() {

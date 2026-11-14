@@ -14,8 +14,8 @@ pub const CONTENT_SCOPE: &str = ".mdpp-content";
 /// 顺带处理两件事：`@import` 一律丢掉（会让页面去外部拉样式），
 /// `@media` 之类的条件规则递归处理（里面的选择器同样要收）。
 ///
-/// 不是完整的 CSS 解析器：花括号不配对时原样放行，字符串里的花括号也不特殊处理 ——
-/// CSS 里这两种情况都很罕见，而真遇到时「原样放行」比「猜错」好。
+/// 不是完整的 CSS 解析器：字符串里的花括号不特殊处理。花括号不配对时，未闭合的
+/// 那一段会被丢掉 —— 原样放行会让它绕过 [`CONTENT_SCOPE`]，改到整页。
 pub fn scope_css(css: &str) -> String {
     scope_css_raw(css).trim().to_string()
 }
@@ -47,7 +47,9 @@ fn scope_css_raw(css: &str) -> String {
             }
         }
         let Some(close) = close else {
-            out.push_str(rest);
+            // 没有配对的 `}`：后面的选择器无法收进正文。原样放行会被浏览器
+            // 当成「到文件结尾才闭合」的规则，直接作用于整页，所以只能丢。
+            out.push_str("/* mdpp: 未闭合的 CSS 块已丢弃 */");
             return out;
         };
 

@@ -23,9 +23,6 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::support::url;
 
-/// 值得一看的属性：页面里指向一个文件的地方
-const ATTRIBUTES: [&str; 3] = ["src", "href", "poster"];
-
 /// 扫完一页的结果
 #[derive(Debug, Default)]
 pub struct Scan {
@@ -60,153 +57,250 @@ pub struct Context<'a> {
 }
 
 /// 扫一遍正文里的地址：本地相对的那些改写到 `assets/`，其余原样留着。
+///
+/// 只认**标签里的属性**。正文、注释、`<script>`/`<style>` 的内容里出现
+/// `src="图.png"` 是字面量，不是属性，不能改写。
 pub fn scan(html: &str, context: &Context) -> Scan {
-    let mut out = Scan {
+    let mut scan = Scan {
         html: String::with_capacity(html.len()),
         ..Scan::default()
     };
-    let mut rest = html;
-    // 当前在不在 `<script>` / `<style>` 里：那里的 `src=` / `href=` 是脚本/样式的内容，
-    // 不是要改写的属性 —— `::js` 里写 `document.write('<img src="图.png">')` 是字面量，
-    // 改写它等于改了一段程序的语义（见 `update_raw` 那一段的说明）
-    let mut raw = Raw::None;
-    loop {
-        let Some(at) = rest.find("=\"") else {
-            out.html.push_str(rest);
-            return out;
-        };
-        // 先把这 `="` 前面的那一段喂给状态机：`<script …>` 从这儿进来、
-        // `</script>` 从这儿出去，状态翻对了，`="` 落在哪一边才判得准
-        update_raw(&mut raw, &rest[..at]);
-
-        let value = match value_of(rest, at + 2) {
-            Some(value) => value,
-            // 引号没关上：这一段不是属性。跳过 `="` 接着找（往下走了，不会卡住）
-            None => {
-                out.html.push_str(&rest[..at + 2]);
-                rest = &rest[at + 2..];
-                continue;
-            }
-        };
-
-        // 三个属性之一、且看着像本地文件，才去解它。
-        // **`<script>` / `<style>` 里的不算** —— 那是内容不是属性（`::js` 的字符串、
-        // `::html js` 的原样 HTML 都从这里经过），照原样留着。
-        let resolved = if raw == Raw::None {
-            ATTRIBUTES
-                .contains(&identifier_before(rest, at))
-                .then(|| resolve(value, context))
-        } else {
-            None
-        };
-
-        out.html.push_str(&rest[..at + 2]);
-        match resolved {
-            Some(Ok((from, to))) => {
-                let relative = to
-                    .strip_prefix(context.assets_dir)
-                    .expect("目标就在 assets 里")
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                out.wanted.push(Wanted { from, to });
-                out.html.push_str(&format!(
-                    "{}/{}",
-                    context.assets_prefix,
-                    url::encode_href(&relative)
-                ));
-            }
-            Some(Err(Skip::NotOurs(reason))) => {
-                tracing::debug!(value, reason, "这个地址不归我管");
-                out.html.push_str(value);
-            }
-            Some(Err(Skip::Missing(value))) => {
-                out.missing.push(value.clone());
-                out.html.push_str(&value);
-            }
-            None => out.html.push_str(value),
-        }
-        out.html.push('"');
-
-        // 从闭引号后面接着扫
-        rest = &rest[at + 2 + value.len() + 1..];
-    }
-}
-
-/// 扫描时在不在 `<script>` / `<style>` 里。
-///
-/// 脚本与样式的**内容**（`::js` / `::css` 块、`::html js` 的原样 HTML）里出现
-/// `src="图.png"` 是字面量 —— `document.write('<img src="图.png">')` 里的那一处是
-/// 一段程序的字符串，不是 HTML 属性。扫到它就给改写成 `../assets/…`、再拷一份文件，
-/// 等于**改写了脚本的语义**（输出内容变了），而且拷出来的文件还指错了地方。
-///
-/// 只认成对的标签（`<script …>` 到 `</script>`、`<style …>` 到 `</style>`），大小写
-/// 不敏感；开标签里的 `>` 之后的才算内容，所以 `<script src="x">` 自己的属性不在此列。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Raw {
-    /// 不在任何一块里 —— 正常扫属性
-    None,
-    /// 在 `<script>…</script>` 里
-    Script,
-    /// 在 `<style>…</style>` 里
-    Style,
-}
-
-/// 喂一段 HTML，翻 [`Raw`] 的状态。只数成对的开关标签，不嵌套。
-///
-/// 找 `<` 之后的标签名，逐位置看是不是 `<script` / `</script` / `<style` / `</style`
-/// 之一（大小写不敏感）。只认**标签名后面**是空白、`>`、`/` 或行尾的（`<scriptx>` 不是
-/// `<script>`，`<scripted>` 也不是）。
-fn update_raw(state: &mut Raw, chunk: &str) {
     let mut at = 0usize;
-    while at < chunk.len() {
-        let Some(rel) = chunk[at..].find('<') else {
-            return;
+    while at < html.len() {
+        let Some(rel) = html[at..].find('<') else {
+            scan.html.push_str(&html[at..]);
+            break;
         };
         let start = at + rel;
-        let rest = &chunk[start + 1..];
-        // 开标签 `<script`；闭标签 `</script` 先剥那个 `/`
-        let (name, closing) = match rest.strip_prefix('/') {
-            Some(tail) => (tag_name(tail), true),
-            None => (tag_name(rest), false),
-        };
-        match (name, closing) {
-            (Some("script"), false) => *state = Raw::Script,
-            (Some("script"), true) if *state == Raw::Script => *state = Raw::None,
-            (Some("style"), false) => *state = Raw::Style,
-            (Some("style"), true) if *state == Raw::Style => *state = Raw::None,
-            _ => {}
+        scan.html.push_str(&html[at..start]);
+        let rest = &html[start..];
+
+        if rest.starts_with("<!--") {
+            let end = rest
+                .find("-->")
+                .map(|offset| start + offset + 3)
+                .unwrap_or(html.len());
+            scan.html.push_str(&html[start..end]);
+            at = end;
+            continue;
         }
-        at = start + 1;
+        if rest.starts_with("<!") || rest.starts_with("<?") {
+            let end = rest
+                .find('>')
+                .map(|offset| start + offset + 1)
+                .unwrap_or(html.len());
+            scan.html.push_str(&html[start..end]);
+            at = end;
+            continue;
+        }
+        if rest.starts_with("</") {
+            let end = rest
+                .find('>')
+                .map(|offset| start + offset + 1)
+                .unwrap_or(html.len());
+            scan.html.push_str(&html[start..end]);
+            at = end;
+            continue;
+        }
+
+        let Some(name_end) = tag_name_end(html, start + 1) else {
+            scan.html.push('<');
+            at = start + 1;
+            continue;
+        };
+        let tag = &html[start + 1..name_end];
+        let (end, self_closing) = scan_start_tag(html, name_end, tag, context, &mut scan);
+        at = end;
+
+        if !self_closing && is_raw_text(tag) {
+            let close = find_close_tag(html, at, tag).unwrap_or(html.len());
+            scan.html.push_str(&html[at..close]);
+            at = close;
+        }
+    }
+    scan
+}
+
+/// 解析一个开始标签，原样复制，只在真正的资源属性上改值。
+fn scan_start_tag(
+    html: &str,
+    name_end: usize,
+    tag: &str,
+    context: &Context,
+    scan: &mut Scan,
+) -> (usize, bool) {
+    scan.html.push('<');
+    scan.html.push_str(tag);
+    let bytes = html.as_bytes();
+    let mut at = name_end;
+
+    while at < html.len() {
+        if bytes[at].is_ascii_whitespace() {
+            let begin = at;
+            while at < html.len() && bytes[at].is_ascii_whitespace() {
+                at += 1;
+            }
+            scan.html.push_str(&html[begin..at]);
+            continue;
+        }
+        if bytes[at] == b'>' {
+            scan.html.push('>');
+            return (at + 1, false);
+        }
+        if bytes[at] == b'/' && bytes.get(at + 1) == Some(&b'>') {
+            scan.html.push_str("/>");
+            return (at + 2, true);
+        }
+
+        // 属性名。遇到奇怪的字符（例如落单的引号）就原样跳过一个字符。
+        let name_start = at;
+        while at < html.len()
+            && !matches!(
+                bytes[at],
+                b' ' | b'\t' | b'\n' | b'\r' | b'\x0c' | b'=' | b'>' | b'/'
+            )
+        {
+            at += 1;
+        }
+        if name_start == at {
+            let ch = html[at..].chars().next().expect("还没到结尾");
+            scan.html.push(ch);
+            at += ch.len_utf8();
+            continue;
+        }
+        let attr = &html[name_start..at];
+        scan.html.push_str(attr);
+
+        let space_start = at;
+        while at < html.len() && bytes[at].is_ascii_whitespace() {
+            at += 1;
+        }
+        scan.html.push_str(&html[space_start..at]);
+
+        if at >= html.len() || bytes[at] != b'=' {
+            continue;
+        }
+        scan.html.push('=');
+        at += 1;
+        let space_start = at;
+        while at < html.len() && bytes[at].is_ascii_whitespace() {
+            at += 1;
+        }
+        scan.html.push_str(&html[space_start..at]);
+
+        if at < html.len() && (bytes[at] == b'"' || bytes[at] == b'\'') {
+            let quote = bytes[at];
+            scan.html.push(quote as char);
+            at += 1;
+            let Some(offset) = html[at..].find(quote as char) else {
+                scan.html.push_str(&html[at..]);
+                return (html.len(), false);
+            };
+            let close = at + offset;
+            let value = &html[at..close];
+            let replacement = if is_raw_text(tag) || !is_asset_attr(attr) {
+                None
+            } else {
+                resolve_asset(value, context, scan)
+            };
+            scan.html.push_str(replacement.as_deref().unwrap_or(value));
+            scan.html.push(quote as char);
+            at = close + 1;
+        } else {
+            // 没引号的属性值也原样复制；不在这里改写，避免替作者决定新的引号形式。
+            let value_start = at;
+            while at < html.len()
+                && !matches!(bytes[at], b' ' | b'\t' | b'\n' | b'\r' | b'\x0c' | b'>')
+            {
+                at += 1;
+            }
+            scan.html.push_str(&html[value_start..at]);
+        }
+    }
+    (html.len(), false)
+}
+
+/// 属性值是不是资源地址；改了值之后把结果记进 `wanted`，失败记进 `missing`。
+fn resolve_asset(value: &str, context: &Context, scan: &mut Scan) -> Option<String> {
+    match resolve(value, context) {
+        Ok((from, to)) => {
+            let relative = to
+                .strip_prefix(context.assets_dir)
+                .expect("目标就在 assets 里")
+                .to_string_lossy()
+                .replace('\\', "/");
+            scan.wanted.push(Wanted { from, to });
+            Some(format!(
+                "{}/{}",
+                context.assets_prefix,
+                url::encode_href(&relative)
+            ))
+        }
+        Err(Skip::NotOurs(reason)) => {
+            tracing::debug!(value, reason, "这个地址不归我管");
+            None
+        }
+        Err(Skip::Missing(value)) => {
+            scan.missing.push(value);
+            None
+        }
     }
 }
 
-/// 从 `<`（或 `</`）之后那一段取出标签名（小写）。名字后必须是空白、`>`、`/` 或行尾，
-/// 否则不是那个标签（`<scripted>` 不是 `<script>`）。只认 `script` / `style` 两个，
-/// 别的名字一律 `None`。
-fn tag_name(after: &str) -> Option<&'static str> {
-    let name_end = after
-        .char_indices()
-        .find(|(_, ch)| !ch.is_ascii_alphanumeric())
-        .map(|(at, _)| at)
-        .unwrap_or(after.len());
-    let (name, tail) = after.split_at(name_end);
-    if name.is_empty() {
+fn tag_name_end(html: &str, from: usize) -> Option<usize> {
+    let bytes = html.as_bytes();
+    if !bytes.get(from).is_some_and(u8::is_ascii_alphabetic) {
         return None;
     }
-    let boundary_ok = tail
-        .chars()
-        .next()
-        .is_none_or(|ch| matches!(ch, ' ' | '\t' | '\n' | '\r' | '>' | '/'));
-    if !boundary_ok {
-        return None;
+    let mut at = from;
+    while at < bytes.len()
+        && (bytes[at].is_ascii_alphanumeric() || matches!(bytes[at], b'-' | b':' | b'_'))
+    {
+        at += 1;
     }
-    if name.eq_ignore_ascii_case("script") {
-        Some("script")
-    } else if name.eq_ignore_ascii_case("style") {
-        Some("style")
-    } else {
-        None
+    (at > from).then_some(at)
+}
+
+fn is_asset_attr(name: &str) -> bool {
+    name.eq_ignore_ascii_case("src")
+        || name.eq_ignore_ascii_case("href")
+        || name.eq_ignore_ascii_case("poster")
+}
+
+/// 这些标签的内容是原始文本，里面的 `src="…"` 不是属性。
+fn is_raw_text(tag: &str) -> bool {
+    [
+        "script",
+        "style",
+        "textarea",
+        "title",
+        "xmp",
+        "iframe",
+        "noembed",
+        "noframes",
+        "plaintext",
+    ]
+    .iter()
+    .any(|raw| tag.eq_ignore_ascii_case(raw))
+}
+
+/// 找 `</tag` —— 原始文本元素的结束位置；找不到就吃到结尾。
+fn find_close_tag(html: &str, from: usize, tag: &str) -> Option<usize> {
+    let bytes = html.as_bytes();
+    let mut at = from;
+    while at + 2 + tag.len() <= bytes.len() {
+        if bytes[at] == b'<' && bytes[at + 1] == b'/' {
+            let end = at + 2 + tag.len();
+            if html[at + 2..end].eq_ignore_ascii_case(tag)
+                && (end == bytes.len()
+                    || matches!(bytes[end], b' ' | b'\t' | b'\n' | b'\r' | b'\x0c' | b'>'))
+            {
+                return Some(at);
+            }
+        }
+        at += 1;
     }
+    None
 }
 
 /// 一个本地地址为什么没被拷 —— 前者不进报告，后者要报
@@ -258,15 +352,51 @@ fn resolve(value: &str, context: &Context) -> Result<(PathBuf, PathBuf), Skip> {
     }
     // 符号链接不拷：链接指向哪里是链接自己的事，而资源扫描只该收
     // `pages/` 里真实存在的文件。跟过去就可能把外面的东西带进产物。
+    // 不能只看最后一级：`pages/link -> /outside` 时，`link/secret.png`
+    // 的最后一级是普通文件，真正的越界发生在中间那一级。
+    if has_symlink_component(context.pages_dir, relative) {
+        return Err(Skip::Missing(format!(
+            "{decoded}（路径里有符号链接，不拷）"
+        )));
+    }
+    let Ok(source_real) = source.canonicalize() else {
+        return Err(Skip::Missing(decoded.clone()));
+    };
+    let Ok(pages_real) = context.pages_dir.canonicalize() else {
+        return Err(Skip::Missing(decoded.clone()));
+    };
+    if !source_real.starts_with(&pages_real) {
+        return Err(Skip::Missing(format!(
+            "{decoded}（路径跑出正文目录，不拷）"
+        )));
+    }
     match std::fs::symlink_metadata(&source) {
-        Ok(meta) if meta.file_type().is_symlink() => {
-            return Err(Skip::Missing(format!("{decoded}（符号链接不拷）")));
-        }
         Ok(meta) if meta.is_file() => {}
         _ => return Err(Skip::Missing(decoded.clone())),
     }
     let target = context.assets_dir.join(relative);
     Ok((source, target))
+}
+
+/// `root` 到 `relative` 的每一级（含根）都不能是符号链接。
+fn has_symlink_component(root: &Path, relative: &Path) -> bool {
+    let mut current = root.to_path_buf();
+    if matches!(
+        std::fs::symlink_metadata(&current),
+        Ok(meta) if meta.file_type().is_symlink()
+    ) {
+        return true;
+    }
+    for part in relative.components() {
+        current.push(part.as_os_str());
+        if matches!(
+            std::fs::symlink_metadata(&current),
+            Ok(meta) if meta.file_type().is_symlink()
+        ) {
+            return true;
+        }
+    }
+    false
 }
 
 /// `foo.png` 里带 `:` 吗 —— 带了就当协议（`https:`、`data:`），不当文件名
@@ -290,23 +420,6 @@ fn normalize(path: &Path) -> PathBuf {
         }
     }
     out.iter().collect()
-}
-
-/// `="` 之前那几个字母是什么属性名
-fn identifier_before(text: &str, at: usize) -> &str {
-    let head = &text[..at];
-    let start = head
-        .rfind(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '-'))
-        .map(|position| position + 1)
-        .unwrap_or(0);
-    &head[start..]
-}
-
-/// 引号里那一段（到闭引号为止）
-fn value_of(text: &str, from: usize) -> Option<&str> {
-    let rest = &text[from..];
-    let end = rest.find('"')?;
-    Some(&rest[..end])
 }
 
 /// 把待拷贝的那些真的拷过去（一个目标已经拷过就跳过）
@@ -513,6 +626,50 @@ mod tests {
         assert_eq!(scan.wanted.len(), 1);
     }
 
+    /// 正文、注释、`data-src` 里的 `src=` 都不是属性，不能改写
+    #[test]
+    fn text_and_comments_that_look_like_attributes_are_left_alone() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let pages = dir.path().join("pages");
+        let assets = dir.path().join("assets");
+        std::fs::create_dir_all(&pages).expect("建得出");
+        std::fs::write(pages.join("图.png"), "图片").expect("写得下");
+
+        let html = concat!(
+            r#"<div>正文里写 src="图.png" 是这样</div>"#,
+            r#"<!-- <img src="图.png"> -->"#,
+            r#"<p data-src="图.png">别动</p>"#,
+        );
+        let scan = scan(html, &context(&pages, &pages, &assets));
+        assert_eq!(scan.html, html, "不该动的动了");
+        assert!(scan.wanted.is_empty(), "{:?}", scan.wanted);
+        assert!(scan.missing.is_empty(), "{:?}", scan.missing);
+    }
+
+    /// 目录符号链接也要拦住：只检查最后一级会漏掉 `link/secret.png`
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_directory_on_the_way_is_not_followed() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let pages = dir.path().join("pages");
+        let assets = dir.path().join("assets");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&pages).expect("建得出");
+        std::fs::create_dir_all(&outside).expect("建得出");
+        std::fs::write(outside.join("secret.png"), "不该被拷走").expect("写得下");
+        std::os::unix::fs::symlink(&outside, pages.join("链接")).expect("建得出符号链接");
+
+        let html = r#"<img src="链接/secret.png">"#;
+        let scan = scan(html, &context(&pages, &pages, &assets));
+        assert!(scan.wanted.is_empty(), "{:?}", scan.wanted);
+        assert_eq!(scan.html, html, "不该改地址");
+        assert!(
+            scan.missing.iter().any(|one| one.contains("符号链接")),
+            "{:?}",
+            scan.missing
+        );
+    }
+
     /// 词法归一：`a/./b/../c` → `a/c`，而 `..` 不会跑出根
     #[test]
     fn paths_are_normalized_without_touching_the_disk() {
@@ -585,31 +742,5 @@ mod tests {
         assert_eq!(scan.html, html, "样式里的地址不该动");
         assert!(scan.wanted.is_empty(), "{:?}", scan.wanted);
         assert!(scan.missing.is_empty(), "{:?}", scan.missing);
-    }
-
-    /// 只有**成对**的 `<script …>` 才进「脚本区」—— 不闭合的 `<script>` 一路吞下去，
-    /// 与 HTML 解析器的行为一致（脚本内容到 `</script>` 为止）
-    #[test]
-    fn script_tag_boundaries_are_paired() {
-        let mut state = Raw::None;
-        // 开 → 进脚本
-        update_raw(&mut state, "<script>");
-        assert_eq!(state, Raw::Script);
-        // 关 → 出来
-        update_raw(&mut state, "</script>");
-        assert_eq!(state, Raw::None);
-        // 大写、带属性都认
-        update_raw(&mut state, "<SCRIPT type=\"x\">");
-        assert_eq!(state, Raw::Script);
-        update_raw(&mut state, "</SCRIPT>");
-        assert_eq!(state, Raw::None);
-        // `<scriptx>` 不是 `<script>` —— 名字后那个边界字符得对
-        update_raw(&mut state, "<scripted>");
-        assert_eq!(state, Raw::None, "<scripted> 不该进脚本区");
-        // `<style>` 与 `<script>` 各归各
-        update_raw(&mut state, "<style>");
-        assert_eq!(state, Raw::Style);
-        update_raw(&mut state, "</style>");
-        assert_eq!(state, Raw::None);
     }
 }
