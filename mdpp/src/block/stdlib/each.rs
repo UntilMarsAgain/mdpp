@@ -61,6 +61,7 @@ use markdown_it::{Node, Renderer};
 use super::super::dispatch::render_problem;
 use super::super::fill;
 use super::super::section;
+use super::{present, valid_name};
 use crate::block::template::TemplateVars;
 use crate::context;
 use crate::registry::Block;
@@ -89,18 +90,6 @@ struct Params<'a> {
     check: bool,
     name: &'a str,
     empty_why: &'a str,
-}
-
-fn present(value: &str) -> Option<&str> {
-    let value = value.trim();
-    (!value.is_empty()).then_some(value)
-}
-
-fn valid_name(name: &str) -> bool {
-    !name.is_empty()
-        && !name
-            .chars()
-            .any(|ch| ch.is_whitespace() || ch.is_control() || matches!(ch, '.' | '@' | '{' | '}'))
 }
 
 fn parse(block: &Block) -> Result<Params<'_>, String> {

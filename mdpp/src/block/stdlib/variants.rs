@@ -29,6 +29,7 @@ use std::collections::HashSet;
 use markdown_it::{Node, Renderer};
 
 use super::super::dispatch::{render_problem, sections};
+use super::present;
 use crate::registry::Block;
 use crate::variants::{ALWAYS, Control, Group};
 
@@ -68,11 +69,6 @@ struct Part<'a> {
     label: &'a str,
     /// 这一节的子节点
     content: &'a Node,
-}
-
-fn present(value: &str) -> Option<&str> {
-    let value = value.trim();
-    (!value.is_empty()).then_some(value)
 }
 
 fn on(value: &str) -> bool {

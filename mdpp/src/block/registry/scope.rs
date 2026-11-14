@@ -1,7 +1,7 @@
 //! 当前注册表的线程局部作用域。
 //!
-//! 纯数据在 [`super::table::BlockRegistry`]；这里只负责把某一份注册表装进
-//! [`crate::env`]，供扫描器与分发器读取。
+//! 纯数据在 [`super::table::BlockRegistry`]；这里只负责从 [`crate::env`]
+//! 取当前那一份，供扫描器与分发器读取。
 
 use std::sync::Arc;
 
@@ -22,46 +22,4 @@ pub fn current() -> Option<Arc<BlockRegistry>> {
 /// 查一个块，**只**在当次渲染的注册表里查。扫描器与分发器用它。
 pub fn lookup(name: &str) -> Option<BlockSpec> {
     current()?.get(name).cloned()
-}
-
-/// 装上注册表，返回用完还原的守卫。存的是**进入之前**的那一份（不是空），
-/// 理由见 [`crate::context`] 模块头。
-pub struct Guard {
-    previous: Option<Arc<BlockRegistry>>,
-    /// 进入之前根本没有渲染状态：这个守卫要负责把整份状态撤掉
-    had_state: bool,
-}
-
-impl Drop for Guard {
-    fn drop(&mut self) {
-        if self.had_state {
-            let previous = self.previous.take().unwrap_or_default();
-            crate::env::with(|env| env.registry = previous);
-        } else {
-            crate::env::set(None);
-        }
-    }
-}
-
-/// 装上 [`BlockRegistry`]，返回用完还原的守卫。
-pub fn enter(registry: Arc<BlockRegistry>) -> Guard {
-    let mut pending = Some(registry);
-    let mut previous = None;
-    let had_state = crate::env::with(|env| {
-        previous = Some(std::mem::replace(
-            &mut env.registry,
-            pending.take().expect("只取一次"),
-        ));
-    })
-    .is_some();
-    if !had_state {
-        crate::env::set(Some(crate::env::RenderEnv {
-            registry: pending.expect("只取一次"),
-            ..Default::default()
-        }));
-    }
-    Guard {
-        previous,
-        had_state,
-    }
 }

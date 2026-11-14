@@ -35,6 +35,7 @@ use markdown_it::{Node, Renderer};
 use super::super::dispatch::render_problem;
 use super::super::fill;
 use super::super::section;
+use super::{present, valid_name};
 use crate::block::template::TemplateVars;
 use crate::context;
 use crate::registry::Block;
@@ -44,18 +45,6 @@ const PARAMS: &[&str] = &["as", "max"];
 struct Params<'a> {
     as_name: &'a str,
     max: Option<usize>,
-}
-
-fn present(value: &str) -> Option<&str> {
-    let value = value.trim();
-    (!value.is_empty()).then_some(value)
-}
-
-fn valid_name(name: &str) -> bool {
-    !name.is_empty()
-        && !name
-            .chars()
-            .any(|ch| ch.is_whitespace() || ch.is_control() || matches!(ch, '.' | '@' | '{' | '}'))
 }
 
 fn parse(block: &Block) -> Result<Params<'_>, String> {

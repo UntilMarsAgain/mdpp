@@ -31,7 +31,7 @@
 use std::collections::HashSet;
 
 use super::super::dispatch::render_problem;
-use super::{hex_why, normalize_hex, text_on};
+use super::{hex_why, normalize_hex, present, text_on};
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
 
@@ -77,15 +77,6 @@ struct Params<'a> {
 }
 
 /// 非空白的参数值（前后空白去掉）；空串等于没写。
-fn present(value: &str) -> Option<&str> {
-    let value = value.trim();
-    (!value.is_empty()).then_some(value)
-}
-
-/// `open=` 的宽松解释：只有明确写成开的那几个词才算开。
-///
-/// 不在这里报错：`fold` 过去就把认不出的值当折着，作者写 `open=也许` 时看到的是
-/// 一个折着的块，而不是一个报错框 —— 保持这个行为。
 fn is_open(value: &str) -> bool {
     matches!(
         value.trim().to_lowercase().as_str(),
