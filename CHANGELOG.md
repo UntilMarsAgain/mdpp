@@ -8,6 +8,12 @@
 
 - 页面键统一校验：拒绝 `.` / `..` / 反斜杠 / 控制字符 / Windows 保留名；页面扫描
   不再跟随符号链接。`pages/a\..\..\x.mdpp` 这类文件名不能再把产物写到站点目录外。
+- 项目根是唯一的运行目录边界：`pages_dir` / `templates_dir` / `build_dir` / 图标 /
+  override / `extra_css` / `extra_js` 都不能用绝对路径、`..` 或符号链接指向项目外；
+  `mdpp.toml` 自身也不能是符号链接。
+- 资源扫描只改开始标签里的 `src` / `href` / `poster`，正文和注释里长得像属性的文字
+  不再被改写；`::css` 未闭合的块会被丢弃，而不是漏成全局样式；HTML 净化改为显式
+  栈遍历，深层嵌套不再打穿调用栈。
 - `build_dir` 必须在项目目录之内；`--clean` 在删除任何东西之前先验路径，不能清到
   项目外、项目根、正文/模板目录或它们的上一层。
 - `::html` 的 `<markdown>` 槽位不再受 `raw_html` 影响，始终再净化一遍。
@@ -114,6 +120,8 @@
 
 - `Mdpp::parse` / `parse_with` 与 `render_node` / `render_node_with_assets`：可以把
   文档解析成 markdown-it AST，改完再渲染。
+- `Mdpp::render_report` 与 `Rendered::outline` / `features` / `problems`：一次渲染
+  同时给出标题、需要的前端特性和问题框计数；调用方不必再拿 HTML 做字符串匹配。
 - `BlockSpec::with_mode_fn`：同一个自定义块可以按实例选择
   `Markdown` / `Sections` / `Raw`。
 - `mdpp::author`：写自定义块/模板时用的稳定工具面（填空、分节、净化、诊断框）。
