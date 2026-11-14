@@ -294,7 +294,9 @@ fn a_built_page_carries_its_sidebar_and_a_plain_page_has_none() {
 #[test]
 fn the_stylesheet_collapses_the_sidebar_at_the_narrow_breakpoint() {
     let css = crate::render::page::default_css();
-    let narrow = css.find("@media (max-width: 60rem)").expect("窄屏断点该在");
+    let narrow = css
+        .find("@media (max-width: 99.99rem)")
+        .expect("窄屏断点该在");
     let narrow: String = css[narrow..].chars().take(900).collect();
     assert!(narrow.contains(".mdpp-toc--wide {"), "{narrow}");
     assert!(narrow.contains("display: none;"), "{narrow}");

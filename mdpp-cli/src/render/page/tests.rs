@@ -300,9 +300,12 @@ fn a_site_page_without_a_sidebar_renders_no_toc_container() {
 fn the_site_shell_lays_the_sidebar_beside_the_article() {
     let css = asset(SITE_CSS);
     assert!(css.contains(".mdpp-main > .mdpp-toc--wide"), "{css}");
-    assert!(css.contains("flex: 0 0 14rem;"), "{css}");
-    assert!(css.contains("@media (max-width: 60rem)"), "{css}");
-    assert!(css.contains("flex-direction: column;"), "{css}");
+    assert!(css.contains("@media (min-width: 100rem)"), "{css}");
+    assert!(
+        css.contains("grid-template-columns: 0 minmax(0, 1fr);"),
+        "{css}"
+    );
+    assert!(css.contains("margin-right: 1.75rem;"), "{css}");
 }
 
 /// 顶栏上是站点名、那句话说明与（给了的）仓库链接；站点名空就没有顶栏
