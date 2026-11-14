@@ -864,10 +864,9 @@ fn a_rebuild_replaces_the_whole_site_dir() {
     );
 }
 
-/// `::css` / `::js` 在站点模式下外链成 `assets/mdpp-<hash>.*`：
-/// 重复内容只生成一份文件，多页共享同一份，嵌套页用相对前缀引用。
+/// `::css` 进整页 `<style>` 并按内容去重；`::js` 仍外链成 `assets/mdpp-<hash>.js`。
 #[test]
-fn custom_css_and_js_are_extracted_as_shared_assets() {
+fn custom_css_is_inlined_once_and_js_is_extracted() {
     let dir = empty_dir();
     let root = init(dir.path());
 
@@ -889,7 +888,7 @@ fn custom_css_and_js_are_extracted_as_shared_assets() {
     let out = mdpp(&root, &["build"]);
     assert!(out.status.success(), "build 失败：{}", stderr_of(&out));
 
-    // 资源文件按内容哈希去重：一份 css、一份 js（`mdpp.js` 是默认脚本，不算）
+    // 资源文件只剩一份 js（`mdpp.js` 是默认脚本，不算）
     let mut extracted: Vec<String> = std::fs::read_dir(root.join("build/assets"))
         .expect("有 assets 目录")
         .filter_map(|entry| entry.ok())
@@ -897,31 +896,21 @@ fn custom_css_and_js_are_extracted_as_shared_assets() {
         .filter(|name| name.starts_with("mdpp-") && name != "mdpp.js")
         .collect();
     extracted.sort();
-    assert_eq!(extracted.len(), 2, "该只有一份 css、一份 js：{extracted:?}");
+    assert_eq!(extracted.len(), 1, "该只有一份 js：{extracted:?}");
 
-    // 首页用链接，重复的 ::css 只出现一次链接
+    // 首页的 ::css 进 head 的 <style>，重复内容只出现一次
     let index = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
-    assert!(index.contains("href=\"assets/mdpp-"), "{index}");
+    assert!(!index.contains("href=\"assets/mdpp-"), "{index}");
     assert!(index.contains("src=\"assets/mdpp-"), "{index}");
     assert_eq!(
-        index
-            .matches("<link rel=\"stylesheet\" href=\"assets/mdpp-")
-            .count(),
+        index.matches(".custom { color: red; }").count(),
         1,
-        "重复的 ::css 只该有一个链接：{index}"
+        "重复的 ::css 只该出现一次：{index}"
     );
 
-    // 嵌套页用 ../../assets 前缀，同一份资源被共享
+    // 嵌套页同样把样式放在自己的 head 里
     let nested = std::fs::read_to_string(root.join("build/指南/页/index.html")).expect("读得动");
-    assert!(nested.contains("href=\"../../assets/mdpp-"), "{nested}");
-
-    // 资源内容正确
-    let css_name = extracted
-        .iter()
-        .find(|name| name.ends_with(".css"))
-        .expect("有一份 css");
-    let css = std::fs::read_to_string(root.join("build/assets").join(css_name)).expect("读得动");
-    assert!(css.contains(".custom { color: red; }"), "{css}");
+    assert!(nested.contains(".custom { color: red; }"), "{nested}");
 }
 
 /// 选项卡里的 `::css` / `::js` 在站点模式下只生成静态文件与占位符，

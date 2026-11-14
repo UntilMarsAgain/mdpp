@@ -50,8 +50,8 @@ pub use crate::assets::{
 pub use crate::block::Section;
 pub use crate::block::dispatch::{render_problem, render_unknown, sections};
 pub use crate::block::fill::{
-    CONTENT_SCOPE, allows_js, escape_script_end, flag, sanitize_css, sanitize_html, scope_css,
-    source_of, substitute, substitute_checked,
+    allows_js, escape_script_end, flag, sanitize_css, sanitize_html, source_of, substitute,
+    substitute_checked,
 };
 pub use crate::block::html::sanitize;
 pub use crate::engine::render_nested;

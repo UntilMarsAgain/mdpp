@@ -659,10 +659,10 @@ fn the_stylesheet_keeps_a_meaningful_internal_order() {
     assert!(tabs < print, "打印规则是覆盖，要压过前面的");
 }
 
-/// 正文那唯一一份样式表得**真的覆盖每个块** —— 少一节是静默的：
+/// 基础样式表得覆盖不随模板走的那些块 —— 少一节是静默的：
 /// 页面少几样样式，而编译不报错。
 #[test]
-fn the_one_stylesheet_covers_every_block() {
+fn the_base_stylesheet_covers_non_template_blocks() {
     let css = default_css();
     for (thing, needle) in [
         ("配色变量", "--mdpp-accent"),
@@ -675,7 +675,6 @@ fn the_one_stylesheet_covers_every_block() {
         ("缩进", ".mdpp-indent"),
         ("媒体", "figcaption"),
         ("选项卡", "theme__part--dark"),
-        ("导航框", "navbox__group"),
         ("图与公式", "math--display"),
         ("打印", "attr(data-mdpp-label)"),
     ] {

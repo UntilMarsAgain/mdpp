@@ -91,6 +91,9 @@ pub fn run(options: &Render) -> Result<(), String> {
         // 片段是常态（像 cmark 那样），`--full` 才套外壳 —— 外面套什么、内联什么，是界面
         // 那一层的事
         let chunk = if options.full {
+            // 正文里的 ::css 先于 --css，后者仍然最后覆盖
+            let mut page_css = rendered.styles.clone();
+            page_css.extend(extra_css.iter().cloned());
             page::document(&page::Page {
                 title: rendered.title().unwrap_or(name),
                 lang: Some(DEFAULT_LANG),
@@ -103,7 +106,7 @@ pub fn run(options: &Render) -> Result<(), String> {
                 body: html,
                 // 单篇没有站点，也就没有侧边目录
                 toc: "",
-                extra_css: &extra_css,
+                extra_css: &page_css,
                 extra_js: &extra_js,
                 // 一个文件就是整个页面：样式与脚本全内联，拷走还能看
                 assets: page::Assets::Inline,
@@ -111,7 +114,7 @@ pub fn run(options: &Render) -> Result<(), String> {
                 features: rendered.features,
             })
         } else {
-            rendered.html.clone()
+            rendered.html_with_styles()
         };
         out.write_all(chunk.as_bytes())
             .map_err(|error| format!("写标准输出失败：{error}"))?;
@@ -374,6 +377,7 @@ mod tests {
             &mdpp::Rendered {
                 html: r#"<div class="mdpp-template mdpp-template--unknown">"#.to_string(),
                 assets: Vec::new(),
+                styles: Vec::new(),
                 outline: Vec::new(),
                 features: mdpp::Features::default(),
                 problems: mdpp::Problems {
@@ -388,6 +392,7 @@ mod tests {
             &mdpp::Rendered {
                 html: "<p>没错</p>".to_string(),
                 assets: Vec::new(),
+                styles: Vec::new(),
                 outline: Vec::new(),
                 features: mdpp::Features::default(),
                 problems: mdpp::Problems::default(),

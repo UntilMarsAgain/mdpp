@@ -8,8 +8,21 @@ fn render(source: &str) -> String {
     crate::Mdpp::new().render(source)
 }
 
+/// 测试只关心正文；`::css` 收集的样式在片段开头，会包含同样的类名。
+fn body(html: &str) -> &str {
+    html.rsplit_once("</style>")
+        .map(|(_, body)| body)
+        .unwrap_or(html)
+}
+
+fn render_body(source: &str) -> String {
+    let html = render(source);
+    body(&html).to_string()
+}
+
 /// 断言是一张完整的导航框，而不是问题框。
 fn assert_navbox(html: &str) {
+    let html = body(html);
     assert!(html.contains("class=\"mdpp-navbox\""), "{html}");
     assert!(!html.contains("mdpp-template--problem"), "{html}");
 }
@@ -93,7 +106,7 @@ fn nested_navboxes_have_no_bar_and_cannot_take_state() {
     assert!(html.contains("class=\"mdpp-navbox__cell\""), "{html}");
     assert!(!html.contains("mdpp-navbox__cell--branch"), "{html}");
 
-    let bad = render("::navbox state=collapsed\n  [分组]\n    内容\n");
+    let bad = render_body("::navbox state=collapsed\n  [分组]\n    内容\n");
     assert!(bad.contains("mdpp-template--problem"), "{bad}");
     assert!(!bad.contains("mdpp-navbox__table"), "{bad}");
 }
@@ -109,12 +122,12 @@ fn state_controls_the_toggle_and_body() {
     assert!(collapsed.contains("aria-expanded=\"false\""), "{collapsed}");
     assert!(collapsed.contains("显示"), "{collapsed}");
 
-    let plain = render("::navbox title=示例 state=plain\n  [分类]\n    内容\n");
+    let plain = render_body("::navbox title=示例 state=plain\n  [分类]\n    内容\n");
     assert_navbox(&plain);
     assert!(plain.contains("data-mdpp-state=\"plain\""), "{plain}");
     assert!(!plain.contains("mdpp-navbox__toggle"), "{plain}");
 
-    let bad = render("::navbox title=示例 state=wat\n  [分类]\n    内容\n");
+    let bad = render_body("::navbox title=示例 state=wat\n  [分类]\n    内容\n");
     assert!(bad.contains("mdpp-template--problem"), "{bad}");
     assert!(!bad.contains("mdpp-navbox__table"), "{bad}");
 }
@@ -156,6 +169,7 @@ fn invalid_or_empty_navboxes_leave_only_one_problem() {
         "::navbox title=示例\n  [above]\n    一\n  [above]\n    二\n  [分类]\n    三\n",
     ] {
         let html = render(source);
+        let html = body(&html);
         assert!(html.contains("mdpp-template--problem"), "{html}");
         assert!(!html.contains("mdpp-navbox__table"), "{html}");
         assert_eq!(html.matches("mdpp-template--problem").count(), 1, "{html}");
@@ -165,7 +179,27 @@ fn invalid_or_empty_navboxes_leave_only_one_problem() {
 #[test]
 fn guard_discards_a_broken_navbox_as_a_whole() {
     let html = render("::navbox title=示例\n  [header]\n    第一批\n  [link]\n    没有页面名\n");
+    let html = body(&html);
     assert!(html.contains("mdpp-template--problem"), "{html}");
     assert!(!html.contains("mdpp-navbox__table"), "{html}");
     assert!(!html.contains("第一批"), "{html}");
+}
+
+#[test]
+fn navbox_css_is_collected_with_the_template() {
+    let rendered = crate::Mdpp::new().render_report(
+        "::navbox title=示例\n  [分类]\n    甲\n\n::navbox title=另一个\n  [分类]\n    乙\n",
+        &crate::RenderContext::new(),
+    );
+    let navbox_styles: Vec<_> = rendered
+        .styles
+        .iter()
+        .filter(|css| css.contains(".mdpp-navbox"))
+        .collect();
+    assert_eq!(navbox_styles.len(), 1, "{:?}", rendered.styles);
+    assert!(
+        navbox_styles[0].contains("@media print"),
+        "{}",
+        navbox_styles[0]
+    );
 }
