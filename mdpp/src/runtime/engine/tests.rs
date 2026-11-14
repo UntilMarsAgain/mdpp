@@ -361,3 +361,67 @@ fn a_renderer_can_be_a_plain_function_pointer() {
     assert!(html.contains("叫"), "{html}");
     assert!(html.contains("<p>甲</p>"), "{html}");
 }
+
+/// 渲染报告从**结构**里取标题与特性，不数 HTML 里的类名
+#[test]
+fn rendered_reports_outline_and_features() {
+    let mdpp = Mdpp::new();
+    let rendered = mdpp.render_report(
+        "# 标题\n\n## 小节\n\n```rust\nfn main() {}\n```\n",
+        &crate::context::RenderContext::new(),
+    );
+    assert_eq!(
+        rendered
+            .outline
+            .iter()
+            .map(|heading| (heading.level, heading.text.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(1, "标题"), (2, "小节")]
+    );
+    assert!(rendered.outline[0].id.is_some(), "{rendered:?}");
+    assert_eq!(rendered.title(), Some("标题"));
+    assert!(rendered.features.highlight, "{rendered:?}");
+    assert!(!rendered.features.math, "{rendered:?}");
+    assert!(!rendered.features.mermaid, "{rendered:?}");
+    assert_eq!(rendered.problems, crate::engine::Problems::default());
+}
+
+/// 语义块与行内公式各自点亮对应特性；`::code` 的语言名也算高亮
+#[test]
+fn rendered_features_follow_semantic_nodes() {
+    let mdpp = Mdpp::new();
+    let rendered = mdpp.render_report(
+        "::mermaid\n  graph TD; A-->B;\n\n::math\n  E=mc^2\n\n::code lang=rust\n  fn main() {}\n\n行内 $x$\n",
+        &crate::context::RenderContext::new(),
+    );
+    assert!(rendered.features.mermaid, "{rendered:?}");
+    assert!(rendered.features.math, "{rendered:?}");
+    assert!(rendered.features.highlight, "{rendered:?}");
+}
+
+/// 问题框在渲染那一处计数：正文/代码里恰好写着类名不算
+#[test]
+fn rendered_problems_are_counted_at_the_render_site() {
+    let mdpp = Mdpp::new();
+    let rendered = mdpp.render_report(
+        "::没这个名字\n  内容\n\n::mermaid\n\n```md\n<div class=\"template--unknown\"></div>\n```\n",
+        &crate::context::RenderContext::new(),
+    );
+    assert_eq!(rendered.problems.unknown, 1, "{rendered:?}");
+    assert_eq!(rendered.problems.misused, 1, "{rendered:?}");
+    assert!(
+        !rendered.html.contains("template--unknown\"></div>"),
+        "代码被解析了"
+    );
+}
+
+/// 缩进的一级标题也能成为标题 —— 旧的手写扫描只认列首的 `# `
+#[test]
+fn rendered_title_accepts_indented_headings() {
+    let rendered = Mdpp::new().render_report(
+        "   # 缩进标题\n\n正文\n",
+        &crate::context::RenderContext::new(),
+    );
+    assert_eq!(rendered.title(), Some("缩进标题"));
+    assert!(rendered.html.contains("<h1"), "{}", rendered.html);
+}

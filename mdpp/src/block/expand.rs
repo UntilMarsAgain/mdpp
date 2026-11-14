@@ -149,6 +149,9 @@ struct Reported {
 
 impl NodeValue for Reported {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
+        if self.class == "template--problem" {
+            crate::env::misused_problem();
+        }
         fmt.cr();
         fmt.open("div", &[("class", format!("template {}", self.class))]);
         fmt.cr();

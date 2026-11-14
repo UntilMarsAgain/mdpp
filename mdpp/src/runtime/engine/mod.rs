@@ -140,14 +140,22 @@ impl Mdpp {
     ///
     /// `::css` / `::js` / `::html js` 走**单页**模式：同内容按哈希去重后内联。
     pub fn render_with(&self, source: &str, context: &RenderContext) -> String {
-        render_parts(
+        self.render_report(source, context).html
+    }
+
+    /// 单页模式渲染，但把结构信息一起返回：标题、特性、问题计数。
+    ///
+    /// 与 [`Self::render_with`] 的 HTML 完全一样，只是多一份报告。站点模式用
+    /// [`Self::render_with_assets`]；这条给需要整页外壳的单文件模式用。
+    pub fn render_report(&self, source: &str, context: &RenderContext) -> Rendered {
+        let (html, assets, report) = render_parts(
             &self.parser,
             &self.registry,
             context,
             source,
             AssetMode::Inline,
-        )
-        .0
+        );
+        Rendered::new(html, assets, report)
     }
 
     /// 站点模式渲染：`::css` / `::js` / `::html js` 不内联，而是按 `asset_prefix`
@@ -161,7 +169,7 @@ impl Mdpp {
         context: &RenderContext,
         asset_prefix: &str,
     ) -> Rendered {
-        let (html, assets) = render_parts(
+        let (html, assets, report) = render_parts(
             &self.parser,
             &self.registry,
             context,
@@ -170,7 +178,7 @@ impl Mdpp {
                 prefix: asset_prefix.to_string(),
             },
         );
-        Rendered { html, assets }
+        Rendered::new(html, assets, report)
     }
 
     /// 解析成 markdown-it 的 AST，**不渲染**。
@@ -200,6 +208,8 @@ impl Mdpp {
             depth: 0,
             template_vars: None,
             render_depth: 0,
+            features: Features::default(),
+            problems: Problems::default(),
         };
         let _guard = crate::env::enter(env);
         parse_markdown(&self.parser, source)
@@ -224,7 +234,7 @@ impl Mdpp {
         context: &RenderContext,
         asset_prefix: &str,
     ) -> Rendered {
-        let (html, assets) = render_node_parts(
+        let (html, assets, report) = render_node_parts(
             &self.parser,
             &self.registry,
             node,
@@ -233,20 +243,113 @@ impl Mdpp {
                 prefix: asset_prefix.to_string(),
             },
         );
-        Rendered { html, assets }
+        Rendered::new(html, assets, report)
     }
 }
 
-/// 一次渲染的产物：HTML 与收集到的资源。
+/// 这一页用到的、需要外部前端资源才能运转的东西。
+///
+/// 它由**渲染出来的结构**决定，而不是数 HTML 里出现了哪个类名：`::code lang=rust`
+/// 与 ` ```rust ` 都算高亮，`::mermaid` 算图，行内/块级公式算数学。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Features {
+    /// 有没有带语言名的代码块（需要 highlight.js）
+    pub highlight: bool,
+    /// 有没有公式（需要 KaTeX）
+    pub math: bool,
+    /// 有没有 mermaid 图（需要 mermaid.js）
+    pub mermaid: bool,
+}
+
+impl Features {
+    pub(crate) fn merge(&mut self, other: Self) {
+        self.highlight |= other.highlight;
+        self.math |= other.math;
+        self.mermaid |= other.mermaid;
+    }
+}
+
+/// 渲染结果里的一个标题。
+///
+/// `text` 是标题的纯文本（行内标记已经拿掉），`id` 是标题锚点；关掉
+/// `heading_anchors` 时没有 `id`。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Heading {
+    /// 标题级别，1–6
+    pub level: u8,
+    /// 标题文字
+    pub text: String,
+    /// 标题锚点
+    pub id: Option<String>,
+}
+
+/// 渲染里出现的「问题框」计数。
+///
+/// 与从 HTML 里数类名不同，这个计数发生在渲染那一处：围栏代码或正文里恰好写着
+/// `template--problem` 不会被算进来，嵌套渲染里的问题也不会漏。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Problems {
+    /// 没注册的块
+    pub unknown: usize,
+    /// 名字认识、但参数或内容用法不对的块
+    pub misused: usize,
+}
+
+impl Problems {
+    pub(crate) fn merge(&mut self, other: Self) {
+        self.unknown += other.unknown;
+        self.misused += other.misused;
+    }
+}
+
+/// 一次渲染的产物：HTML、资源，以及供页面外壳使用的结构信息。
 ///
 /// 单页模式（[`Mdpp::render`]）只有 HTML，资源已经内联进去；
 /// 站点模式（[`Mdpp::render_with_assets`]）的 HTML 里是链接，内容在这里。
+///
+/// `outline` / `features` / `problems` 都是渲染时顺手记下来的：调用方不必再拿
+/// HTML 做字符串匹配。嵌套渲染的 features/problems 会合并进来，标题只取这一份
+/// 文档自己的 AST。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rendered {
     /// 渲染好的 HTML
     pub html: String,
     /// 收集到的 CSS / JS 资源（已按内容去重）
     pub assets: Vec<Asset>,
+    /// 文档大纲，按标题出现顺序；不含嵌套模板页自己的标题
+    pub outline: Vec<Heading>,
+    /// 需要外部前端资源的特性
+    pub features: Features,
+    /// 问题框计数
+    pub problems: Problems,
+}
+
+impl Rendered {
+    /// 第一个一级标题的文字。没有一级标题时返回 `None`
+    pub fn title(&self) -> Option<&str> {
+        self.outline
+            .iter()
+            .find(|heading| heading.level == 1 && !heading.text.is_empty())
+            .map(|heading| heading.text.as_str())
+    }
+
+    pub(super) fn new(html: String, assets: Vec<Asset>, report: RenderReport) -> Self {
+        Self {
+            html,
+            assets,
+            outline: report.outline,
+            features: report.features,
+            problems: report.problems,
+        }
+    }
+}
+
+/// `render_parts` 的返回值里除 HTML/资源外的那一份。
+#[derive(Debug, Default)]
+pub(super) struct RenderReport {
+    pub(super) outline: Vec<Heading>,
+    pub(super) features: Features,
+    pub(super) problems: Problems,
 }
 
 #[cfg(test)]

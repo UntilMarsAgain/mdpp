@@ -262,7 +262,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
             }
         }
         absent.extend(body.absent);
-        broken.add(page, &body.html);
+        broken.add(page, body.problems);
 
         let assets_prefix = assets_href(&page.key);
         let title = body.title;
@@ -294,6 +294,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
             extra_js: &extra_js,
             assets: shell::Assets::Linked(assets_prefix.clone()),
             external_script,
+            features: body.features,
         });
         project::write_file(&site_dir.join(&page.output), &document)?;
         debug!(page = %page.key, out = %page.output.display(), "一页");

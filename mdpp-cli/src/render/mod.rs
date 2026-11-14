@@ -77,8 +77,9 @@ pub fn run(options: &Render) -> Result<(), String> {
 
     for (name, text) in &sources {
         info!(name, bytes = text.len(), "渲染");
-        let html = parser.render_with(text, &context);
-        total.add(name, text, &html);
+        let rendered = parser.render_report(text, &context);
+        total.add(name, text, &rendered);
+        let html = &rendered.html;
 
         if multiple && !options.full {
             // 多个输入时每个文件一段，用注释隔开 —— 不加的话几段 HTML 拼在一起看不出哪段是哪段。
@@ -91,7 +92,7 @@ pub fn run(options: &Render) -> Result<(), String> {
         // 那一层的事
         let chunk = if options.full {
             page::document(&page::Page {
-                title: name,
+                title: rendered.title().unwrap_or(name),
                 lang: Some(DEFAULT_LANG),
                 theme: options.theme.as_deref(),
                 // 单篇没有「站点」这一说：没有站点名，于是没有顶栏也没有底栏
@@ -99,7 +100,7 @@ pub fn run(options: &Render) -> Result<(), String> {
                 // 单篇没有「站点」这一说：它不在某个站点上，于是没有 canonical
                 canonical: page::Canonical::default(),
                 favicon: None,
-                body: &html,
+                body: html,
                 // 单篇没有站点，也就没有侧边目录
                 toc: "",
                 extra_css: &extra_css,
@@ -107,9 +108,10 @@ pub fn run(options: &Render) -> Result<(), String> {
                 // 一个文件就是整个页面：样式与脚本全内联，拷走还能看
                 assets: page::Assets::Inline,
                 external_script,
+                features: rendered.features,
             })
         } else {
-            html
+            rendered.html.clone()
         };
         out.write_all(chunk.as_bytes())
             .map_err(|error| format!("写标准输出失败：{error}"))?;
@@ -201,21 +203,20 @@ impl Stats {
     /// 收一份输入的账：字节、内部链接、以及**出问题的框各有几个**。
     ///
     /// `name` 也记下来，是为了后面能在报告里**点名是哪一份**（见 `problems`）
-    fn add(&mut self, name: &str, source: &str, html: &str) {
+    fn add(&mut self, name: &str, source: &str, rendered: &mdpp::Rendered) {
         self.files += 1;
         self.bytes_in += source.len();
-        self.bytes_out += html.len();
-        // 只报**出问题的地方**：类名由 `block::dispatch` 一处写死，数法在库那边
-        // （`mdpp::count_problem_boxes`）—— 这里是 CLI，不抄第二份。
-        // 「块有几个」数不出来 —— 块各写各的 class，要数就得把名字抄一份
-        // 在这儿，而那份清单过期之后报出来的数字还是「像模像样」的，比不报更坏。
-        let (unknown, misused) = mdpp::count_problem_boxes(html);
-        if unknown > 0 || misused > 0 {
-            self.problems.push((name.to_string(), unknown, misused));
+        self.bytes_out += rendered.html.len();
+        // 计数来自库的渲染现场，不再拿 HTML 数类名：代码块或正文里写着
+        // `template--problem` 不会被误算。
+        let problems = rendered.problems;
+        if problems.unknown > 0 || problems.misused > 0 {
+            self.problems
+                .push((name.to_string(), problems.unknown, problems.misused));
         }
-        self.unknown += unknown;
-        self.misused += misused;
-        self.links += html.matches("<a class=\"wikilink").count();
+        self.unknown += problems.unknown;
+        self.misused += problems.misused;
+        self.links += rendered.html.matches("<a class=\"wikilink").count();
     }
 }
 
@@ -370,9 +371,28 @@ mod tests {
         stats.add(
             "坏掉的.md",
             "::没有这个块\n",
-            r#"<div class="template template--unknown">"#,
+            &mdpp::Rendered {
+                html: r#"<div class="template template--unknown">"#.to_string(),
+                assets: Vec::new(),
+                outline: Vec::new(),
+                features: mdpp::Features::default(),
+                problems: mdpp::Problems {
+                    unknown: 1,
+                    misused: 0,
+                },
+            },
         );
-        stats.add("好的.md", "<p>没错</p>", "<p>没错</p>");
+        stats.add(
+            "好的.md",
+            "<p>没错</p>",
+            &mdpp::Rendered {
+                html: "<p>没错</p>".to_string(),
+                assets: Vec::new(),
+                outline: Vec::new(),
+                features: mdpp::Features::default(),
+                problems: mdpp::Problems::default(),
+            },
+        );
 
         let shown = stats.to_string();
         assert!(shown.contains("2 份输入"), "{shown}");

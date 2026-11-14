@@ -52,15 +52,14 @@ impl Built {
 }
 
 impl Broken {
-    pub(super) fn add(&mut self, page: &crate::project::site::Page, html: &str) {
-        // 类名由 `block::dispatch` 一处写死，数法在库那边（`mdpp::count_problem_boxes`）——
-        // 这里是 CLI，不抄第二份
-        let (unknown, misused) = mdpp::count_problem_boxes(html);
-        if unknown == 0 && misused == 0 {
+    pub(super) fn add(&mut self, page: &crate::project::site::Page, problems: mdpp::Problems) {
+        // 计数发生在库的渲染现场：围栏代码或正文里恰好写着问题框的类名不算，
+        // 嵌套渲染里的问题也不会漏
+        if problems.unknown == 0 && problems.misused == 0 {
             return;
         }
-        self.unknown += unknown;
-        self.misused += misused;
+        self.unknown += problems.unknown;
+        self.misused += problems.misused;
         self.pages.push(page.key.clone());
     }
 }

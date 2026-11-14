@@ -24,6 +24,7 @@ use std::sync::atomic::AtomicUsize;
 use super::render_context::RenderContext;
 use crate::block::registry::table::BlockRegistry;
 use crate::block::template::TemplateVars;
+use crate::engine::{Features, Problems};
 use crate::runtime::asset::Sink;
 
 /// 「在渲染途中再渲染一段 markdown」的能力。
@@ -62,6 +63,10 @@ pub(crate) struct RenderEnv {
     /// 在渲染途中再调 `render_nested` 的层数。它与 `depth` 分开：
     /// `depth` 数模板展开，`render_depth` 数 `::demo` / `<markdown>` 这类渲染期嵌套。
     pub(crate) render_depth: usize,
+    /// 这一趟实际用到的前端资源（代码高亮 / 数学 / mermaid）。
+    pub(crate) features: Features,
+    /// 这一趟渲染出来的问题框计数。
+    pub(crate) problems: Problems,
 }
 
 impl Default for RenderEnv {
@@ -76,8 +81,20 @@ impl Default for RenderEnv {
             depth: 0,
             template_vars: None,
             render_depth: 0,
+            features: Features::default(),
+            problems: Problems::default(),
         }
     }
+}
+
+/// 记一个「没注册的块」问题框。
+pub(crate) fn unknown_problem() {
+    let _ = with(|env| env.problems.unknown += 1);
+}
+
+/// 记一个「块用法不对」问题框。
+pub(crate) fn misused_problem() {
+    let _ = with(|env| env.problems.misused += 1);
 }
 
 thread_local! {
@@ -124,6 +141,8 @@ impl Drop for Guard {
                         previous.assets.assets.push(asset);
                     }
                 }
+                previous.features.merge(inner.features);
+                previous.problems.merge(inner.problems);
             }
             set(Some(previous));
         }
