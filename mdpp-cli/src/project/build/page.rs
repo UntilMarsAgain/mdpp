@@ -35,6 +35,50 @@ pub(super) struct PageBody {
 ///
 /// 写盘与记账留在外面串行做：这样多线程只碰解析器与只读数据，资源文件不会
 /// 被两页同时写。`Mdpp` 现在是 `Send + Sync`，一个解析器可以被所有工作线程共享。
+/// 一页的渲染上下文：站内链接解析器、模板页、模板深度。
+pub(super) fn page_context(
+    project: &Project,
+    site: &Arc<Site>,
+    templates: &Option<mdpp::block::template::TemplatePages>,
+    missing: &Arc<Mutex<Vec<Missing>>>,
+    page: &Page,
+) -> RenderContext {
+    render_context(
+        project,
+        templates,
+        Links::for_page(site.clone(), page, missing.clone()),
+    )
+}
+
+/// footer 也是按页算相对地址，但红链统一归到 `footer`，避免每页报一遍。
+pub(super) fn footer_context(
+    project: &Project,
+    site: &Arc<Site>,
+    templates: &Option<mdpp::block::template::TemplatePages>,
+    missing: &Arc<Mutex<Vec<Missing>>>,
+    page: &Page,
+) -> RenderContext {
+    render_context(
+        project,
+        templates,
+        Links::for_footer(site.clone(), page, missing.clone()),
+    )
+}
+
+fn render_context(
+    project: &Project,
+    templates: &Option<mdpp::block::template::TemplatePages>,
+    links: Links,
+) -> RenderContext {
+    let mut context = RenderContext::new()
+        .with_max_template_depth(project.config.max_template_depth)
+        .with_links(Arc::new(links));
+    if let Some(templates) = templates {
+        context = context.with_templates(templates.clone());
+    }
+    context
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn render_page(
     project: &Project,
@@ -48,16 +92,7 @@ pub(super) fn render_page(
     assets_prefix: &str,
 ) -> Result<PageBody, String> {
     let source = crate::support::limits::read_text(&page.source)?;
-    let mut context = RenderContext::new()
-        .with_max_template_depth(project.config.max_template_depth)
-        .with_links(Arc::new(Links::for_page(
-            site.clone(),
-            page,
-            missing.clone(),
-        )));
-    if let Some(templates) = templates {
-        context = context.with_templates(templates.clone());
-    }
+    let context = page_context(project, site, templates, missing, page);
 
     // 站点模式：::css / ::js / ::html js 输出链接，资源随 rendered.assets 返回
     let rendered = parser.render_with_assets(&source, &context, assets_prefix);
@@ -129,14 +164,25 @@ pub(super) fn chrome(
     parser: &Mdpp,
     nav: &[NavLink],
     logo: &str,
-) -> page::Chrome {
+    context: &RenderContext,
+) -> Result<page::Chrome, String> {
     let footer_raw = project.config.footer.clone().unwrap_or_default();
     let footer_html = if footer_raw.trim().is_empty() {
         None
     } else {
-        Some(parser.render(&footer_raw))
+        let rendered = parser.render_report(&footer_raw, context);
+        if rendered.problems.unknown + rendered.problems.misused > 0 {
+            return Err("footer 里有块问题；footer 只支持行内内容".to_string());
+        }
+        if !rendered.styles.is_empty() || !rendered.scripts.is_empty() {
+            return Err("footer 只支持行内内容，不能输出样式或脚本".to_string());
+        }
+        Some(
+            mdpp::check_inline(&rendered.html)
+                .map_err(|why| format!("footer 只支持行内内容：{why}"))?,
+        )
     };
-    page::Chrome {
+    Ok(page::Chrome {
         name: project.config.site_name.clone(),
         logo: logo.to_string(),
         description: project.config.site_description.clone().unwrap_or_default(),
@@ -148,7 +194,7 @@ pub(super) fn chrome(
         // 缺失的情况，直接解析即可
         theme_color: crate::support::color::Color::parse(&project.config.theme_color),
         nav: nav.to_vec(),
-    }
+    })
 }
 
 /// 页面标题：正文标题优先，没有就用文件名；配置了站点名时补上后缀。

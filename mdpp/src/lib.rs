@@ -117,6 +117,14 @@ pub use assets::{
 };
 pub use block::fill::substitute_placeholders;
 pub use block::template::{TemplatePage, TemplateSource};
+/// 检查一段已经渲染好的 HTML 能否放进 Markdown 行内位置。
+///
+/// 成功时返回可直接写入行内的 HTML：一个裸 `<p>…</p>` 会剥掉外壳，
+/// 纯行内内容原样返回，空内容返回空串。失败时返回面向作者的原因。
+pub fn check_inline(html: &str) -> Result<String, String> {
+    block::typecheck::check_inline(html)
+}
+
 pub use context::RenderContext;
 pub use engine::{Features, Heading, Mdpp, MdppBuilder, Problems, Rendered};
 pub use link::{LinkResolver, LinkTarget, NodeRenderer, ResolvedLink};

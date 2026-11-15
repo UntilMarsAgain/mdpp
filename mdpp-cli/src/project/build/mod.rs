@@ -47,7 +47,7 @@ use tracing::debug;
 use clean::{check_clean, clean, real_path, staging_dir, swap_into_place};
 use files::{copy_override, favicon, logo};
 use nav::{nav_for, resolve_nav};
-use page::{PageBody, chrome, effective_jobs, generated_body, render_page};
+use page::{PageBody, chrome, effective_jobs, footer_context, generated_body, render_page};
 use report::Broken;
 
 pub fn run(options: &Build) -> Result<(), String> {
@@ -285,11 +285,12 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
             .as_deref()
             .map(|name| format!("{assets_prefix}/{name}"))
             .unwrap_or_default();
+        let context = footer_context(project, &site, &templates, &missing, page);
         let document = shell::document(&shell::Page {
             title: &title,
             lang: project.config.lang.as_deref(),
             theme: Some(project.config.theme.as_str()),
-            chrome: chrome(project, &parser, &nav, &logo),
+            chrome: chrome(project, &parser, &nav, &logo, &context)?,
             canonical: shell::Canonical {
                 root: project.config.base_url.clone(),
                 path: page.url_path(),

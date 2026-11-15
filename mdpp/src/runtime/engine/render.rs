@@ -242,16 +242,15 @@ fn text_content(root: &Handle) -> String {
 fn features_of(root: &Node) -> Features {
     let mut features = Features::default();
     root.walk(|node, _| {
-        if let Some(fence) = node.cast::<CodeFence>() {
-            if !fence
+        if let Some(fence) = node.cast::<CodeFence>()
+            && !fence
                 .info
                 .split_whitespace()
                 .next()
                 .unwrap_or("")
                 .is_empty()
-            {
-                features.highlight = true;
-            }
+        {
+            features.highlight = true;
         }
         if node.is::<Math>() {
             features.math = true;

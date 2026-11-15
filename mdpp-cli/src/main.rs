@@ -56,12 +56,12 @@ fn main() -> ExitCode {
     //
     // **只在这里切一次**，且切在解析之后、分发之前：各命令自己不碰进程当前目录 ——
     // 测试是并发的，函数里动它会互相串味（这条规矩见 `new_page::create` 的文档）
-    if let Some(dir) = &cli.workdir {
-        if let Err(error) = std::env::set_current_dir(dir) {
-            // 1（跑起来了但失败），不是 2：参数是合法的，是那个目录进不去
-            error!("{NAME}: -C 进不去 {}：{error}", dir.display());
-            return ExitCode::FAILURE;
-        }
+    if let Some(dir) = &cli.workdir
+        && let Err(error) = std::env::set_current_dir(dir)
+    {
+        // 1（跑起来了但失败），不是 2：参数是合法的，是那个目录进不去
+        error!("{NAME}: -C 进不去 {}：{error}", dir.display());
+        return ExitCode::FAILURE;
     }
 
     // 每个子命令自己决定「成功」是什么形状，返回一句**给人看的**失败原因

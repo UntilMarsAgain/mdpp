@@ -84,14 +84,15 @@ fn encode_line_targets(line: &str) -> String {
         }
 
         // `](` —— 图片与链接的目标都从这里开始
-        if chars[index] == ']' && chars.get(index + 1) == Some(&'(') {
-            if let Some((end, target)) = encode_target(&chars, index + 2) {
-                out.push_str("](");
-                out.push_str(&target);
-                out.push(')');
-                index = end + 1;
-                continue;
-            }
+        if chars[index] == ']'
+            && chars.get(index + 1) == Some(&'(')
+            && let Some((end, target)) = encode_target(&chars, index + 2)
+        {
+            out.push_str("](");
+            out.push_str(&target);
+            out.push(')');
+            index = end + 1;
+            continue;
         }
 
         out.push(chars[index]);

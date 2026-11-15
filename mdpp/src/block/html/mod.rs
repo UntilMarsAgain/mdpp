@@ -173,15 +173,15 @@ fn add_noopener(html: &str) -> String {
 
     let mut stack = vec![dom.document.clone()];
     while let Some(node) = stack.pop() {
-        if let NodeData::Element { name, attrs, .. } = &node.data {
-            if name.local.as_ref() == "a" {
-                let mut attrs = attrs.borrow_mut();
-                let blank = attrs
-                    .iter()
-                    .any(|attr| attr.name.local.as_ref() == "target" && &*attr.value == "_blank");
-                if blank {
-                    adjust_rel(&mut attrs);
-                }
+        if let NodeData::Element { name, attrs, .. } = &node.data
+            && name.local.as_ref() == "a"
+        {
+            let mut attrs = attrs.borrow_mut();
+            let blank = attrs
+                .iter()
+                .any(|attr| attr.name.local.as_ref() == "target" && &*attr.value == "_blank");
+            if blank {
+                adjust_rel(&mut attrs);
             }
         }
         for child in node.children.borrow().iter() {
@@ -235,10 +235,10 @@ fn adjust_rel(attrs: &mut Vec<Attribute>) {
 fn body_of(document: &Handle) -> Option<Handle> {
     let mut stack = vec![document.clone()];
     while let Some(node) = stack.pop() {
-        if let NodeData::Element { name, .. } = &node.data {
-            if name.local.as_ref() == "body" {
-                return Some(node);
-            }
+        if let NodeData::Element { name, .. } = &node.data
+            && name.local.as_ref() == "body"
+        {
+            return Some(node);
         }
         for child in node.children.borrow().iter() {
             stack.push(child.clone());

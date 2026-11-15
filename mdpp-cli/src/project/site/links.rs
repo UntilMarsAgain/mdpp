@@ -12,6 +12,8 @@ pub struct Links {
     site: Arc<Site>,
     /// 当前页的键（算相对地址用）
     from: String,
+    /// 红链报告里的归属：正文用页面键，footer 用固定的 `footer`
+    report_page: String,
     /// 全站的红链表
     missing: Arc<Mutex<Vec<Missing>>>,
 }
@@ -23,6 +25,18 @@ impl Links {
         Links {
             site,
             from: page.key.clone(),
+            report_page: page.key.clone(),
+            missing,
+        }
+    }
+
+    /// footer 在每一页都渲染，但红链只在报告里记一条，归属写 `footer`。
+    /// `from` 仍取当前页 —— 链接要按这一页的深度算相对地址。
+    pub fn for_footer(site: Arc<Site>, page: &Page, missing: Arc<Mutex<Vec<Missing>>>) -> Links {
+        Links {
+            site,
+            from: page.key.clone(),
+            report_page: "footer".to_string(),
             missing,
         }
     }
@@ -32,10 +46,10 @@ impl Links {
         if let Ok(mut list) = self.missing.lock() {
             let already = list
                 .iter()
-                .any(|one| one.page == self.from && one.target == target.trim());
+                .any(|one| one.page == self.report_page && one.target == target.trim());
             if !already {
                 list.push(Missing {
-                    page: self.from.clone(),
+                    page: self.report_page.clone(),
                     target: target.trim().to_string(),
                     why,
                 });

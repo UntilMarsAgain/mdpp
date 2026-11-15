@@ -113,10 +113,10 @@ pub(super) fn check_clean(
             ));
         }
     }
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-        if real_path(&home) == site_dir {
-            return Err("site_dir 指向家目录，拒绝替换".to_string());
-        }
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from)
+        && real_path(&home) == site_dir
+    {
+        return Err("site_dir 指向家目录，拒绝替换".to_string());
     }
     if real_path(&std::env::temp_dir()) == site_dir {
         return Err("site_dir 指向系统临时目录本身，拒绝替换".to_string());

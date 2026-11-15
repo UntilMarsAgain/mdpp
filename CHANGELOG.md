@@ -179,6 +179,11 @@
 - 所有 mdpp 自有的 DOM 协议属性改为 `data-mdpp-*`（如 `data-mdpp-state`、
   `data-mdpp-label`、`data-mdpp-tex`），`::element` 只放行这一前缀，不再靠裸
   `data-*` 约定。
+- `::image` / `::video` / `::audio` 的 `align=` 改为 `mode=`；图片新增
+  `mode=inline`，输出不带 `figure` 的行内 `<img>`，高度用 `1em` 跟随所在行字号。
+- `::code` 增加 `source=` / `source-text=`、`lines=`、`start=`、`highlight=` 与
+  `fold=`：来源链接和折叠由后端输出语义结构，行号与强调色带由前端拆行后绘制；
+  `start=` 自动开行号，`highlight=` 按显示行号校验。
 
 - 站点模式自动生成当前页的侧边目录：从渲染后的 `h2` / `h3` 取锚点，宽屏常驻，
   窄于 `100rem` 时收成正文上方的 `<details>`；无标题页面不出空目录，单文件模式

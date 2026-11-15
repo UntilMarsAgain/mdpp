@@ -1179,3 +1179,121 @@ fn a_symlinked_config_file_is_refused() {
     let message = stderr_of(&out);
     assert!(message.contains("符号链接"), "{message}");
 }
+
+/// 改 `mdpp.toml` 里的 footer，其他内容原样保留
+fn set_footer(root: &Path, footer: &str) {
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    let escaped = footer
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n");
+    let mut changed = String::new();
+    for line in text.lines() {
+        if line.starts_with("footer = ") {
+            changed.push_str(&format!("footer = \"{escaped}\""));
+        } else {
+            changed.push_str(line);
+        }
+        changed.push('\n');
+    }
+    std::fs::write(config, changed).expect("改得下");
+}
+
+/// footer 允许行内 Markdown，渲染结果不能再包一层 `<p>`
+#[test]
+fn footer_markdown_is_rendered_inline() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    set_footer(&root, "底栏 **粗体**");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "build 失败：{}", stderr_of(&out));
+    let html = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(
+        html.contains("mdpp-foot__text\">底栏 <strong>粗体</strong></span>"),
+        "footer 没有行内渲染：{html}"
+    );
+    assert!(
+        !html.contains("mdpp-foot__text\"><p>"),
+        "footer 里不该再套段落：{html}"
+    );
+}
+
+/// footer 的关键约束：只接受行内结果，块内容要拒绝
+#[test]
+fn a_block_footer_is_refused() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    set_footer(&root, "底栏\n::element tag=div\n  块");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(!out.status.success(), "该拒绝：{out:?}");
+    let message = stderr_of(&out);
+    assert!(message.contains("footer 只支持行内内容"), "{message}");
+}
+
+/// footer 里的站内链接也要走项目解析器，并按当前页的深度算地址
+#[test]
+fn footer_internal_links_use_the_page_resolver() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    let new = mdpp(&root, &["new", "指南/安装"]);
+    assert!(new.status.success(), "new 失败：{}", stderr_of(&new));
+    set_footer(&root, "去 [[index]]");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "build 失败：{}", stderr_of(&out));
+    let home = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(
+        home.contains(
+            "mdpp-foot__text\">去 <a class=\"mdpp-wikilink\" data-mdpp-doc=\"index\" href=\"./\""
+        ),
+        "首页 footer 链接不对：{home}"
+    );
+    let nested = std::fs::read_to_string(root.join("build/指南/安装/index.html")).expect("读得动");
+    assert!(
+        nested.contains("mdpp-foot__text\">去 <a class=\"mdpp-wikilink\" data-mdpp-doc=\"index\" href=\"../../\""),
+        "嵌套页 footer 链接不对：{nested}"
+    );
+    assert!(!home.contains("mdpp-wikilink--missing"), "{home}");
+}
+
+/// footer 里认不出的站内链接也要进构建报告
+#[test]
+fn a_missing_footer_link_is_reported() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    set_footer(&root, "去 [[不存在的页面]]");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(
+        out.status.success(),
+        "普通 build 不该因红链失败：{}",
+        stderr_of(&out)
+    );
+    let message = stderr_of(&out);
+    assert!(message.contains("红链 1 条"), "{message}");
+    assert!(message.contains("footer → [[不存在的页面]]"), "{message}");
+}
+
+/// footer 的解析必须带上项目模板：行内模板也可能来自 templates/
+#[test]
+fn footer_can_use_a_project_template() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    std::fs::write(
+        root.join("templates/mark.mdpp"),
+        "::element tag=span class=mdpp-foot-mark\n  来自模板\n",
+    )
+    .expect("写模板");
+    set_footer(&root, "::mark type=inline");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "build 失败：{}", stderr_of(&out));
+    let home = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(home.contains("mdpp-foot-mark"), "{home}");
+    assert!(home.contains("来自模板"), "{home}");
+    let footer = home.split_once("mdpp-foot__text").expect("有 footer").1;
+    assert!(!footer.contains("template--unknown"), "{footer}");
+}

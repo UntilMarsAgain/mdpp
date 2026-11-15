@@ -32,7 +32,7 @@ pub mod scanner;
 mod section;
 pub mod stdlib;
 pub mod template;
-mod typecheck;
+pub(crate) mod typecheck;
 
 use markdown_it::MarkdownIt;
 

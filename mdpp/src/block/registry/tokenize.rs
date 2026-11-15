@@ -62,14 +62,14 @@ pub(super) fn pairs(tokens: &[Token]) -> Vec<(String, String)> {
         }
 
         // `key =value` / `key ="value"`：等号贴在值上，键是前一个 token。
-        if token.unquoted_equals == 0 {
-            if let Some(next) = tokens.get(index + 1) {
-                if next.text.len() > 1 && next.text.starts_with('=') {
-                    out.push((token.text.clone(), next.text[1..].to_string()));
-                    index += 2;
-                    continue;
-                }
-            }
+        if token.unquoted_equals == 0
+            && let Some(next) = tokens.get(index + 1)
+            && next.text.len() > 1
+            && next.text.starts_with('=')
+        {
+            out.push((token.text.clone(), next.text[1..].to_string()));
+            index += 2;
+            continue;
         }
 
         // 落单的 `=`：没有键可配，它自己就是个开关式参数

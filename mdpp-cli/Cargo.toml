@@ -7,7 +7,7 @@
 name = "mdpp-cli"
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT"
 description = "把 Markdown++ 渲染成 HTML 的命令行工具"
 repository = "https://github.com/UntilMarsAgain/mdpp"
