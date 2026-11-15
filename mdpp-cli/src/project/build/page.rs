@@ -8,6 +8,7 @@ use crate::project::site::{Links, Missing, Page, Site};
 use crate::render::page;
 use crate::render::page::NavLink;
 use mdpp::{Mdpp, RenderContext};
+use tracing::debug;
 
 use super::nav::toc_body;
 use super::toc;
@@ -69,6 +70,12 @@ pub(super) fn render_page(
             assets_prefix,
         },
     )?;
+    debug!(
+        page = %page.key,
+        wanted = scan.wanted.len(),
+        missing = scan.missing.len(),
+        "资源扫描"
+    );
     Ok(PageBody {
         title: document_title(project, rendered.title(), page.stem()),
         sidebar: toc::sidebar(&rendered.outline),

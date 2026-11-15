@@ -58,6 +58,7 @@ pub fn run(options: &Render) -> Result<(), String> {
     debug!(
         full = options.full,
         theme = ?options.theme,
+        output = ?options.output,
         "配置就绪"
     );
 
@@ -76,7 +77,7 @@ pub fn run(options: &Render) -> Result<(), String> {
     let multiple = options.inputs.len() > 1;
 
     for (name, text) in &sources {
-        info!(name, bytes = text.len(), "渲染");
+        debug!(name, bytes = text.len(), "渲染");
         let rendered = parser.render_report(text, &context);
         total.add(name, text, &rendered);
         let html = &rendered.html;
@@ -130,7 +131,7 @@ pub fn run(options: &Render) -> Result<(), String> {
     out.flush()
         .map_err(|error| format!("写标准输出失败：{error}"))?;
     if options.stats {
-        eprint!("{total}");
+        info!("{}", total.to_string().trim_end());
     }
     Ok(())
 }

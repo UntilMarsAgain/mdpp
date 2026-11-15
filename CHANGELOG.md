@@ -256,6 +256,13 @@
   `%20`，探针也不必再单独维护一份「不认识 `::`」的解析器。
 - `::css` 允许 `@import` 与 `url()` 外部资源，只继续剥离 `</style`（此前把
   `@import` 整条删掉，且 CSS 转义还能绕过）。
+- 命令行输出统一走 `tracing`：默认装 INFO 级订阅器写到标准错误，`--debug` 只把
+  `mdpp` / `mdpp_cli` 放宽到 DEBUG（依赖的 html5ever 逐 token 日志被过滤）；
+  `build` 报告、`init` / `new` / `serve` 的进度与错误提示不再手写
+  `println!` / `eprintln!`，改用 `info!` / `warn!` / `error!`。
+- 补齐排查用的 debug 日志：命令与选项、配置校验、项目载入、构建目录与并发数、
+  每页资源扫描、渲染尺寸、解析器块表；`--debug` 下能顺着「配置 → 扫页 → 渲染 →
+  资源 → 落盘」看到一条链路，默认 INFO 下只剩进度与问题报告。
 - `render_parts` 与 `render_node_parts` 共用 `finish`；`RenderEnv` 三处构造统一
   用 `..RenderEnv::default()`；内部 `Emission` 枚举删除，`emit` 直接返回公开的
   `AssetUse`；`::variants` 的开关解析与 `fill::flag` 共用 `fill::is_on`。

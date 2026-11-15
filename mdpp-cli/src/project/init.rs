@@ -50,10 +50,8 @@ pub fn run(options: &Init) -> Result<(), String> {
     substitute_site_name(&root, &name)?;
     ensure_dir(&root.join(SITE_DIR_NAME))?;
 
-    info!(dir = shown(&root), site = %name, "站点骨架");
-    eprintln!("建了 {}", shown(&root));
-    eprintln!("站点名：{name}");
-    eprintln!("下一步：cd 到那里，`mdpp new page`，然后 `mdpp build`");
+    info!("建了 {}（站点名：{name}）", shown(&root));
+    info!("下一步：cd 到那里，`mdpp new page`，然后 `mdpp build`");
     Ok(())
 }
 

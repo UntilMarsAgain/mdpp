@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use tracing::{info, warn};
+
 use crate::project::shown;
 
 #[derive(Debug, Default, Clone)]
@@ -68,52 +70,51 @@ impl Broken {
 ///
 /// 只读 [`Built`]：它已经装好了要说的每一句，`serve` 重出时拿的是同一份。
 pub fn report(built: &Built) {
-    eprintln!("站点建在 {}（{}）", shown(&built.site_dir), built.summary());
+    info!("站点建在 {}（{}）", shown(&built.site_dir), built.summary());
     if built.pages == 0 {
-        eprintln!("正文目录里还没有页面 —— `mdpp new 甲` 建一页试试");
+        warn!("正文目录里还没有页面 —— `mdpp new 甲` 建一页试试");
     }
 
     if !built.links.is_empty() {
-        eprintln!("红链 {} 条（站内没有这样的页）：", built.links.len());
-        for one in &built.links {
-            eprintln!("  {one}");
-        }
+        warn!(
+            "红链 {} 条（站内没有这样的页）：\n  {}",
+            built.links.len(),
+            built.links.join("\n  ")
+        );
     }
 
     if !built.broken.is_empty() {
-        eprintln!(
-            "块有问题 {} 个（名字没注册 {} 个、参数用错 {} 个），在这些页：",
+        warn!(
+            "块有问题 {} 个（名字没注册 {} 个、参数用错 {} 个），在这些页：\n  {}",
             built.broken_unknown + built.broken_misused,
             built.broken_unknown,
-            built.broken_misused
+            built.broken_misused,
+            built.broken.join("\n  ")
         );
-        for key in &built.broken {
-            eprintln!("  {key}");
-        }
     }
 
     if !built.absent.is_empty() {
-        eprintln!("正文引了这些文件，而 pages/ 里没有：");
-        for one in &built.absent {
-            eprintln!("  {one}");
-        }
+        warn!(
+            "正文引了这些文件，而 pages/ 里没有：\n  {}",
+            built.absent.join("\n  ")
+        );
     }
 
     if !built.duplicates.is_empty() {
-        eprintln!(
+        warn!(
             "这几页撞了同一个键，只渲染了先排到的那一份：{}",
             built.duplicates.join("、")
         );
     }
 
     if !built.idle.is_empty() {
-        eprintln!(
+        info!(
             "pages/ 下这些文件没被任何一页引用，没有进站点：{}",
             built.idle.join("、")
         );
     }
 
     if !built.has_problems() {
-        eprintln!("没有红链，也没有块问题。");
+        info!("没有红链，也没有块问题。");
     }
 }

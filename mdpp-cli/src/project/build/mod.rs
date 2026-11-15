@@ -42,7 +42,7 @@ use crate::render::page as shell;
 use crate::render::page::ExternalScript;
 
 use mdpp::Mdpp;
-use tracing::{debug, info};
+use tracing::debug;
 
 use clean::{check_clean, clean, real_path, staging_dir, swap_into_place};
 use files::{copy_override, favicon, logo};
@@ -60,6 +60,13 @@ pub fn run(options: &Build) -> Result<(), String> {
     // 同级的临时目录，全部成功了才换名；失败时旧站点一个字都不动。
     check_clean(&project, &site_dir, options.allow_outside)?;
     let staging = staging_dir(&site_dir)?;
+    debug!(
+        root = %project.root.display(),
+        site = %site_dir.display(),
+        staging = %staging.display(),
+        jobs = options.jobs,
+        "准备构建"
+    );
     let mut built = match build_into(&project, options, &staging) {
         Ok(built) => built,
         Err(error) => {
@@ -148,7 +155,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
     // 资源从二进制里拷到产物里：页面指的是 `assets/mdpp.css`，那些字节得真的在那儿。
     // 每个页面都内联一遍的话，几十个页面就是几十份拷贝
     let assets = shell::copy_assets(site_dir)?;
-    info!(assets, "资源已拷进产物");
+    debug!(assets, "资源已拷进产物");
 
     // 标签页上那个图标：也是一页资源，一样落在 `assets/` 里。
     // 页面上的地址按各自的深度加前缀，所以这里存的是**相对站点根**的那一份
@@ -318,7 +325,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
         .unwrap_or_default();
     // 并行渲染时 `missing` 的入账顺序取决于线程；报告要可复现就按字符串排
     links.sort();
-    info!(
+    debug!(
         pages = site.pages().len(),
         links = links.len(),
         resources = copied.len(),
@@ -357,7 +364,7 @@ fn templates_of(project: &Project) -> Result<Option<mdpp::block::template::Templ
     if dir.is_dir() {
         Ok(Some(template_pages(&dir)?))
     } else {
-        info!(dir = %dir.display(), "没有模板页目录，使用库自带标准库");
+        debug!(dir = %dir.display(), "没有模板页目录，使用库自带标准库");
         Ok(None)
     }
 }

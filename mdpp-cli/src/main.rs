@@ -25,6 +25,7 @@ use support::telemetry::install;
 use std::process::ExitCode;
 
 use clap::Parser;
+use tracing::{debug, error};
 
 fn main() -> ExitCode {
     // clap 自己处理 `--help` / `--version` / 用法错误（后者走退出码 2，
@@ -45,6 +46,10 @@ fn main() -> ExitCode {
         }
     };
 
+    // 订阅器在解析之后才装：否则连「这组参数是不是错的」都还没定，就已经打了一堆日志
+    install(cli.debug);
+    debug!(command = ?cli.command, "命令");
+
     // `-C, --dir`：先把进程站到那儿 —— 从这一刻起**一切相对路径**（往上找 mdpp.toml
     // 的起点、`render` 的输入与附件、`init` 不给目录时的「当前目录」）都从它算，
     // 于是下面每个子命令一行都不用改。
@@ -54,13 +59,10 @@ fn main() -> ExitCode {
     if let Some(dir) = &cli.workdir {
         if let Err(error) = std::env::set_current_dir(dir) {
             // 1（跑起来了但失败），不是 2：参数是合法的，是那个目录进不去
-            eprintln!("{NAME}: -C 进不去 {}：{error}", dir.display());
+            error!("{NAME}: -C 进不去 {}：{error}", dir.display());
             return ExitCode::FAILURE;
         }
     }
-
-    // 订阅器在解析之后才装：否则连「这组参数是不是错的」都还没定，就已经打了一堆日志
-    install(cli.debug);
 
     // 每个子命令自己决定「成功」是什么形状，返回一句**给人看的**失败原因
     let outcome = match &cli.command {
@@ -74,7 +76,7 @@ fn main() -> ExitCode {
     match outcome {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
-            eprintln!("{NAME}: {message}");
+            error!("{NAME}: {message}");
             ExitCode::FAILURE
         }
     }

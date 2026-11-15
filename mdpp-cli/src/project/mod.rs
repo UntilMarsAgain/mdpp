@@ -24,6 +24,7 @@ use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
 
 use include_dir::{Dir, include_dir};
+use tracing::debug;
 
 pub use config::Config;
 
@@ -81,6 +82,12 @@ impl Project {
             .canonicalize()
             .map_err(|error| format!("找不着项目目录 {}：{error}", root.display()))?;
         let config = Config::load(&root)?;
+        debug!(
+            root = %root.display(),
+            site = %config.site_name,
+            pages = %config.pages_dir.display(),
+            "项目已载入"
+        );
         Ok(Project { root, config })
     }
 

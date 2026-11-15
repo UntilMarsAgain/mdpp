@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use crate::support::url::encode_href;
 
-use tracing::info;
+use tracing::debug;
 
 mod links;
 mod paths;
@@ -130,10 +130,10 @@ impl Site {
             site.pages.push(page);
         }
 
-        info!(pages = site.pages.len(), "扫到的页面");
+        debug!(pages = site.pages.len(), "扫到的页面");
         for duplicate in &site.duplicates {
             // warn 而不是 debug：两份同名页时后者永远不会被渲染，作者得知道
-            tracing::warn!(page = %duplicate, "两页撞了同一个键，只渲染了先排到的那一页");
+            tracing::debug!(page = %duplicate, "两页撞了同一个键，只渲染了先排到的那一页");
         }
         Ok(site)
     }

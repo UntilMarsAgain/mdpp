@@ -16,6 +16,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use tracing::debug;
 
 // 只**读** `mdpp.toml`，从不往回写（`mdpp init` 拷的是骨架目录，不是序列化一份配置）
 use serde::Deserialize;
@@ -224,6 +225,7 @@ impl Config {
         config.normalize();
         config.check()?;
         config.check_paths(root)?;
+        debug!(path = %path.display(), site = %config.site_name, "配置已校验");
         Ok(config)
     }
 

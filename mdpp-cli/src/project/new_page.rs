@@ -66,9 +66,8 @@ fn create(project: &Project, options: &New) -> Result<(), String> {
             .replace("{{home}}", home),
     )?;
 
-    info!(page = %key, "新页");
-    eprintln!("建了 {}", shown(&path));
-    eprintln!("下一步：`mdpp build`");
+    info!("建了 {}", shown(&path));
+    info!("下一步：`mdpp build`");
     Ok(())
 }
 

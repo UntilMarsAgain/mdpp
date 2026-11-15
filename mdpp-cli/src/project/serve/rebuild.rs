@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::cli::options::Build;
 use crate::project::{Project, build};
 use crate::server::http;
-use tracing::{debug, info};
+use tracing::{debug, warn};
 
 /// 出一遍，并通知浏览器
 ///
@@ -34,7 +34,7 @@ pub(super) fn rebuild(
             // **挪指针在一切写完之后**：这一条之前，请求读到的还是完整的一遍旧的
             root.point_at(&into);
             http::bump(generation);
-            info!(pages = built.pages, "重出好了");
+            debug!(pages = built.pages, turn, "重出好了");
             // 再往前那一遍（两遍之前的）没人要了 —— 它可能还被人打开着，
             // 但那是个已经关掉的响应，删了不影响
             if turn >= 2 {
@@ -45,7 +45,7 @@ pub(super) fn rebuild(
             // 出不来就**留在旧页面上**：浏览器那头还连着，下一次好了会自己刷新。
             // 这一遍半截的产物**不挪指针**（那才是「留在旧页面上」的实现方式），
             // 下一遍会出在另一个目录里，它自己就没人管了
-            eprintln!("这一遍出不来：{message}");
+            warn!(turn, "这一遍出不来：{message}");
         }
     }
 }

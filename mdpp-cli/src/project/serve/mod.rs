@@ -29,7 +29,7 @@ use std::time::Duration;
 use crate::cli::options::{Build, Serve};
 use crate::project::{Project, shown};
 use crate::server::http;
-use tracing::debug;
+use tracing::{debug, info, warn};
 
 use rebuild::{rebuild, turn_dir};
 use temp::cache_dir;
@@ -50,8 +50,8 @@ pub fn run(options: &Serve) -> Result<(), String> {
         .map_err(|error| format!("{}:{} 上起不来：{error}", options.host, options.port))?;
     let address = http::address_of(&listener);
     if !matches!(options.host.as_str(), "127.0.0.1" | "localhost" | "::1") {
-        eprintln!(
-            "警告：serve 是本地预览服务器，没有认证与访问控制；\
+        warn!(
+            "serve 是本地预览服务器，没有认证与访问控制；\
              绑在 {} 上会让同一网络里的人读到整个站点",
             options.host
         );
@@ -67,8 +67,9 @@ pub fn run(options: &Serve) -> Result<(), String> {
     let for_root = root.clone();
     std::thread::spawn(move || http::serve(listener, for_root, for_server));
 
-    eprintln!("站点在 http://{address}/ （Ctrl-C 停）");
-    eprintln!("出到 {}", shown(&cache));
+    info!("站点在 http://{address}/ （Ctrl-C 停）");
+    info!("出到 {}", shown(&cache));
+    debug!(turn = 0, cache = %cache.display(), "预览开始");
 
     // 盯着的：正文、模板、配置，以及配置里指的那几个文件
     let mut watch = Watch::new(watched(&project));
@@ -95,7 +96,7 @@ pub fn run(options: &Serve) -> Result<(), String> {
         let Some(changed) = watch.diff() else {
             continue;
         };
-        eprintln!(
+        info!(
             "改动了 {} —— 重出",
             changed
                 .iter()
