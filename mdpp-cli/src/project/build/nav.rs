@@ -3,6 +3,14 @@ use crate::project::site::{INDEX_KEY, Site, href, normalize};
 use crate::render::page;
 use crate::render::page::NavLink;
 
+/// 导航栏解析：配置里那几项 + 自动补上的目录按钮，对着站点查好**相对这一页的地址**。
+///
+/// 导航是「站点级」的（各页都同一条），只有「哪一项是当前页」随页变 —— 所以这里先
+/// 解析出一份「键 → 目标页键」的清单，等到渲染某一页时再配上相对地址与当前项
+/// （见 [`nav_for`]）。
+///
+/// 解析不出来的**报错**而不是当红链报：导航是作者手写的配置，写错了该当场知道，
+/// 不该让整站的导航悄悄少一项。
 pub(super) fn resolve_nav(
     configured: &[NavEntry],
     toc_key: &str,

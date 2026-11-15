@@ -41,12 +41,7 @@ pub fn use_asset_with(
     content: impl Into<String>,
     policy: AssetPolicy,
 ) -> AssetUse {
-    match emit_with(kind, content.into(), policy) {
-        Emission::Inline(content) => AssetUse::Inline(content),
-        Emission::Linked(url) => AssetUse::Linked(url),
-        Emission::Deferred(asset) => AssetUse::Deferred(asset),
-        Emission::Duplicate => AssetUse::Duplicate,
-    }
+    emit_with(kind, content.into(), policy)
 }
 
 /// 只在第一次激活时执行的脚本。CSS 用 [`use_asset`] 即可（它总是随选项挂载）。
@@ -54,26 +49,14 @@ pub fn use_asset_once(kind: AssetKind, content: impl Into<String>) -> AssetUse {
     use_asset_with(kind, content, AssetPolicy::Once)
 }
 
-/// 一份资源在页面里该怎么出现。
-pub(crate) enum Emission {
-    /// 第一次出现，内联这段内容。
-    Inline(String),
-    /// 第一次出现，用这个链接。
-    Linked(String),
-    /// 变体作用域里的条件资源。
-    Deferred(DeferredAsset),
-    /// 已经出现过，跳过。
-    Duplicate,
-}
-
 /// 记录一份资源，返回它在页面里的样子。测试里当默认策略的便捷入口。
 #[cfg(test)]
-pub(crate) fn emit(kind: AssetKind, content: String) -> Emission {
+pub(crate) fn emit(kind: AssetKind, content: String) -> AssetUse {
     emit_with(kind, content, AssetPolicy::EveryActivation)
 }
 
 /// 记录一份资源，并决定它在页面里的样子。
-pub(crate) fn emit_with(kind: AssetKind, content: String, policy: AssetPolicy) -> Emission {
+pub(crate) fn emit_with(kind: AssetKind, content: String, policy: AssetPolicy) -> AssetUse {
     // 在变体作用域里：内容不直接进页面，而是绑到「组 + 选项」上。
     // 每个占位符都要保留 —— 即使内容相同，不同选项也需要各自的挂载点。
     if let Some(scope) = variants::current() {
@@ -85,7 +68,7 @@ pub(crate) fn emit_with(kind: AssetKind, content: String, policy: AssetPolicy) -
             kind.extension(),
             hash
         );
-        return Emission::Deferred(DeferredAsset::new(
+        return AssetUse::Deferred(DeferredAsset::new(
             scope.group,
             scope.value,
             kind,
@@ -98,15 +81,15 @@ pub(crate) fn emit_with(kind: AssetKind, content: String, policy: AssetPolicy) -
 
     // 不在渲染中（例如单独调用渲染器）：退化为内联，行为与旧版一致
     if crate::env::with(|_| ()).is_none() {
-        return Emission::Inline(content);
+        return AssetUse::Inline(content);
     }
     let (_, link, inserted) = register(kind, &content);
     if !inserted {
-        return Emission::Duplicate;
+        return AssetUse::Duplicate;
     }
     match link {
-        Some(url) => Emission::Linked(url),
-        None => Emission::Inline(content),
+        Some(url) => AssetUse::Linked(url),
+        None => AssetUse::Inline(content),
     }
 }
 
@@ -193,11 +176,11 @@ mod tests {
         assert!(!nested);
         assert!(matches!(
             emit(AssetKind::Css, "a{}".into()),
-            Emission::Inline(_)
+            AssetUse::Inline(_)
         ));
         assert!(matches!(
             emit(AssetKind::Css, "a{}".into()),
-            Emission::Duplicate
+            AssetUse::Duplicate
         ));
         let assets = take_assets();
         assert_eq!(assets.len(), 1);
@@ -211,7 +194,7 @@ mod tests {
             prefix: "assets".into(),
         });
         match emit(AssetKind::Js, "x()".into()) {
-            Emission::Linked(url) => {
+            AssetUse::Linked(url) => {
                 assert!(url.starts_with("assets/mdpp-"), "{url}");
                 assert!(url.ends_with(".js"), "{url}");
             }
@@ -248,7 +231,7 @@ mod tests {
             crate::variants::Group::new("tabs", crate::variants::Control::Choice).option("0", "甲");
         let _scope = group.enter("0");
         match emit(AssetKind::Js, "if (a < b && c > d) {}".into()) {
-            Emission::Deferred(asset) => {
+            AssetUse::Deferred(asset) => {
                 assert_eq!(asset.group(), group.id());
                 assert_eq!(asset.value(), "0");
                 assert!(asset.key().starts_with("tabs-1:0:js:"));
@@ -276,7 +259,7 @@ mod tests {
             crate::variants::Group::new("tabs", crate::variants::Control::Choice).option("0", "甲");
         let _scope = group.enter("0");
         match emit(AssetKind::Css, ".a{}".into()) {
-            Emission::Deferred(asset) => {
+            AssetUse::Deferred(asset) => {
                 let html = asset.html();
                 assert!(html.contains("data-mdpp-href=\"assets/mdpp-"), "{html}");
                 assert!(!html.contains(".a{}"), "外链模式不该把内容塞进页面：{html}");
@@ -301,7 +284,7 @@ mod tests {
             let _scope = group.enter(value);
             assert!(matches!(
                 emit(AssetKind::Css, ".same{}".into()),
-                Emission::Deferred(_)
+                AssetUse::Deferred(_)
             ));
         }
         let assets = take_assets();
@@ -317,7 +300,7 @@ mod tests {
             crate::variants::Group::new("tabs", crate::variants::Control::Choice).option("0", "甲");
         let _scope = group.enter("0");
         match emit_with(AssetKind::Js, "x()".into(), AssetPolicy::Once) {
-            Emission::Deferred(asset) => {
+            AssetUse::Deferred(asset) => {
                 assert_eq!(asset.policy(), AssetPolicy::Once);
                 assert!(asset.html().contains("data-mdpp-once=\"once\""));
             }

@@ -161,20 +161,39 @@ pub(super) fn join_blocks(head: String, rest: Vec<String>) -> String {
 /// `a</script>b`，出来的仍是 `ab`，而 `<\/script`（只插一个反斜杠）会把内容改掉。
 pub(super) fn close_tag(text: &str, tag: &str) -> String {
     let needle = format!("</{tag}");
+    // 只折 ASCII 大小写：字节数与原文一致，`lower` 里的偏移可以直接切 `text`。
     let lower = text.to_ascii_lowercase();
     let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    let mut cursor = 0usize;
-    while let Some(at) = lower[cursor..].find(&needle) {
-        let start = cursor + at;
-        let end = rest[start..]
+    let mut copied = 0usize;
+    let mut search = 0usize;
+    while let Some(at) = lower[search..].find(&needle) {
+        let start = search + at;
+        let end = text[start..]
             .find('>')
             .map(|at| start + at + 1)
             .unwrap_or(text.len());
-        out.push_str(&rest[..start]);
-        rest = &rest[end..];
-        cursor = end;
+        out.push_str(&text[copied..start]);
+        copied = end;
+        search = end;
     }
-    out.push_str(rest);
+    out.push_str(&text[copied..]);
     out
+}
+
+#[cfg(test)]
+mod close_tag_tests {
+    use super::close_tag;
+
+    #[test]
+    fn drops_every_close_tag_including_the_last() {
+        assert_eq!(close_tag("a</style>b</style>c", "style"), "abc");
+        assert_eq!(close_tag("a</STYLE>b", "style"), "ab");
+        assert_eq!(close_tag("a</style", "style"), "a");
+        assert_eq!(close_tag("a</script>b</script>", "script"), "ab");
+    }
+
+    #[test]
+    fn keeps_repeated_tags_apart() {
+        assert_eq!(close_tag("</style>x</style>y", "style"), "xy");
+    }
 }

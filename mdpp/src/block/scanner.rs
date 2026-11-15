@@ -30,8 +30,8 @@ impl BlockRule for BlockScanner {
         }
         let line = state.get_line(start);
 
-        // 头解析失败：普通块继续按段落回退；只有名字看起来是模板（或 `::if`）
-        // 时才把错误摆出来。模板调用的宽松回退正是这次要修掉的静默失败。
+        // 头解析失败：普通块继续按段落回退。名字不在注册表里时无从判断它是不是
+        // 块，也只能当段落；只有名字看起来是模板（或 `::if`）时才把错误摆出来。
         let Some((name, params)) = Block::parse_header(line) else {
             return malformed_template_block(state, start, marker_indent, line);
         };

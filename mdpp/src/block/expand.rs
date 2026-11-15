@@ -51,7 +51,7 @@ pub(crate) fn expand_user_block(
         warn!(name, limit, "块嵌套超过上限，多半是自嵌");
         return reported_node(
             "块嵌套太深",
-            "mdpp-template--problem",
+            dispatch::MISUSED_CLASS,
             name,
             &format!("块嵌套超过 {limit} 层（是不是自己嵌自己？）"),
         );
@@ -94,7 +94,7 @@ pub(crate) fn expand_user_block(
     let filled = match fill::substitute_checked(&source, &block, &body) {
         Ok(filled) => filled,
         Err(why) => {
-            return reported_node("模板参数缺失", "mdpp-template--problem", name, &why);
+            return reported_node("模板参数缺失", dispatch::MISUSED_CLASS, name, &why);
         }
     };
 
@@ -228,7 +228,7 @@ struct Reported {
 
 impl NodeValue for Reported {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
-        if self.class == "mdpp-template--problem" {
+        if self.class == dispatch::MISUSED_CLASS {
             crate::env::misused_problem();
         }
         // 外壳、徽标与「为什么」都交给分发那边写：几个框的 class 名与结构在一处
@@ -359,8 +359,16 @@ mod tests {
     /// 现在渲染期另有一条预算，输出是一个诊断框，不是崩溃。
     #[test]
     fn demo_nested_inside_a_template_cannot_recurse_forever() {
-        let html = render("套娃", TemplatePage::Ready("::demo\n  ::套娃\n".into()));
-        assert!(html.contains("嵌套渲染超过"), "{html}");
+        let mut pages = Pages::default();
+        pages.0.insert(
+            "套娃".to_string(),
+            TemplatePage::Ready("::demo\n  ::套娃\n".into()),
+        );
+        let context = RenderContext::new().with_templates(Arc::new(pages));
+        let report = Mdpp::new().render_report("::套娃\n", &context);
+        assert!(report.html.contains("嵌套渲染超过"), "{}", report.html);
+        // 渲染期的嵌套超限同样算一个误用框
+        assert!(report.problems.misused >= 1, "{:?}", report.problems);
     }
 
     /// 嵌套上限由 `RenderContext` 传：同一个模板，1 层停、2 层通

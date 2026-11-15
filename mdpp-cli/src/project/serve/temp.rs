@@ -8,11 +8,6 @@ use std::path::PathBuf;
 /// 目录名带 pid，于是几次预览（包括两个终端同时开）互不相干。也因为如此，**进程被
 /// 杀掉时它会留在临时目录里**：下一回起的是另一个 pid，撞不上；下面那段 `exists` 清的
 /// 只是 pid 号恰好被系统复用回来的旧目录。想清干净自己 `rm -rf` 也行。
-///
-/// **名字里只有 ASCII** —— `std::env::temp_dir()` 给的那条路径在某些环境（老 Windows、
-/// 非 UTF-8 的 locale、带转义的挂载点）会被系统按自己的编码重新解释，夹在中间的
-/// 非 ASCII 字符是最容易在那一步变成乱码、于是 `exists` 与 `remove_dir_all` 指不到
-/// 同一个目录的东西。这个目录名没有任何给人看的价值，`mdpp-preview-` 已经说清了它是谁的
 pub(super) fn temp_dir() -> Result<PathBuf, String> {
     let dir = std::env::temp_dir().join(preview_name());
     if dir.exists() {
@@ -20,6 +15,14 @@ pub(super) fn temp_dir() -> Result<PathBuf, String> {
             .map_err(|error| format!("清不了 {}：{error}", dir.display()))?;
     }
     crate::project::ensure_dir(&dir)?;
+    // 预览目录里是整站正文：同机其他用户不该读得到。umask 只保证「不比 0700 更宽」
+    // 的那一半，这里显式收紧。
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("设不了 {} 的权限：{error}", dir.display()))?;
+    }
     Ok(dir)
 }
 

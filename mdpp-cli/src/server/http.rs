@@ -254,7 +254,15 @@ fn walk(dir: &Path, out: &mut BTreeMap<PathBuf, (u64, std::time::SystemTime)>, d
     };
     for entry in entries.filter_map(Result::ok) {
         let path = entry.path();
-        if path.is_dir() {
+        // 不跟符号链接：`pages/a -> .` 这种环会让这里指数级地扫，也会把项目外
+        // 的文件名带进快照。`file_type()` 取的是目录项自己的类型，不跟链接。
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if kind.is_symlink() {
+            continue;
+        }
+        if kind.is_dir() {
             walk(&path, out, depth + 1);
         } else if let Some(mark) = stamp(&path) {
             out.insert(path, mark);
@@ -265,6 +273,27 @@ fn walk(dir: &Path, out: &mut BTreeMap<PathBuf, (u64, std::time::SystemTime)>, d
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 快照不跟符号链接：环与指向项目外的链接都不该被扫进来
+    #[cfg(unix)]
+    #[test]
+    fn the_watch_snapshot_does_not_follow_symlinks() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let outside = tempfile::tempdir().expect("造得出临时目录");
+        std::fs::write(dir.path().join("真文件.mdpp"), "正文").expect("写得下");
+        std::fs::write(outside.path().join("外面的.mdpp"), "外面").expect("写得下");
+        std::os::unix::fs::symlink(dir.path(), dir.path().join("环")).expect("建得出");
+        std::os::unix::fs::symlink(
+            outside.path().join("外面的.mdpp"),
+            dir.path().join("外链.mdpp"),
+        )
+        .expect("建得出");
+
+        let seen = collect(&[dir.path().to_path_buf()]);
+        assert!(seen.contains_key(&dir.path().join("真文件.mdpp")));
+        assert!(!seen.contains_key(&dir.path().join("环/真文件.mdpp")));
+        assert!(!seen.contains_key(&dir.path().join("外链.mdpp")));
+    }
 
     /// 换根换的是指针：旧目录的读者不受影响，新请求从新目录取
     #[test]

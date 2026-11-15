@@ -16,6 +16,11 @@ use crate::block::Section;
 use crate::registry::{self as reg, Block};
 use crate::telemetry::debug;
 
+/// 「没这个名字」的框的 class。`lib.rs`、嵌套渲染与 `<markdown>` 的兜底也用它。
+pub(crate) const UNKNOWN_CLASS: &str = "mdpp-template--unknown";
+/// 「名字对、用法不对」的框的 class。
+pub(crate) const MISUSED_CLASS: &str = "mdpp-template--problem";
+
 /// 一个 `::` 块节点。
 ///
 /// 里面只有头 —— 内容要么解析成子节点挂在 [`Node::children`] 上，要么就只是
@@ -47,11 +52,11 @@ pub fn render(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
 /// 参数回显成等号写法，于是从输出上就能看出解析成了什么 —— 引号去了哪儿、空格是否
 /// 保住。
 pub fn render_unknown(block: &Block, fmt: &mut dyn Renderer) {
-    crate::env::note_problem("未知块", "mdpp-template--unknown", &block.name, "");
+    crate::env::note_problem("未知块", UNKNOWN_CLASS, &block.name, "");
     fmt.cr();
     fmt.open(
         "div",
-        &[("class", "mdpp-template mdpp-template--unknown".to_string())],
+        &[("class", format!("mdpp-template {UNKNOWN_CLASS}"))],
     );
     fmt.cr();
     head(fmt, "未知块", block);
@@ -70,7 +75,7 @@ pub fn render_problem(block: &Block, fmt: &mut dyn Renderer, why: &str) {
         block,
         fmt,
         "块的用法有问题",
-        "mdpp-template--problem",
+        MISUSED_CLASS,
         why,
         |fmt| {
             body_as_code(block, fmt);
@@ -93,8 +98,10 @@ pub(crate) fn render_inline_problem(block: &Block, fmt: &mut dyn Renderer, why: 
 
 /// 问题框的公共外壳：徽标、块头、原因，再由调用方补最后一段内容。
 ///
-/// Rust 分发、用户块展开与内置诊断原语 `::problem` 都从这里出去，class 与结构
-/// 只有一份；计数由各自的入口负责，这里只管写，避免同一个框被数两次。
+/// Rust 分发、用户块展开与内置诊断原语 `::problem` 都从这里出去。嵌套渲染超限与
+/// `<markdown>` 超限那两处手边没有 [`Block`]、只能拼字符串，走 [`problem_html`]；
+/// 两处共用 [`UNKNOWN_CLASS`] / [`MISUSED_CLASS`]，改类名只改常量。
+/// 计数由各自的入口负责，这里只管写，避免同一个框被数两次。
 pub(crate) fn problem_box(
     block: &Block,
     fmt: &mut dyn Renderer,
@@ -115,6 +122,15 @@ pub(crate) fn problem_box(
     fmt.cr();
     fmt.close("div");
     fmt.cr();
+}
+
+/// 只有外壳与原因的问题框，给「手边没有 [`Block`]、又必须拼字符串」的两条路径用
+/// （嵌套渲染超限、`<markdown>` 超限）。class 与 [`problem_box`] 共用常量。
+pub(crate) fn problem_html(class: &str, why: &str) -> String {
+    format!(
+        "<div class=\"mdpp-template {class}\"><p class=\"mdpp-template__why\">{}</p></div>",
+        html_escape::encode_text(why)
+    )
 }
 
 /// 徽标 + 块名 + 解析到的参数（回显成等号写法，一眼看出解析成了什么）

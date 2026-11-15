@@ -422,12 +422,22 @@ fn normalize(path: &Path) -> PathBuf {
     out.iter().collect()
 }
 
-/// 把待拷贝的那些真的拷过去（一个目标已经拷过就跳过）
+/// 把待拷贝的那些真的拷过去（一个目标已经拷过就跳过）。
+///
+/// **产物目录里已经有的同名文件不覆盖**：那里放着 `mdpp.js`、`mdpp.css`、
+/// `site.css` 与 favicon/logo —— 都是全站每页会加载的东西。页面资源悄悄换掉
+/// 其中一份，等于让正文作者给整站塞脚本；重名就报错，由作者改名。
 pub fn copy(wanted: &[Wanted], already: &mut Vec<PathBuf>) -> std::io::Result<usize> {
     let mut copied = 0usize;
     for one in wanted {
         if already.contains(&one.to) {
             continue;
+        }
+        if one.to.exists() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!("资源与站点自带文件重名，拒绝覆盖：{}", one.to.display()),
+            ));
         }
         if let Some(parent) = one.to.parent() {
             std::fs::create_dir_all(parent)?;
@@ -485,6 +495,28 @@ mod tests {
                     to: assets.join("其他.png"),
                 },
             ]
+        );
+    }
+
+    /// 站点自带文件已经占了这个位置：拒绝覆盖，而不是悄悄换掉
+    #[test]
+    fn refuses_to_overwrite_a_site_asset() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let pages = dir.path().join("pages");
+        let assets = dir.path().join("assets");
+        std::fs::create_dir_all(&pages).expect("建得出");
+        std::fs::create_dir_all(&assets).expect("建得出");
+        std::fs::write(pages.join("mdpp.js"), "window.__PWNED__ = 1;").expect("写得下");
+        std::fs::write(assets.join("mdpp.js"), "/* 站点脚本 */").expect("写得下");
+
+        let scan = scan(r#"<img src="mdpp.js">"#, &context(&pages, &pages, &assets));
+        let mut already = Vec::new();
+        let error = copy(&scan.wanted, &mut already).expect_err("该拒绝");
+        assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+        assert!(error.to_string().contains("拒绝覆盖"), "{error}");
+        assert_eq!(
+            std::fs::read_to_string(assets.join("mdpp.js")).expect("读得动"),
+            "/* 站点脚本 */"
         );
     }
 

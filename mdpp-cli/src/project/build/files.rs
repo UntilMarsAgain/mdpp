@@ -45,6 +45,21 @@ pub(super) fn copy_asset_into(
     if let Some(parent) = to.parent() {
         ensure_dir(parent)?;
     }
+    // `assets/` 已经是站点自带文件的地盘：同名的只能是**同一份**文件（favicon 与
+    // logo 指到一处），否则就是配置里的一个文件名把 `mdpp.css` 这类东西顶掉了。
+    if to.exists() {
+        let old = std::fs::read(&to)
+            .map_err(|error| format!("读不了已有资源 {}：{error}", shown(&to)))?;
+        let new = std::fs::read(&from)
+            .map_err(|error| format!("读不了 {what} {}：{error}", shown(&from)))?;
+        if old != new {
+            return Err(format!(
+                "{what} 与站点自带资源重名，拒绝覆盖：{}",
+                shown(&to)
+            ));
+        }
+        return Ok(Some(crate::support::url::encode_href(&name)));
+    }
     std::fs::copy(&from, &to)
         .map_err(|error| format!("读不了 {what} {}：{error}", shown(&from)))?;
     // 只给**文件名**：配置里写的是项目里的相对路径，而产物里它在 `assets/` 下

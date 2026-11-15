@@ -60,15 +60,7 @@ pub fn run(options: &Build) -> Result<(), String> {
     // 同级的临时目录，全部成功了才换名；失败时旧站点一个字都不动。
     check_clean(&project, &site_dir, options.allow_outside)?;
     let staging = staging_dir(&site_dir)?;
-    let staging_options = Build {
-        // 临时目录里可能有上一次崩溃留下的半截；先清掉再出
-        clean: true,
-        strict: options.strict,
-        external_script: options.external_script.clone(),
-        jobs: options.jobs,
-        allow_outside: options.allow_outside,
-    };
-    let mut built = match build_into(&project, &staging_options, &staging) {
+    let mut built = match build_into(&project, options, &staging) {
         Ok(built) => built,
         Err(error) => {
             // 失败的那一遍不换名，临时目录也不留 —— 下一次构建从干净的地方开始
@@ -97,7 +89,13 @@ pub fn run(options: &Build) -> Result<(), String> {
     Ok(())
 }
 
-/// 出到最终目录**同级的临时目录**：同一个文件系统，`rename` 才是原子的。
+/// 出一遍站点到**给定的那个目录**。
+///
+/// 目录是参数而不是项目自己的 `site_dir`：`serve` 出到临时目录，不去动用户手
+/// 里的 `build/`（预览到一半的东西不该被当成产物）。
+///
+/// 与 [`run`] 分开也是为了能直接测：项目根是给定的，不必去动进程当前目录
+/// （测试是并发的，动它就有串味的风险）。
 pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result<Built, String> {
     let pages_dir = project.pages_dir();
     if !pages_dir.is_dir() {
@@ -112,9 +110,9 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
     let extra_css = read_all(project, &project.config.extra_css, "extra_css")?;
     let extra_js = read_all(project, &project.config.extra_js, "extra_js")?;
 
-    if options.clean {
-        clean(project, site_dir, options.allow_outside)?;
-    }
+    // 目标目录先整个清掉：临时目录里可能有上一次崩溃留下的半截，而 serve 与测试
+    // 直接出到给定目录，不清就会与这一遍的产物混在一起。
+    clean(project, site_dir, options.allow_outside)?;
     ensure_dir(site_dir)?;
 
     let parser = Mdpp::new();

@@ -72,21 +72,14 @@ fn create(project: &Project, options: &New) -> Result<(), String> {
     Ok(())
 }
 
-/// 页名校验：只能是 `pages/` 里的**相对**路径，不许往上跑，也不许是空段
+/// 页名校验：先按命令行习惯把反斜杠当分隔符，再走站点扫描那一套键校验。
+///
+/// 这里能建的页，`Site::collect` 就得收得下 —— 两边各写一份校验的话，总会有
+/// 一边先放过去、另一边再报错，而那时文件已经建出来了。
 fn check(name: &str) -> Result<String, String> {
     let trimmed = name.trim().replace('\\', "/");
-    if trimmed.is_empty() {
-        return Err("页名不能是空的".to_string());
-    }
-    let segments: Vec<&str> = trimmed.split('/').collect();
-    for segment in &segments {
-        if segment.is_empty() || *segment == "." || *segment == ".." {
-            return Err(format!(
-                "页名「{trimmed}」里有一段不是页名（空段、`.` 或 `..`）"
-            ));
-        }
-    }
-    Ok(segments.join("/"))
+    crate::project::site::check_key(&trimmed).map_err(|why| format!("页名不能用：{why}"))?;
+    Ok(trimmed)
 }
 
 /// 键 → 源文件路径：`<页名>.mdpp`
@@ -233,6 +226,20 @@ mod tests {
         }
         assert_eq!(check(" 指南/入门 ").unwrap(), "指南/入门");
         assert_eq!(check("入门").unwrap(), "入门");
+    }
+
+    /// Windows 保留名在这里就该拒 —— 等 `Site::collect` 再报时，文件已经建出来了
+    #[test]
+    fn a_reserved_page_name_is_refused_before_a_file_exists() {
+        let (_dir, project) = scaffold();
+        for name in ["CON", "指南/COM1", "NUL.txt"] {
+            let message = new(&project, name).unwrap_err();
+            assert!(message.contains("保留名"), "{name}: {message}");
+            assert!(
+                !project.pages_dir().join(name).exists(),
+                "{name} 不该留下文件"
+            );
+        }
     }
 
     /// `pages_dir` 指错了要说清是哪个目录 —— 报错里带路径，作者不用自己猜

@@ -225,7 +225,7 @@ fn render_slot(body: &str, render: &dyn Fn(&str) -> String, out: &mut String) {
     if crate::context::depth() >= MAX_NESTING {
         crate::telemetry::warn!(limit = MAX_NESTING, "<markdown> 嵌套超过上限");
         out.push_str(&stopped(&format!(
-            "&lt;markdown&gt; 套了超过 {MAX_NESTING} 层，已经停在这里（是不是自己套自己？）"
+            "<markdown> 套了超过 {MAX_NESTING} 层，已经停在这里（是不是自己套自己？）"
         )));
         return;
     }
@@ -233,10 +233,14 @@ fn render_slot(body: &str, render: &dyn Fn(&str) -> String, out: &mut String) {
     out.push_str(&html);
 }
 
-/// 「停在这里」那个框。**已经排好版的 HTML**，所以几处 `&lt;` 是直接写进去的。
+/// 「停在这里」那个框：写框与计数都在这里，原因由 [`problem_html`] 转义。
 fn stopped(why: &str) -> String {
-    crate::env::note_problem("块的用法有问题", "mdpp-template--problem", "markdown", why);
-    format!(
-        "<div class=\"mdpp-template mdpp-template--problem\"><p class=\"mdpp-template__why\">{why}</p></div>"
-    )
+    crate::env::note_problem(
+        "块的用法有问题",
+        crate::block::dispatch::MISUSED_CLASS,
+        "markdown",
+        why,
+    );
+    crate::env::misused_problem();
+    crate::block::dispatch::problem_html(crate::block::dispatch::MISUSED_CLASS, why)
 }

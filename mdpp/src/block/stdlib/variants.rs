@@ -72,10 +72,7 @@ struct Part<'a> {
 }
 
 fn on(value: &str) -> bool {
-    matches!(
-        value.trim().to_lowercase().as_str(),
-        "true" | "yes" | "on" | "1"
-    )
+    crate::block::fill::is_on(value)
 }
 
 fn parse(block: &Block) -> Result<Params<'_>, String> {

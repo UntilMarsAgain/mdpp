@@ -69,7 +69,7 @@ pub fn substitute_checked(text: &str, block: &Block, body: &str) -> Result<Strin
 /// 保留的旧行为；模板展开与内置的 `::css` / `::js` / `::html` 走
 /// [`substitute_checked`]。
 pub fn substitute(text: &str, block: &Block, body: &str) -> String {
-    // 核心扫描交给 [`substitute_placeholders`] —— 页外壳填占位符（`mdpp-cli/src/page.rs`）
+    // 核心扫描交给 [`substitute_placeholders`] —— 页外壳填占位符（`mdpp-cli/src/render/page/`）
     // 走的也是同一条路，两份各写一份的话，认不出的名字怎么处理迟早会对不上。
     // 这里的两条特例是：`body` 换成块内容、`参数` 换成参数值。
     substitute_placeholders(text, |key| {
@@ -97,7 +97,7 @@ pub fn substitute(text: &str, block: &Block, body: &str) -> String {
 /// 落回行首，靠缩进划范围的块（`::code`、分栏的每一节）当场被截断，剩下的行
 /// 漏成页面内容 —— 而页面上看起来只是「模板没生效」。
 ///
-/// 这一份是用户块（[`substitute`]）与命令行页外壳（`mdpp-cli/src/page.rs`）共用的
+/// 这一份是用户块（[`substitute`]）与命令行页外壳（`mdpp-cli/src/render/page/`）共用的
 /// 扫描核心：两处各写一遍，认不出的名字怎么处理迟早会对不上，而那是静悄悄的。
 pub fn substitute_placeholders(text: &str, lookup: impl Fn(&str) -> Option<String>) -> String {
     let mut out = String::with_capacity(text.len());
@@ -248,9 +248,20 @@ pub fn source_of(block: &Block) -> Result<String, String> {
 /// 要让开关式的参数表达「关」，写它专有的关值（比如 `rounded=off`），
 /// 那由各个块自己说。
 pub fn flag(block: &Block, key: &str) -> bool {
-    block.params.iter().any(|(name, value)| {
-        name == key && matches!(value.to_lowercase().as_str(), "true" | "yes" | "on" | "1")
-    })
+    block
+        .params
+        .iter()
+        .any(|(name, value)| name == key && is_on(value))
+}
+
+/// 开关值：`true` / `yes` / `on` / `1`（去空白、只折 ASCII 大小写）。
+///
+/// [`flag`] 与 `::variants` 的开关参数共用这一份判断。
+pub(crate) fn is_on(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "true" | "yes" | "on" | "1"
+    )
 }
 
 /// `js` 参数是否显式打开了（`js` 或 `js=true`）

@@ -10,12 +10,15 @@
 //    [`block::template::TemplateSource`]）。库里每个「需要知道外部」的地方都是一个
 //    trait 方法，没有一个是全局函数。
 //
-//    那两个 trait 上**一个实现都不带**：给一个现成的实现（一张 `HashMap`、一个文件
-//    目录）就等于把「东西存在哪」定成默认答案。要找现成的例子看 `mdpp-cli` —— 它那
-//    两份实现各只有十几行。
+//    两个 trait 都由调用方实现。库只自带两样现成东西：标准库模板源
+//    （`stdlib::pages`）与把调用方来源叠在它上面的 `LayeredTemplates`；链接解析器
+//    一个都不带 —— 「页在哪」没有默认答案。要找完整的例子看 `mdpp-cli`，它那两份
+//    实现各只有十几行。
 //
-//    同一条道理延伸到**呈现**：本库不带样式表、不带脚本、不套整页，只给一段 HTML
-//    片段。官方那套 CSS/JS 在 `mdpp-cli/assets/`（同一个 MIT 许可，可自取）。
+//    同一条道理延伸到**呈现**：本库不套整页外壳，只给一段 HTML 片段。不过要留意，
+//    标准库模板里写着 `::css`，[`Mdpp::render`] 会把这些样式内联在片段开头 ——
+//    要完全干净的 HTML 用 [`Mdpp::render_report`]。官方整套 CSS/JS 在
+//    `mdpp-cli/assets/`（同一个 MIT 许可，可自取）。
 // 2. **要能扩展，且扩展不 fork。** `::` 语法由一张注册表驱动（[`registry`]），注册表
 //    是**普通数据**：外部构造自己那份，灌进 [`MdppBuilder::registry`] 即可。
 // 3. **渲染状态是每次调用各自一份。** 理由写在 [`context`]。
@@ -122,17 +125,4 @@ pub use registry::{Block, BlockRegistry, BlockSpec, ContentMode};
 /// 这一版带了的现成块名（诊断与命令行帮助都用它）。
 pub fn builtin_blocks() -> Vec<&'static str> {
     block::stdlib::names()
-}
-
-/// 从一段渲染好的 HTML 里数「出问题的框」：`(未知块, 误用块)`。
-///
-/// `block::dispatch` 用 `mdpp-template--unknown` 渲染「没这个名字」的块、用
-/// `mdpp-template--problem` 渲染「名字对、用法不对」的块。命令行（`--stats`、`build` 报告）
-/// 都数这两个类名 —— 类名由渲染那侧一处写死，这里直接数，不抄第二份（抄一份在
-/// 两处的话，改个类名就要改两处，而漏改一处是静悄悄的）。
-pub fn count_problem_boxes(html: &str) -> (usize, usize) {
-    (
-        html.matches("mdpp-template--unknown").count(),
-        html.matches("mdpp-template--problem").count(),
-    )
 }

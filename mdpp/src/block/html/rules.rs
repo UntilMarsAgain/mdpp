@@ -191,7 +191,6 @@ pub(super) fn skip_subtree(tag: &str) -> bool {
             | "svg"
             | "math"
             | "canvas"
-            | "audio-g"
     )
 }
 

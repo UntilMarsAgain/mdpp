@@ -116,13 +116,7 @@ pub(super) fn effective_jobs(requested: usize, pages: usize) -> usize {
     requested.min(pages).max(1)
 }
 
-/// 出一遍站点到**给定的那个目录**。
-///
-/// 目录是参数而不是项目自己的 `site_dir`：`serve` 出到临时目录，不去动用户手
-/// 里的 `build/`（预览到一半的东西不该被当成产物）。
-///
-/// 与 [`run`] 分开也是为了能直接测：项目根是给定的，不必去动进程当前目录
-/// （测试是并发的，动它就有串味的风险）。
+/// 整页配置：页脚渲染成 HTML、主题色解析成颜色，其余原样交给外壳。
 pub(super) fn chrome(
     project: &Project,
     parser: &Mdpp,
@@ -150,14 +144,7 @@ pub(super) fn chrome(
     }
 }
 
-/// 导航栏解析：配置里那几项 + 自动补上的目录按钮，对着站点查好**相对这一页的地址**。
-///
-/// 导航是「站点级」的（各页都同一条），只有「哪一项是当前页」随页变 —— 所以这里先
-/// 解析出一份「键 → 目标页键」的清单，等到渲染某一页时再配上相对地址与当前项
-/// （见 [`nav_for`]）。
-///
-/// 解析不出来的**报错**而不是当红链报：导航是作者手写的配置，写错了该当场知道，
-/// 不该让整站的导航悄悄少一项。
+/// 页面标题：正文标题优先，没有就用文件名；配置了站点名时补上后缀。
 pub(super) fn document_title(project: &Project, title: Option<&str>, fallback: &str) -> String {
     let title = title.unwrap_or(fallback);
     match project.title_suffix() {

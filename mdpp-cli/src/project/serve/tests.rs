@@ -21,7 +21,7 @@ fn scaffold() -> (tempfile::TempDir, Project) {
 
 fn options() -> Build {
     Build {
-        clean: true,
+        clean: false,
         strict: false,
         external_script: String::from("cdn"),
         jobs: 0,
@@ -174,7 +174,7 @@ fn the_reload_script_shows_up_only_under_serve() {
     crate::project::build::build_into(
         &project,
         &Build {
-            clean: true,
+            clean: false,
             strict: false,
             external_script: String::from("cdn"),
             jobs: 0,
@@ -335,6 +335,15 @@ fn the_preview_directory_is_fresh_every_time() {
             .is_none(),
         "上一回留下的东西该被清掉"
     );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&preview)
+            .expect("读得动")
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o700, "预览目录只该自己可读可写");
+    }
     let again = temp_dir().expect("建得出");
     assert_eq!(preview, again);
 }

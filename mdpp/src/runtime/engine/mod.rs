@@ -76,11 +76,15 @@ pub fn render_nested(source: &str) -> String {
 
     let out = if exceeded {
         let why = format!("嵌套渲染超过 {MAX_RENDER_DEPTH} 层（是不是自己嵌自己？）");
-        crate::env::note_problem("块的用法有问题", "mdpp-template--problem", "markdown", &why);
-        format!(
-            "<div class=\"mdpp-template mdpp-template--problem\"><p class=\"mdpp-template__why\">\
-             {why}</p></div>"
-        )
+        crate::env::note_problem(
+            "块的用法有问题",
+            crate::block::dispatch::MISUSED_CLASS,
+            "markdown",
+            &why,
+        );
+        // 框写出来了就得计数：下游（`--strict`、构建报告）只看 `Problems`。
+        crate::env::misused_problem();
+        crate::block::dispatch::problem_html(crate::block::dispatch::MISUSED_CLASS, &why)
     } else {
         let out = run(source);
         // 只有真的进过一层才退一层；超限那一次没有加，不能把外层的数也扣掉
@@ -203,23 +207,12 @@ impl Mdpp {
     /// 带上下文解析成 AST。链接解析器与模板页来源在解析阶段就会被用到
     /// （`[[…]]` 的节点、`::模板` 的展开）。
     pub fn parse_with(&self, source: &str, context: &RenderContext) -> Node {
+        // 解析阶段不收集资源、没有嵌套入口与变体作用域：除上下文与注册表外全是
+        // `RenderEnv::default()` 的那一份。
         let env = crate::env::RenderEnv {
             context: context.clone(),
             registry: Arc::clone(&self.registry),
-            // 解析阶段不收集资源；只有渲染才会碰到 ::css / ::js
-            assets: crate::runtime::asset::Sink::default(),
-            nested: None,
-            variant: None,
-            variant_seq: crate::env::sequence(),
-            depth: 0,
-            template_vars: None,
-            render_depth: 0,
-            styles: Vec::new(),
-            scripts: Vec::new(),
-            features: Features::default(),
-            problems: Problems::default(),
-            diagnostics: 0,
-            problem_detail: None,
+            ..crate::env::RenderEnv::default()
         };
         let _guard = crate::env::enter(env);
         parse_markdown(&self.parser, source)

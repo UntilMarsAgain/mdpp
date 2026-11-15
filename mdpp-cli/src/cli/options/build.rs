@@ -16,7 +16,8 @@ pub struct Build {
     #[arg(long, value_name = "N", default_value_t = 0)]
     pub jobs: usize,
 
-    /// 保留兼容：`build` 现在总是整目录替换（失败时不动旧站点），这个开关不再改变行为
+    /// 保留兼容：`build` 现在总是先清空目标目录（失败时不动旧站点），这个开关
+    /// 只为旧命令行能继续解析，不改变任何行为
     #[arg(long)]
     pub clean: bool,
 

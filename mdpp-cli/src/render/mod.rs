@@ -217,8 +217,9 @@ impl Stats {
         self.files += 1;
         self.bytes_in += source.len();
         self.bytes_out += rendered.html.len();
-        // 计数来自库的渲染现场，不再拿 HTML 数类名：代码块或正文里写着
-        // `template--problem` 不会被误算。
+        // 问题计数来自库的渲染现场，不再拿 HTML 数类名：代码块或正文里写着
+        // `template--problem` 不会被误算。链接数仍按类名数 —— `LinkResolver`
+        // 只回报目标，没有「解析成功几次」的计数可拿。
         let problems = rendered.problems;
         if problems.unknown > 0 || problems.misused > 0 {
             self.problems

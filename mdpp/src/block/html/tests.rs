@@ -210,8 +210,11 @@ fn a_nested_html_block_still_works() {
 /// **性能测试**。层数再往上的耗时问题不是这里要管的事 —— 那是块规则本身的性质。
 #[test]
 fn nesting_stops_instead_of_running_forever() {
-    let html = crate::engine::Mdpp::new().render(&nested_html(12));
-    assert!(html.contains("已经停在这里"), "{html}");
+    let report =
+        crate::engine::Mdpp::new().render_report(&nested_html(12), &crate::RenderContext::new());
+    assert!(report.html.contains("已经停在这里"), "{}", report.html);
+    // 停下来要记账：这一趟多了一个问题框，--strict 与统计才看得见
+    assert!(report.problems.misused >= 1, "{:?}", report.problems);
 }
 
 /// 深层嵌套的普通 HTML 不能把净化器的调用栈打爆

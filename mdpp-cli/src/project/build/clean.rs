@@ -3,6 +3,7 @@ use std::path::{Component, Path, PathBuf};
 use crate::project::{Project, shown};
 use tracing::debug;
 
+/// 出到最终目录**同级的临时目录**：同一个文件系统，`rename` 才是原子的。
 pub(super) fn staging_dir(site_dir: &Path) -> Result<PathBuf, String> {
     let parent = site_dir
         .parent()
@@ -56,7 +57,6 @@ pub(super) fn remove_any(path: &Path) {
     }
 }
 
-/// 一页渲染完的产物（还没套外壳、还没落盘）。
 /// `build` 的最终目录校验：整目录替换比 `--clean` 更不能删错地方。
 ///
 /// **`site_dir` 是配置里的一行字**，打错一个字就可能让这条命令去删整个项目 ——

@@ -236,7 +236,7 @@ fn scaffold() -> (tempfile::TempDir, Project) {
 
 fn build_options() -> Build {
     Build {
-        clean: true,
+        clean: false,
         strict: false,
         external_script: String::from("cdn"),
         jobs: 0,

@@ -157,7 +157,6 @@ fn condition(block: &Block) -> Result<bool, String> {
             return Err(format!(
                 "`::if` 不认条件 `{other}`；可写 condition-exist / condition-defined / \
                  condition-empty / condition-equals / condition-prefix / condition-local-exist / \
-                 condition-local-equals / \
                  condition-local-equals / condition-truthy / condition-yes / condition-no。"
             ));
         }

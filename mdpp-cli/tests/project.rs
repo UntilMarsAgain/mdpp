@@ -576,6 +576,62 @@ fn a_favicon_that_cannot_be_read_is_refused() {
     assert!(message.contains("favicon"), "{message}");
 }
 
+/// favicon 的文件名与站点自带资源撞了要**拒绝**，不能悄悄顶掉 `mdpp.css` / `mdpp.js`
+#[test]
+fn a_favicon_may_not_take_over_a_built_in_asset() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    std::fs::write(root.join("assets/mdpp.css"), "body { color: red; }").expect("写得下");
+
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    std::fs::write(
+        &config,
+        text.replace(
+            "favicon = \"assets/favicon.svg\"",
+            "favicon = \"assets/mdpp.css\"",
+        ),
+    )
+    .expect("改得下");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(!out.status.success(), "同名资源该被拒绝");
+    let message = stderr_of(&out);
+    assert!(message.contains("拒绝覆盖"), "{message}");
+    assert!(message.contains("mdpp.css"), "{message}");
+}
+
+/// favicon 与 logo 指到同一个文件是合理的：拷第二遍时内容相同，不该报重名
+#[test]
+fn a_favicon_and_logo_may_share_one_file() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    std::fs::create_dir_all(root.join("assets")).expect("建得出");
+    std::fs::write(root.join("assets/icon.svg"), "<svg/>").expect("写得下");
+
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    let text = text
+        .replace(
+            "favicon = \"assets/favicon.svg\"",
+            "favicon = \"assets/icon.svg\"",
+        )
+        .replace("logo = \"assets/logo.svg\"", "logo = \"assets/icon.svg\"");
+    std::fs::write(&config, text).expect("改得下");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "{}", stderr_of(&out));
+    let home = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(
+        home.contains(r#"<link rel="icon" href="assets/icon.svg">"#),
+        "{home}"
+    );
+    assert!(
+        home.contains(r#"<img class="mdpp-bar__logo" src="assets/icon.svg" alt="">"#),
+        "{home}"
+    );
+}
+
 /// 顶栏里站点名**旁边**那个图标（`logo`）：拷进 `assets/`，每一页都带上它，
 /// 且地址按各自深度数对。**与 favicon 是两件事** —— 所以两条要分别能配、分别能关
 #[test]

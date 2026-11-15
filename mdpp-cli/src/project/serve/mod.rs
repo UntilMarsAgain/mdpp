@@ -73,7 +73,7 @@ pub fn run(options: &Serve) -> Result<(), String> {
     // 盯着的：正文、模板、配置，以及配置里指的那几个文件
     let mut watch = Watch::new(watched(&project));
     let options = Build {
-        clean: true,
+        clean: false,
         strict: false,
         external_script: String::from("cdn"),
         jobs: 0,
