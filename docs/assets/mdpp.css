@@ -1,0 +1,742 @@
+/* mdpp 默认主题 —— 可选的配色与基础排版。
+ *
+ * 组件样式由标准库模板的 `::css` 随模板提供，收集进页面 `<head>`；这一份只保留
+ * 配色变量、正文排版、问题框、代码/公式、内容表格、目录与打印等基础层。
+ * 颜色全走 `:root` 里那组变量（`--mdpp-*`），改一处即可换肤。`::css` 注入的样式
+ * 不再收进 `.mdpp-content`，可以直接影响整页；页面里加自己的样式写在**后面**，
+ * 同优先级的规则由后者胜出。
+ *
+ * 类名一律 `mdpp-` 开头，与使用方的界面类名分开。深浅色走 `prefers-color-scheme`；
+ * 页面自己认 `<html data-mdpp-theme="light|dark">` 时那一条优先。
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --mdpp-bg: #ffffff;
+  --mdpp-surface: #f6f7f9;
+  --mdpp-text: #1a1c1f;
+  --mdpp-text-dim: #5c636b;
+  --mdpp-border: #d8dce1;
+  --mdpp-accent: #2f6fd0;
+  --mdpp-link: #1f5fb0;
+  --mdpp-danger: #b4302a;
+
+  --mdpp-note-bg: #eaf1fb;
+  --mdpp-note-fg: #24487f;
+  --mdpp-tip-bg: #e9f6ee;
+  --mdpp-tip-fg: #1f6b40;
+  --mdpp-warning-bg: #fdf3df;
+  --mdpp-warning-fg: #7a5606;
+  --mdpp-danger-bg: #fbe9e8;
+  --mdpp-danger-fg: #8f211c;
+  --mdpp-error-bg: #f3e7f7;
+  --mdpp-error-fg: #6d2a86;
+
+  /* 顶栏那块底，与压在它上面的字。深色那一档（下面两处）是往黑里混了一档 ——
+   * 亮块在暗页面上是一条刺眼的亮带，而这俩在深色下都是**前景色**（浅蓝、浅灰），
+   * 拿它们铺底就露馅。`theme_color` 配了就是它说了算（`page::bar_color_style`） */
+  --mdpp-bar-bg: #2f6fd0;
+  --mdpp-bar-fg: #ffffff;
+
+  --mdpp-radius: 8px;
+  --mdpp-gap: 1em;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --mdpp-bg: #16181c;
+    --mdpp-surface: #1e2126;
+    --mdpp-text: #e6e8eb;
+    --mdpp-text-dim: #a0a7b0;
+    --mdpp-border: #333941;
+    --mdpp-accent: #6ea8ff;
+    --mdpp-link: #7cb3ff;
+    --mdpp-danger: #ff7b72;
+
+    --mdpp-note-bg: #16283f;
+    --mdpp-note-fg: #a9c9f5;
+    --mdpp-tip-bg: #12321f;
+    --mdpp-tip-fg: #8fd6ab;
+    --mdpp-warning-bg: #362a0d;
+    --mdpp-warning-fg: #f0c96a;
+    --mdpp-danger-bg: #3a1a19;
+    --mdpp-danger-fg: #ffa39c;
+    --mdpp-error-bg: #2e1a36;
+    --mdpp-error-fg: #d9a6e8;
+    --mdpp-bar-bg: #2456a2;
+    --mdpp-bar-fg: #ffffff;
+  }
+}
+
+/* 页面自己指定主题时，它说了算 */
+:root[data-mdpp-theme='light'] {
+  color-scheme: light;
+  --mdpp-bg: #ffffff;
+  --mdpp-surface: #f6f7f9;
+  --mdpp-text: #1a1c1f;
+  --mdpp-text-dim: #5c636b;
+  --mdpp-border: #d8dce1;
+  --mdpp-accent: #2f6fd0;
+  --mdpp-link: #1f5fb0;
+  --mdpp-danger: #b4302a;
+  --mdpp-note-bg: #eaf1fb;
+  --mdpp-note-fg: #24487f;
+  --mdpp-tip-bg: #e9f6ee;
+  --mdpp-tip-fg: #1f6b40;
+  --mdpp-warning-bg: #fdf3df;
+  --mdpp-warning-fg: #7a5606;
+  --mdpp-danger-bg: #fbe9e8;
+  --mdpp-danger-fg: #8f211c;
+  --mdpp-error-bg: #f3e7f7;
+  --mdpp-error-fg: #6d2a86;
+  --mdpp-bar-bg: #2f6fd0;
+  --mdpp-bar-fg: #ffffff;
+}
+
+:root[data-mdpp-theme='dark'] {
+  color-scheme: dark;
+  --mdpp-bg: #16181c;
+  --mdpp-surface: #1e2126;
+  --mdpp-text: #e6e8eb;
+  --mdpp-text-dim: #a0a7b0;
+  --mdpp-border: #333941;
+  --mdpp-accent: #6ea8ff;
+  --mdpp-link: #7cb3ff;
+  --mdpp-danger: #ff7b72;
+  --mdpp-note-bg: #16283f;
+  --mdpp-note-fg: #a9c9f5;
+  --mdpp-tip-bg: #12321f;
+  --mdpp-tip-fg: #8fd6ab;
+  --mdpp-warning-bg: #362a0d;
+  --mdpp-warning-fg: #f0c96a;
+  --mdpp-danger-bg: #3a1a19;
+  --mdpp-danger-fg: #ffa39c;
+  --mdpp-error-bg: #2e1a36;
+  --mdpp-error-fg: #d9a6e8;
+  --mdpp-bar-bg: #2456a2;
+  --mdpp-bar-fg: #ffffff;
+}
+
+/* ---- 正文 --------------------------------------------------------- */
+
+.mdpp-content {
+  background: var(--mdpp-bg);
+  color: var(--mdpp-text);
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+  padding: 1.25rem 1.5rem;
+  overflow-wrap: break-word;
+}
+
+.mdpp-content > *:first-child {
+  margin-top: 0;
+}
+
+.mdpp-content h1,
+.mdpp-content h2,
+.mdpp-content h3,
+.mdpp-content h4,
+.mdpp-content h5,
+.mdpp-content h6 {
+  line-height: 1.3;
+  margin: 1.6em 0 0.6em;
+  scroll-margin-top: 1rem;
+}
+
+.mdpp-content h1 { font-size: 1.9em; }
+.mdpp-content h2 { font-size: 1.5em; }
+.mdpp-content h3 { font-size: 1.25em; }
+
+.mdpp-content a {
+  color: var(--mdpp-link);
+}
+
+/* 站外链接：末尾补一个「小方框 + 斜向箭头」的标记，提醒这一步会离开本站。
+ *
+ * 这个类由渲染器挂（`http://`、`https://`、`//` 开头的链接），不靠 CSS 猜
+ * `href` —— 站内链接也可能写成绝对地址，猜错就把「出站」画在了自家页面上。
+ *
+ * 图标走内联 SVG 的 mask，颜色由 `currentColor` 给：亮色/暗色、链接色怎么变，
+ * 它都跟着变。不支持 mask 的浏览器退回一个 `↗`，不会显示成一块色块。
+ * 用伪元素而不是改文字：复制链接时不会把图标一起带走。 */
+.mdpp-content a.mdpp-external {
+  text-decoration: none;
+}
+
+.mdpp-content a.mdpp-external > .mdpp-external__text {
+  text-decoration: underline;
+}
+
+.mdpp-content a.mdpp-external::after {
+  content: "↗";
+  margin-inline-start: 0.12em;
+  font-size: 0.8em;
+  text-decoration: none;
+}
+
+@supports (mask-image: none) or (-webkit-mask-image: none) {
+  .mdpp-content a.mdpp-external::after {
+    content: "";
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    min-width: 12px;
+    min-height: 12px;
+    margin-inline-start: 4px;
+    vertical-align: baseline;
+    background-color: currentColor;
+    opacity: 0.87;
+    -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2720%27%20height%3D%2720%27%20viewBox%3D%270%200%2020%2020%27%20fill%3D%27black%27%3E%3Cpath%20d%3D%27M19%201h-8l3.286%203.286L6%2012l1.371%201.472%208.332-7.77.007.008L19%209zM2%205h4v2H3v10h10v-4.004h2V18a1%201%200%2001-1%201H2a1%201%200%2001-1-1V6a1%201%200%20011-1%27%2F%3E%3C%2Fsvg%3E");
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    -webkit-mask-size: contain;
+    mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2720%27%20height%3D%2720%27%20viewBox%3D%270%200%2020%2020%27%20fill%3D%27black%27%3E%3Cpath%20d%3D%27M19%201h-8l3.286%203.286L6%2012l1.371%201.472%208.332-7.77.007.008L19%209zM2%205h4v2H3v10h10v-4.004h2V18a1%201%200%2001-1%201H2a1%201%200%2001-1-1V6a1%201%200%20011-1%27%2F%3E%3C%2Fsvg%3E");
+    mask-repeat: no-repeat;
+    mask-position: center;
+    mask-size: contain;
+    text-decoration: none;
+  }
+}
+
+/* 内部链接解析器没给答案时的样子：可点，但明显还没连上 */
+.mdpp-content a.mdpp-wikilink {
+  color: var(--mdpp-accent);
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+  cursor: pointer;
+}
+
+.mdpp-content a.mdpp-wikilink:hover {
+  border-bottom-style: solid;
+}
+
+/* 红链：解析器说没有这个目标，或者压根没人递解析器。
+ * 必须排在上面那条**之后** —— 两条的选择器权重一样，靠次序决出谁胜。 */
+.mdpp-content a.mdpp-wikilink--missing {
+  color: var(--mdpp-danger);
+}
+
+.mdpp-content a.mdpp-wikilink--missing:hover {
+  border-bottom-style: solid;
+}
+
+.mdpp-content blockquote {
+  margin: var(--mdpp-gap) 0;
+  padding: 0.2rem 1rem;
+  border-left: 3px solid var(--mdpp-border);
+  color: var(--mdpp-text-dim);
+}
+
+.mdpp-content img,
+.mdpp-content video {
+  max-width: 100%;
+  height: auto;
+}
+
+.mdpp-content hr {
+  border: 0;
+  border-top: 1px solid var(--mdpp-border);
+  margin: 2em 0;
+}
+
+/* 表格。markdown 出来的是**裸的 `<table>`**（一个 class 都没有），所以线、底色、
+ * 内边距全得在这一处给。只写 `border-collapse` 是不够的 —— 它只回答「线怎么合」，
+ * 得先有人给线，否则表格就是一片裸字（这个 bug 犯过一次）。 */
+.mdpp-content table {
+  border-collapse: collapse;
+  margin: var(--mdpp-gap) 0;
+}
+
+/* 只认**没有 class 的那张表**：`::fields`、`::navbox` 等带 class 的表各有各的
+ * 样子，不套这里的一圈框。`table:not([class])` 把它们连同格子一起挡在门外，
+ * 比逐个比权重稳。 */
+.mdpp-content table:not([class]) th,
+.mdpp-content table:not([class]) td {
+  border: 1px solid var(--mdpp-border);
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+}
+
+/* 表头：底色深一号、字重加粗 —— 哪一行是表头，隔着一段距离也认得出。
+ * 颜色仍取那组变量，于是深浅色是同一份规则，而不是各写一份。
+ * 对齐符（`| :--: |`）落的是行内 style，压得过这条 */
+.mdpp-content table:not([class]) thead th {
+  background: var(--mdpp-surface);
+  font-weight: 600;
+}
+
+/* 宽表在窄屏上别把整张卡片撑破：给它自己一条横向滚动的路，页面照旧不动。
+ * `display: block` 是那把钥匙 —— `overflow` 落在**表格式盒**上不生效（它不是
+ * 块容器），降成块之后里面的 thead/tbody 会被匿名表格盒重新围起来、照常按表排，
+ * 而撑出去的那部分就归这个块管了 */
+.mdpp-content table:not([class]) {
+  display: block;
+  overflow-x: auto;
+}
+
+.mdpp-content :not(pre) > code {
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  background: var(--mdpp-surface);
+  font-size: 0.9em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+
+.mdpp-content pre {
+  margin: var(--mdpp-gap) 0;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--mdpp-border);
+  border-radius: var(--mdpp-radius);
+  background: var(--mdpp-surface);
+  overflow-x: auto;
+}
+
+.mdpp-content pre code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+/* ---- 出问题时摆的那几个框 ------------------------------------------ */
+
+/* 行内诊断只是文字：不画框、不加内边距，避免在段落里叠成一排盒子。 */
+.mdpp-content .mdpp-inline-error {
+  color: var(--mdpp-danger, #b42318);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-style: wavy;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+  margin-inline: 0.1em;
+}
+
+.mdpp-content .mdpp-template {
+  margin: var(--mdpp-gap) 0;
+  padding: 0.7rem 1rem;
+  border: 1px dashed var(--mdpp-border);
+  border-radius: var(--mdpp-radius);
+  background: var(--mdpp-surface);
+  font-size: 0.94em;
+}
+
+.mdpp-content .mdpp-template--unknown,
+.mdpp-content .mdpp-template--problem {
+  border-color: var(--mdpp-danger);
+  background: color-mix(in srgb, var(--mdpp-danger) 8%, var(--mdpp-bg));
+}
+
+.mdpp-content .mdpp-template__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+  align-items: baseline;
+  margin: 0 0 0.4em;
+}
+
+.mdpp-content .mdpp-template__badge {
+  font-weight: 600;
+  color: var(--mdpp-danger);
+}
+
+.mdpp-content .mdpp-template__name,
+.mdpp-content .mdpp-template__param {
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+  background: var(--mdpp-surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+}
+
+.mdpp-content .mdpp-template__param {
+  opacity: 0.85;
+}
+
+.mdpp-content .mdpp-template__why {
+  margin: 0 0 0.5em;
+}
+
+.mdpp-content .mdpp-template__where {
+  margin: 0.5em 0 0;
+  font-size: 0.94em;
+}
+
+.mdpp-content .mdpp-template pre {
+  margin: 0.4em 0 0;
+  border-style: solid;
+}
+/* ::surface 是 banner / callout / card 共用的基础盒子。
+   它不替作者决定文字对齐；要横条那种居中，再挂 banner 类。 */
+.mdpp-content .mdpp-surface {
+  margin: var(--mdpp-gap) 0;
+  padding: 0.7rem 1rem;
+  border-radius: var(--mdpp-radius);
+  background: var(--mdpp-surface);
+}
+
+.mdpp-content .mdpp-surface--sized {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mdpp-content .mdpp-surface--square {
+  border-radius: 0;
+}
+
+.mdpp-content .mdpp-surface.mdpp-surface--mini {
+  font-size: 0.9em;
+  padding: 0.35rem 0.7rem;
+  margin: 0.3em 0;
+  line-height: 1.4;
+  border-radius: 0.2rem;
+}
+
+/* 标准库 card 的默认品牌色；调用方给 color= 时行内样式会盖掉它。 */
+.mdpp-content .mdpp-surface.std-card--brand {
+  background: #0055a4;
+  color: #f5f5f5;
+}
+
+/* ---- 媒体 --------------------------------------------------------- */
+
+.mdpp-content figure {
+  margin: var(--mdpp-gap) 0;
+}
+
+.mdpp-content figure img,
+.mdpp-content figure video {
+  display: block;
+}
+
+.mdpp-content figure audio {
+  width: 100%;
+}
+
+/* 行内图片（通常是小图标）：高度跟当前行字号走，不锁死像素。 */
+.mdpp-content img.mdpp-image--inline {
+  display: inline-block;
+  width: auto;
+  height: 1em;
+  max-height: 1em;
+  margin-inline: 0.08em;
+  vertical-align: -0.125em;
+}
+
+.mdpp-content .mdpp-image--center img,
+.mdpp-content .mdpp-media--center {
+  margin-inline: auto;
+}
+
+.mdpp-content .mdpp-image--left img,
+.mdpp-content .mdpp-media--left {
+  margin-inline: 0 auto;
+}
+
+.mdpp-content .mdpp-image--right img,
+.mdpp-content .mdpp-media--right {
+  margin-inline: auto 0;
+}
+
+.mdpp-content figcaption {
+  margin-top: 0.4em;
+  text-align: center;
+  font-size: 0.88em;
+  color: var(--mdpp-text-dim);
+}
+
+/* ---- 图与公式 ----------------------------------------------------- */
+
+/* 没接 mermaid / KaTeX 时看到的是原文 —— 所以给个能读的样子，别留一片空白 */
+.mdpp-content .mdpp-diagram pre.mdpp-mermaid {
+  text-align: center;
+}
+
+.mdpp-content .mdpp-math {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.mdpp-content .mdpp-math--inline {
+  white-space: nowrap;
+}
+
+.mdpp-content .mdpp-math--display {
+  display: block;
+  margin: var(--mdpp-gap) 0;
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+/* ---- `::code` ------------------------------------------------------ */
+
+/* 代码块外层只在有来源链接或折叠时才出现；没有时仍是一个裸 `<pre>`。 */
+.mdpp-content .mdpp-code {
+  margin: var(--mdpp-gap) 0;
+}
+
+.mdpp-content .mdpp-code__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--mdpp-border);
+  border-bottom: 0;
+  border-radius: var(--mdpp-radius) var(--mdpp-radius) 0 0;
+  background: var(--mdpp-surface);
+  font-size: 0.86em;
+}
+
+.mdpp-content .mdpp-code__title {
+  color: var(--mdpp-text-dim);
+}
+
+.mdpp-content .mdpp-code__source {
+  color: var(--mdpp-accent);
+  text-decoration: none;
+}
+
+.mdpp-content .mdpp-code__source:hover {
+  text-decoration: underline;
+}
+
+.mdpp-content .mdpp-code__fold > summary {
+  cursor: pointer;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--mdpp-border);
+  background: var(--mdpp-surface);
+  color: var(--mdpp-text-dim);
+  font-size: 0.86em;
+  list-style: none;
+}
+
+.mdpp-content .mdpp-code__fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mdpp-content .mdpp-code__fold[open] > summary {
+  border-bottom: 0;
+  border-radius: var(--mdpp-radius) var(--mdpp-radius) 0 0;
+}
+
+.mdpp-content .mdpp-code__fold > summary::before {
+  content: "▸ ";
+}
+
+.mdpp-content .mdpp-code__fold[open] > summary::before {
+  content: "▾ ";
+}
+
+.mdpp-content .mdpp-code__fold > pre,
+.mdpp-content .mdpp-code > pre {
+  margin-top: 0;
+}
+
+.mdpp-content .mdpp-code__head + .mdpp-code__fold > summary,
+.mdpp-content .mdpp-code__head + pre {
+  border-top: 0;
+}
+
+.mdpp-content .mdpp-code__head + pre,
+.mdpp-content .mdpp-code__fold[open] > pre {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* JS 把每个逻辑行包成 `.mdpp-code__line` 后才画行号。行号用 CSS counter，
+ * 起始行由前端的 `--mdpp-line-start` 设置；不用固定宽度的表格，长行横向
+ * 滚动时行号会跟着代码一起走。 */
+.mdpp-content pre.mdpp-template-code .mdpp-code__line {
+  display: block;
+  position: relative;
+  min-height: 1.5em;
+}
+
+.mdpp-content pre.mdpp-template-code[data-mdpp-lines='on'] code {
+  counter-reset: mdpp-line var(--mdpp-line-start, 0);
+}
+
+.mdpp-content pre.mdpp-template-code[data-mdpp-lines='on'] .mdpp-code__line {
+  counter-increment: mdpp-line;
+  padding-left: 3.2rem;
+}
+
+.mdpp-content pre.mdpp-template-code[data-mdpp-lines='on'] .mdpp-code__line::before {
+  content: counter(mdpp-line);
+  position: absolute;
+  left: 0;
+  width: 2.4rem;
+  text-align: right;
+  color: var(--mdpp-text-dim);
+  opacity: 0.7;
+  user-select: none;
+}
+
+.mdpp-content .mdpp-code__line--highlight {
+  background: rgba(30, 120, 255, 0.12);
+  background: color-mix(in srgb, var(--mdpp-accent) 14%, transparent);
+}
+
+/* ---- 侧边目录 ----------------------------------------------------- */
+
+/* 只在**站点模式**的页面里出现：单文件页面没有「整站」这一层，外壳模板里那个
+ * 位置填的是空串。宽屏是一列常驻目录，窄屏换成 details/summary 入口；两份结构由
+ * CSS 在同一个断点切换，**不依赖 JS** —— 禁掉脚本时它照样点得开。
+ *
+ * 颜色全取调色板变量，深色主题因此不用另写一套；版面那一半（它怎么和正文并排）
+ * 在 `site.css`，这一份只负责目录自己的样子。 */
+
+.mdpp-toc {
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Noto Sans CJK SC', sans-serif;
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+/* 长标题（尤其没有空格的中文或 URL）不能把侧栏撑破，撑破就是整页横向滚动 */
+.mdpp-toc__nav {
+  overflow-wrap: anywhere;
+}
+
+.mdpp-toc__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 1px solid var(--mdpp-border);
+}
+
+.mdpp-toc__item a {
+  display: block;
+  /* 与左边那条竖线共用一像素：悬停时换成强调色，而不是多出一条线 */
+  margin-left: -1px;
+  padding: 0.28em 0.8em;
+  border-left: 2px solid transparent;
+  color: var(--mdpp-text-dim);
+  text-decoration: none;
+}
+
+.mdpp-toc__item--h3 a {
+  padding-left: 1.7em;
+  font-size: 0.92em;
+}
+
+.mdpp-toc__item a:hover {
+  border-left-color: var(--mdpp-accent);
+  color: var(--mdpp-text);
+}
+
+/* 窄屏那个折叠入口默认不出现；宽屏由外壳里的 `<aside>` 当班 */
+.mdpp-toc--narrow {
+  display: none;
+}
+
+@media (max-width: 99.99rem) {
+  .mdpp-toc--wide {
+    display: none;
+  }
+
+  .mdpp-toc--narrow {
+    display: block;
+    width: 100%;
+  }
+
+  .mdpp-toc__summary {
+    padding: 0.55em 0.9em;
+    border: 1px solid var(--mdpp-border);
+    border-radius: var(--mdpp-radius);
+    background: var(--mdpp-surface);
+    color: var(--mdpp-text);
+    cursor: pointer;
+  }
+
+  .mdpp-toc--narrow .mdpp-toc__nav {
+    margin-top: 0.5rem;
+    padding: 0.35rem 0;
+    border: 1px solid var(--mdpp-border);
+    border-radius: var(--mdpp-radius);
+    background: var(--mdpp-bg);
+    /* 目录再长也自己滚，别把正文顶出屏幕 */
+    max-height: min(60vh, 28rem);
+    overflow-y: auto;
+  }
+}
+
+/* ---- 打印 --------------------------------------------------------- */
+/* 屏幕上折叠的东西，打印时都展开。
+ *
+ * 「折叠」在屏幕上是对的（一次只显示一栏），印在纸上却只印得出第一栏，而读者以为
+ * 那就是全部。选项卡与深浅色两节都属于这一类 —— 面板上的 `data-mdpp-label` 是渲染器落
+ * 的节标题，展开之后每节仍有名字可读。
+ */
+
+@media print {
+  /* 纸上没有页面内导航这回事：目录不该印在第一页上，正文也不必为它让宽 */
+  .mdpp-toc {
+    display: none;
+  }
+
+  /* 留一点底色：默认浏览器会把背景色省掉，而提示框全靠底色区分 */
+  .mdpp-content {
+    --mdpp-note-bg: #eef3fb;
+    --mdpp-tip-bg: #eef8f2;
+    --mdpp-warning-bg: #fdf6e6;
+    --mdpp-danger-bg: #fceeee;
+    --mdpp-error-bg: #f5eefa;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* 地址写出来：纸上看不见链接指向哪儿 */
+  .mdpp-content a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    /* 屏幕上那个方框图标在纸上换成 URL：把图标的尺寸与 mask 一起撤掉，
+     * 否则 URL 会被 0.78em 的框裁掉。 */
+    display: inline;
+    width: auto;
+    height: auto;
+    min-width: auto;
+    min-height: auto;
+    margin-inline-start: 0;
+    background: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+    opacity: 1;
+    font-size: 0.85em;
+    word-break: break-all;
+  }
+
+  /* 内部链接那串点是给人看的，纸上没用 */
+  .mdpp-content a.mdpp-wikilink {
+    border-bottom: 0;
+  }
+
+  /* 别把一块内容从中间撕成两页 */
+  .mdpp-content .mdpp-template,
+  .mdpp-content figure,
+  .mdpp-content pre {
+    page-break-inside: avoid;
+  }
+
+  .mdpp-content pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* 纸面上折叠不该把代码藏起来 */
+  .mdpp-content .mdpp-code__fold > summary {
+    display: none;
+  }
+
+  .mdpp-content details.mdpp-code__fold > pre {
+    display: block !important;
+  }
+
+  /* 屏幕上靠滚动才看得到的东西，纸上全出来 */
+  .mdpp-content {
+    height: auto;
+    overflow: visible;
+    padding: 0;
+  }
+}
+
