@@ -31,7 +31,7 @@
 
 mod builder;
 mod render;
-mod rules;
+pub(crate) mod rules;
 
 pub use self::builder::MdppBuilder;
 

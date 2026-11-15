@@ -1,15 +1,10 @@
 use std::sync::Arc;
 
-use markdown_it::MarkdownIt;
-use markdown_it::generics::inline::emph_pair::EmphPairScanner;
-
-use crate::block;
+use crate::parse::dialect::{self, Mode, SyntaxOptions};
 use crate::registry::BlockRegistry;
-use crate::syntax;
 use crate::telemetry::debug;
 
 use super::Mdpp;
-use super::rules::{MarkExternalLinks, UniqueHeadingAnchors};
 
 /// [`Mdpp`] 的构建器。
 ///
@@ -18,35 +13,6 @@ use super::rules::{MarkExternalLinks, UniqueHeadingAnchors};
 pub struct MdppBuilder {
     registry: Option<BlockRegistry>,
     syntax: SyntaxOptions,
-}
-
-/// 那几条可开关的语法。
-#[derive(Debug, Clone, Copy)]
-struct SyntaxOptions {
-    math: bool,
-    wikilink: bool,
-    tables: bool,
-    heading_anchors: bool,
-    raw_html: bool,
-    setext: bool,
-    indented_code: bool,
-    typographer: bool,
-}
-
-impl Default for SyntaxOptions {
-    fn default() -> Self {
-        Self {
-            math: true,
-            wikilink: true,
-            tables: true,
-            heading_anchors: true,
-            // 四个「关掉」，理由在模块头
-            raw_html: false,
-            setext: false,
-            indented_code: false,
-            typographer: false,
-        }
-    }
 }
 
 impl Default for MdppBuilder {
@@ -129,78 +95,9 @@ impl MdppBuilder {
         let options = self.syntax;
         let registry = Arc::new(self.registry.unwrap_or_else(BlockRegistry::builtin));
 
-        // markdown-it 默认是个**空解析器**：CommonMark 语法本身也是插件，
-        // 必须显式注册。
-        let mut md = MarkdownIt::new();
-        markdown_it::plugins::cmark::add(&mut md);
-
-        if options.setext {
-            // 留着什么都不用做：`cmark::add` 已经把它装上了
-        } else {
-            // 块级规则在另一个 ruler 里，所以摘的是 `md.block` 而不是 `md.remove_rule`
-            md.block
-                .remove_rule::<markdown_it::plugins::cmark::block::lheading::LHeadingScanner>();
-        }
-
-        if !options.indented_code {
-            md.block
-                .remove_rule::<markdown_it::plugins::cmark::block::code::CodeScanner>();
-        }
-
-        markdown_it::plugins::extra::add(&mut md);
-
-        // `extra::add` 是一整套，接着按开关把不要的摘掉。
-        //
-        // 摘法：`Ruler::remove_rule` 按**规则类型**摘。markdown-it 0.6 只有一列规则
-        //（没有老版本的 `ruler2`），块级走 `md.block`、行内走 `md.inline`。
-        if !options.tables {
-            md.block
-                .remove_rule::<markdown_it::plugins::extra::tables::TableScanner>();
-        }
-        if !options.typographer {
-            md.remove_rule::<markdown_it::plugins::extra::typographer::TypographerRule>();
-            md.remove_rule::<markdown_it::plugins::extra::smartquotes::SmartQuotesRule<
-                '\u{2018}',
-                '\u{2019}',
-                '\u{201c}',
-                '\u{201d}',
-            >>();
-        }
-        if options.raw_html {
-            // 这一条是**安全开关**：正文里的 HTML 原样透传，净化就全在调用方身上了
-            markdown_it::plugins::html::add(&mut md);
-        }
-
-        if options.heading_anchors {
-            // 自己挂锚点，而不是 `heading_anchors` 插件：插件每次 `md.parse` 都
-            // 无条件 `push` 一个 `id`，嵌套解析搬进来的子树会被外层再挂一遍；
-            // 这里一条规则走完整棵树，按出现次序给 slug 加计数，天然唯一。
-            md.add_rule::<UniqueHeadingAnchors>();
-        }
-
-        // 外部链接标记：给带协议的站外链接加一个 `external` 类，样式表据此
-        // 画「外链」符号。与 heading_anchors 无关，无条件挂。
-        md.add_rule::<MarkExternalLinks>();
-
-        if options.math {
-            syntax::math::add(&mut md);
-        }
-        if options.wikilink {
-            syntax::wikilink::add(&mut md);
-        }
-        // 行内高亮没有开关 —— 一条随库的基础语法，跟删除线一个待遇
-        syntax::mark::add(&mut md);
-
-        // `__` 与 `_` 从 CommonMark 的强调档整体退役：同一对记号分别是下划线与
-        // 下标，`^…^` 补上标（那把「贴字」的尺与代价见 syntax::baseline 的模块
-        // 头）。摘的是下划线那一个扫描器 —— 一条规则管着两个长度的配对，星号
-        // 的机器不受牵动。
-        md.inline.remove_rule::<EmphPairScanner<'_', false>>();
-        syntax::baseline::add(&mut md);
-
-        // `::` 块。挂载位置是刻意的：必须排在段落规则**之前**，否则 `::名字`
-        // 会先被当成一行普通文字收走。
-        block::add(&mut md);
+        // 方言的唯一装配点在 `parse::dialect`：渲染器与原始区扫描共用同一套
+        // `::` 规则，两边的块边界因此不会各写一份。
+        let md = dialect::build(Mode::Render, &options);
 
         // 建好之后报一句「这一份解析器带了什么」—— 排查「为什么这个块没生效」时，
         debug!(

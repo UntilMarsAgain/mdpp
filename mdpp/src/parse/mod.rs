@@ -3,6 +3,7 @@
 //! 它们都只面对一段文本/一棵 markdown-it 的树，不持有渲染状态；放在同一处，
 //! 与 [`crate::block`] 的「块方言」和 [`crate::runtime`] 的「渲染运行时」分开。
 
+pub(crate) mod dialect;
 pub(crate) mod markdown;
 pub mod raw;
 pub mod slug;

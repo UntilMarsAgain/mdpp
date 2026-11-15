@@ -15,6 +15,7 @@ use markdown_it::parser::block::{BlockRule, BlockState};
 use crate::block::dispatch::BlockNode;
 use crate::block::section::{self, SectionProblem};
 use crate::block::{Section, expand, template};
+use crate::parse::dialect::{RawBlock, spec_for};
 use crate::registry::{self as reg, Block, ContentMode};
 
 /// 块级规则：由 [`crate::block::add`] 挂到解析器上，排在段落规则之前。
@@ -157,6 +158,41 @@ impl BlockRule for BlockScanner {
             }
         }
         Some((node, next - start))
+    }
+}
+
+/// 扫描模式下的块规则：只记 Raw 块的字节区间，不展开模板、不解析正文。
+///
+/// [`crate::raw::raw_zones`] 用它把 `::code` / `::css` 这类「一个字都不解析」
+/// 的块排除在目标空格编码之外。非 Raw 块直接放回，让段落规则照常处理。
+#[doc(hidden)]
+pub(crate) struct ScanBlockScanner;
+
+impl BlockRule for ScanBlockScanner {
+    fn run(state: &mut BlockState) -> Option<(Node, usize)> {
+        let start = state.line;
+        let marker_indent = state.line_indent(start);
+        if marker_indent < 0 {
+            return None;
+        }
+        let line = state.get_line(start);
+        let (name, params) = Block::parse_header(line)?;
+
+        // 先收正文：动态 mode 函数可能要看正文才能决定这一块是不是 Raw。
+        let (body, next) = collect_body(state, start, marker_indent);
+        let block = Block { name, params, body };
+        let spec = spec_for(&block.name)?;
+        if spec.mode_for(&block) != ContentMode::Raw {
+            return None;
+        }
+
+        // 区间从头行开始：头行本身不是 Raw 正文，一起圈进去只会少改几个字节，
+        // 不会改错；真正要保护的是头行之后的正文。
+        let last = next
+            .saturating_sub(1)
+            .clamp(start, state.line_max.saturating_sub(1));
+        let range = state.line_offsets[start].line_start..state.line_offsets[last].line_end;
+        Some((Node::new(RawBlock { range }), next - start))
     }
 }
 

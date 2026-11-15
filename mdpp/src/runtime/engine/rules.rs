@@ -16,7 +16,7 @@ use crate::slug;
 /// 先给自己的子树挂过一遍，外层这一遍会**重挂**：不是再 push 一个，而是把
 /// 已有的 `id` 改成按整棵树重新算出来的那个。于是嵌套不会留下重复属性，
 /// 同页两个同名标题也会得到 `安装` / `安装-1`。
-pub(super) struct UniqueHeadingAnchors;
+pub(crate) struct UniqueHeadingAnchors;
 
 impl CoreRule for UniqueHeadingAnchors {
     fn run(root: &mut Node, _md: &MarkdownIt) {
@@ -58,7 +58,7 @@ impl CoreRule for UniqueHeadingAnchors {
 ///
 /// 每层 `md.parse` 的 core 阶段都会走整棵树（嵌套块的子解析已挂过一次），
 /// 所以加之前先看类里有没有 —— 否则嵌套一深就是 `class="mdpp-external external"`。
-pub(super) struct MarkExternalLinks;
+pub(crate) struct MarkExternalLinks;
 
 /// 外链文字的那层 span：`text-decoration` 只画在它上面，不画到 `::after` 图标上
 #[derive(Debug, Clone)]

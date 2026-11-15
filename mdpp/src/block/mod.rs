@@ -43,8 +43,17 @@ pub use section::Section;
 /// 挂载位置是刻意的：**必须排在段落规则之前**，否则 `::名字` 会先被当成一行普通
 /// 文字收走。
 pub fn add(md: &mut MarkdownIt) {
+    place::<scanner::BlockScanner>(md);
+}
+
+/// 扫描模式用的挂载：规则只记 Raw 块区间，不展开模板、不解析正文。
+pub(crate) fn add_scan(md: &mut MarkdownIt) {
+    place::<scanner::ScanBlockScanner>(md);
+}
+
+fn place<R: markdown_it::parser::block::BlockRule>(md: &mut MarkdownIt) {
     md.block
-        .add_rule::<scanner::BlockScanner>()
+        .add_rule::<R>()
         .before::<markdown_it::plugins::cmark::block::paragraph::ParagraphScanner>()
         .after_all();
 }

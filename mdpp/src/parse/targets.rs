@@ -14,7 +14,7 @@ use crate::raw::raw_zones;
 
 /// 把一段 markdown 里链接目标中的空格补成 `%20`。
 ///
-/// 原始区（围栏、缩进代码、HTML 块、行内代码）由 [`raw_zones`] 给出真实字节
+/// 原始区（围栏、缩进代码、HTML 块、行内代码、`::` 的 Raw 块）由 [`raw_zones`] 给出真实字节
 /// 区间：那是一次探针解析的 `srcmap`，块引用与列表前缀也算在里面。区间内一个
 /// 字都不改，区间外才走 `encode_line_targets`。
 pub fn encode_target_spaces(markdown: &str) -> String {
@@ -197,6 +197,30 @@ mod tests {
 
         let list = "- 项\n  ```\n  ![a](b c.png)\n  ```\n";
         assert_eq!(encode_target_spaces(list), list);
+    }
+
+    /// `::` 的 Raw 块正文一个字都不动
+    ///
+    /// 预扫描曾经把 `::code` 里的 `](a b.png)` 改成 `](a%20b.png)`：探针不认
+    /// `::` 方言，块正文被当成了普通正文。
+    #[test]
+    fn raw_blocks_keep_their_literals() {
+        for src in [
+            "::code lang=md\n    [链接](a b.png)\n",
+            "::css\n    a::after { content: \"[链接](a b.png)\"; }\n",
+            "::math\n    [链接](a b.png)\n",
+        ] {
+            assert_eq!(encode_target_spaces(src), src, "{src:?}");
+        }
+    }
+
+    /// Raw 块外面的目标照常编码 —— 不能整段跳过
+    #[test]
+    fn targets_after_a_raw_block_are_still_encoded() {
+        let src = "::code\n    [a](b c.png)\n\n[链接](a b.png)\n";
+        let out = encode_target_spaces(src);
+        assert!(out.contains("[链接](a%20b.png)"), "{out}");
+        assert!(out.contains("[a](b c.png)"), "{out}");
     }
 
     /// 围栏外面的目标照常编码 —— 不能因为容器里有围栏就整段不动

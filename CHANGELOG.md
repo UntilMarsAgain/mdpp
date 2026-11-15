@@ -164,6 +164,9 @@
 - `mdpp/examples/bench.rs`：单线程与多线程渲染的轻量基准。
 - 删除 `count_problem_boxes`：问题计数已由 `Rendered.problems` 给出，HTML 类名
   匹配不再是公开契约。
+- 删除 `raw::Fences` / `Raw` / `FenceLine` 与 `starts_html_block`：原始区统一由
+  `raw::raw_zones` 给出，它现在也认 `::code` 这类 Raw 块，不再依赖另一套手写
+  围栏状态机。
 
 ### 前端
 
@@ -242,6 +245,10 @@
 - 资源扫描改用 `lol_html` 流式重写：删除手写的开始标签 / 属性扫描器，没被改写
   的字节原样透传，`<script>` / `<style>` 里的文本不会进入处理函数；`scan` 改为
   返回 `Result`，属性值以解析器读到的为准（无引号的 `src=图.png` 现在也会改写）。
+- 解析方言集中到 `parse/dialect.rs`：渲染器与原始区扫描共用同一套 markdown-it
+  装配与 `::` 块规则，扫描模式只把 Raw 块的字节区间记成节点，不查模板、不展开。
+  于是 `::code` / `::css` / `::math` 正文里的 `](a b.png)` 不再被目标编码改写成
+  `%20`，探针也不必再单独维护一份「不认识 `::`」的解析器。
 - `::css` 允许 `@import` 与 `url()` 外部资源，只继续剥离 `</style`（此前把
   `@import` 整条删掉，且 CSS 转义还能绕过）。
 - `render_parts` 与 `render_node_parts` 共用 `finish`；`RenderEnv` 三处构造统一
