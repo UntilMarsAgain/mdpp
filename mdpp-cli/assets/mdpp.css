@@ -414,6 +414,16 @@
   width: 100%;
 }
 
+/* 行内图片（通常是小图标）：高度跟当前行字号走，不锁死像素。 */
+.mdpp-content img.mdpp-image--inline {
+  display: inline-block;
+  width: auto;
+  height: 1em;
+  max-height: 1em;
+  margin-inline: 0.08em;
+  vertical-align: -0.125em;
+}
+
 .mdpp-content .mdpp-image--center img,
 .mdpp-content .mdpp-media--center {
   margin-inline: auto;
@@ -460,9 +470,113 @@
 
 /* ---- `::code` ------------------------------------------------------ */
 
-/* 行号列与强调色带由界面那一层落地，这里只保证提示在（那一块要给它留出位置） */
-.mdpp-content pre.mdpp-template-code[data-mdpp-lines='on'] {
+/* 代码块外层只在有来源链接或折叠时才出现；没有时仍是一个裸 `<pre>`。 */
+.mdpp-content .mdpp-code {
+  margin: var(--mdpp-gap) 0;
+}
+
+.mdpp-content .mdpp-code__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--mdpp-border);
+  border-bottom: 0;
+  border-radius: var(--mdpp-radius) var(--mdpp-radius) 0 0;
+  background: var(--mdpp-surface);
+  font-size: 0.86em;
+}
+
+.mdpp-content .mdpp-code__title {
+  color: var(--mdpp-text-dim);
+}
+
+.mdpp-content .mdpp-code__source {
+  color: var(--mdpp-accent);
+  text-decoration: none;
+}
+
+.mdpp-content .mdpp-code__source:hover {
+  text-decoration: underline;
+}
+
+.mdpp-content .mdpp-code__fold > summary {
+  cursor: pointer;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--mdpp-border);
+  background: var(--mdpp-surface);
+  color: var(--mdpp-text-dim);
+  font-size: 0.86em;
+  list-style: none;
+}
+
+.mdpp-content .mdpp-code__fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mdpp-content .mdpp-code__fold[open] > summary {
+  border-bottom: 0;
+  border-radius: var(--mdpp-radius) var(--mdpp-radius) 0 0;
+}
+
+.mdpp-content .mdpp-code__fold > summary::before {
+  content: "▸ ";
+}
+
+.mdpp-content .mdpp-code__fold[open] > summary::before {
+  content: "▾ ";
+}
+
+.mdpp-content .mdpp-code__fold > pre,
+.mdpp-content .mdpp-code > pre {
+  margin-top: 0;
+}
+
+.mdpp-content .mdpp-code__head + .mdpp-code__fold > summary,
+.mdpp-content .mdpp-code__head + pre {
+  border-top: 0;
+}
+
+.mdpp-content .mdpp-code__head + pre,
+.mdpp-content .mdpp-code__fold[open] > pre {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* JS 把每个逻辑行包成 `.mdpp-code__line` 后才画行号。行号用 CSS counter，
+ * 起始行由前端的 `--mdpp-line-start` 设置；不用固定宽度的表格，长行横向
+ * 滚动时行号会跟着代码一起走。 */
+.mdpp-content pre.mdpp-template-code .mdpp-code__line {
+  display: block;
+  position: relative;
+  min-height: 1.5em;
+}
+
+.mdpp-content pre.mdpp-template-code[data-mdpp-lines='on'] code {
+  counter-reset: mdpp-line var(--mdpp-line-start, 0);
+}
+
+.mdpp-content pre.mdpp-template-code[data-mdpp-lines='on'] .mdpp-code__line {
+  counter-increment: mdpp-line;
   padding-left: 3.2rem;
+}
+
+.mdpp-content pre.mdpp-template-code[data-mdpp-lines='on'] .mdpp-code__line::before {
+  content: counter(mdpp-line);
+  position: absolute;
+  left: 0;
+  width: 2.4rem;
+  text-align: right;
+  color: var(--mdpp-text-dim);
+  opacity: 0.7;
+  user-select: none;
+}
+
+.mdpp-content .mdpp-code__line--highlight {
+  background: rgba(30, 120, 255, 0.12);
+  background: color-mix(in srgb, var(--mdpp-accent) 14%, transparent);
 }
 
 /* ---- 侧边目录 ----------------------------------------------------- */
@@ -607,6 +721,15 @@
   .mdpp-content pre {
     white-space: pre-wrap;
     word-break: break-word;
+  }
+
+  /* 纸面上折叠不该把代码藏起来 */
+  .mdpp-content .mdpp-code__fold > summary {
+    display: none;
+  }
+
+  .mdpp-content details.mdpp-code__fold > pre {
+    display: block !important;
   }
 
   /* 屏幕上靠滚动才看得到的东西，纸上全出来 */

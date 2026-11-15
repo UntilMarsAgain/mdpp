@@ -118,28 +118,117 @@ pub(super) fn render_math(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     fmt.cr();
 }
 
-/// `::code lang=rust lines=off start=10 highlight=2-3` —— 像 markdown 的代码块，
-/// 但能控制行号与要强调的行。
+/// `::code lang=rust lines=on start=10 highlight=2-3 fold=on source=…`
+/// —— 像 markdown 的代码块，但能控制行号、强调行、折叠与源码入口。
 ///
-/// 这里**只输出代码原文与几个 `data-*` 提示**：行号列与强调色带由使用方落地 ——
-/// 拆行会破坏 highlight.js 的分词（它的 span 可能跨行），而「界面怎么显示」属于界面
-/// 那一层。
+/// 后端只输出**语义结构**和几个 `data-mdpp-*` 提示；行号、强调色带、折叠
+/// 展开后的补全由 `mdpp.js` 落地。拆行必须在前端做，因为 highlight.js 的
+/// span 可能跨行；后端拆行会破坏它的分词。
+///
+/// `lines=` 默认关；`start=` 会自动打开行号。`highlight=` 用的是**显示行号**
+/// （已经算上 `start`），所以 `start=10 highlight=10-11` 强调头两行。
+/// `source=` 是来源 URL；`source-text=` 是链接文字，默认“查看源码”。
+/// `fold=on|open` 会套一层 `<details>`；`on` 初始折叠，`open` 初始展开。
 pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     let language = block.param("lang").unwrap_or("").trim();
 
+    let fold = match block.param("fold").map(str::trim) {
+        None | Some("") | Some("off") | Some("false") | Some("no") => None,
+        Some("on") | Some("closed") => Some(false),
+        Some("open") => Some(true),
+        Some(other) => {
+            render_problem(
+                block,
+                fmt,
+                &format!("fold= 只认 on / open / off，写成了 `{other}`"),
+            );
+            return;
+        }
+    };
+
+    let source = match block.param("source").map(str::trim) {
+        Some("") => {
+            render_problem(block, fmt, "source= 要给出源码地址，或者整项删掉");
+            return;
+        }
+        Some(value) if !safe_source(value) => {
+            render_problem(
+                block,
+                fmt,
+                "source= 用的是不允许的协议（javascript / data / vbscript 会被拒绝）",
+            );
+            return;
+        }
+        Some(value) => Some(value),
+        None => None,
+    };
+
+    let source_text = block
+        .param("source-text")
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .unwrap_or("查看源码");
+    if source.is_none() && block.param("source-text").is_some() {
+        render_problem(block, fmt, "source-text= 必须和 source= 一起用");
+        return;
+    }
+
+    let lines_param = block.param("lines").map(str::trim);
+    let lines_on = match lines_param {
+        None => false,
+        Some("on" | "true" | "yes" | "1") => true,
+        Some("off" | "false" | "no" | "0") => false,
+        Some(other) => {
+            render_problem(
+                block,
+                fmt,
+                &format!("lines= 只认 on / off，写成了 `{other}`"),
+            );
+            return;
+        }
+    };
+
+    let start_param = block.param("start").map(str::trim);
+    let start = match start_param {
+        None => 1,
+        Some(value) => match value.parse::<usize>() {
+            Ok(number) if number > 0 => number,
+            _ => {
+                render_problem(block, fmt, "start= 要写一个从 1 开始的正整数");
+                return;
+            }
+        },
+    };
+    if start_param.is_some() && lines_param == Some("off") {
+        render_problem(block, fmt, "start= 会打开行号，不能同时写 lines=off");
+        return;
+    }
+    let lines_on = lines_on || start_param.is_some();
+
+    let line_count = block.body.lines().count().max(1);
+    let highlight = match block.param("highlight").map(str::trim) {
+        None => None,
+        Some(value) => match normalize_highlight(value, start, line_count) {
+            Ok(value) => Some(value),
+            Err(why) => {
+                render_problem(block, fmt, &why);
+                return;
+            }
+        },
+    };
+
     let mut attrs: Vec<(&str, String)> = vec![("class", "mdpp-template-code".to_string())];
-    if let Some(lines) = block.param("lines") {
-        let off = matches!(lines.trim(), "off" | "false" | "no");
+    if lines_param.is_some() || start_param.is_some() {
         attrs.push((
             "data-mdpp-lines",
-            if off { "off" } else { "on" }.to_string(),
+            if lines_on { "on" } else { "off" }.to_string(),
         ));
     }
-    if let Some(start) = block.param("start") {
-        attrs.push(("data-mdpp-line-start", start.trim().to_string()));
+    if start_param.is_some() {
+        attrs.push(("data-mdpp-line-start", start.to_string()));
     }
-    if let Some(highlight) = block.param("highlight") {
-        attrs.push(("data-mdpp-highlight", highlight.trim().to_string()));
+    if let Some(value) = &highlight {
+        attrs.push(("data-mdpp-highlight", value.clone()));
     }
 
     let code_attrs: Vec<(&str, String)> = if language.is_empty() {
@@ -148,7 +237,44 @@ pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
         vec![("class", format!("language-{language}"))]
     };
 
-    fmt.cr();
+    let wrapper = source.is_some() || fold.is_some();
+    if wrapper {
+        fmt.cr();
+        fmt.open("figure", &[("class", "mdpp-code".to_string())]);
+        fmt.cr();
+        if let Some(source) = source {
+            fmt.open("figcaption", &[("class", "mdpp-code__head".to_string())]);
+            fmt.open("span", &[("class", "mdpp-code__title".to_string())]);
+            fmt.text("代码");
+            fmt.close("span");
+            fmt.open(
+                "a",
+                &[
+                    ("class", "mdpp-code__source".to_string()),
+                    ("href", source.to_string()),
+                    ("target", "_blank".to_string()),
+                    ("rel", "noopener noreferrer".to_string()),
+                ],
+            );
+            fmt.text(source_text);
+            fmt.close("a");
+            fmt.close("figcaption");
+            fmt.cr();
+        }
+    }
+
+    if let Some(open) = fold {
+        let mut detail_attrs = vec![("class", "mdpp-code__fold".to_string())];
+        if open {
+            detail_attrs.push(("open", "open".to_string()));
+        }
+        fmt.open("details", &detail_attrs);
+        fmt.open("summary", &[("class", "mdpp-code__summary".to_string())]);
+        fmt.text("查看代码");
+        fmt.close("summary");
+        fmt.cr();
+    }
+
     fmt.open("pre", &attrs);
     fmt.open("code", &code_attrs);
     // 原文照收：代码里的 markdown 记号**不该**被解析
@@ -156,8 +282,73 @@ pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
     fmt.close("code");
     fmt.close("pre");
     fmt.cr();
+
+    if fold.is_some() {
+        fmt.close("details");
+        fmt.cr();
+    }
+    if wrapper {
+        fmt.close("figure");
+        fmt.cr();
+    }
 }
 
+/// `source=` 只挡能执行或能外传数据的三种协议；相对地址照常放行。
+fn safe_source(value: &str) -> bool {
+    let probe: String = value
+        .chars()
+        .filter(|ch| !ch.is_control() && !ch.is_whitespace())
+        .collect();
+    let lower = probe.to_ascii_lowercase();
+    !["javascript:", "data:", "vbscript:"]
+        .iter()
+        .any(|prefix| lower.starts_with(prefix))
+}
+
+/// 把 `2-3,5` 规范化成 `2-3,5`，并按**显示行号**检查范围。
+fn normalize_highlight(value: &str, start: usize, line_count: usize) -> Result<String, String> {
+    if value.is_empty() {
+        return Err("highlight= 要写行号，例如 `2-3,5`".to_string());
+    }
+    let end = start.saturating_add(line_count).saturating_sub(1);
+    let mut parts = Vec::new();
+    for piece in value.split(',') {
+        let piece = piece.trim();
+        if piece.is_empty() {
+            return Err("highlight= 里有空段，写成 `2-3,5` 这样".to_string());
+        }
+        let (from, to) = match piece.split_once('-') {
+            Some((from, to)) => (from.trim(), Some(to.trim())),
+            None => (piece, None),
+        };
+        let from = parse_line_number(from, "highlight=")?;
+        let to = match to {
+            Some(to) => parse_line_number(to, "highlight=")?,
+            None => from,
+        };
+        if to < from {
+            return Err(format!("highlight= 的区间 `{piece}` 结尾小于开头"));
+        }
+        if from < start || to > end {
+            return Err(format!(
+                "highlight= 的 `{piece}` 超出代码范围：当前显示第 {start}–{end} 行"
+            ));
+        }
+        parts.push(if from == to {
+            from.to_string()
+        } else {
+            format!("{from}-{to}")
+        });
+    }
+    Ok(parts.join(","))
+}
+
+fn parse_line_number(value: &str, what: &str) -> Result<usize, String> {
+    match value.parse::<usize>() {
+        Ok(number) if number > 0 => Ok(number),
+        _ => Err(format!("{what} 里的 `{value}` 不是正整数")),
+    }
+}
 /// `::css` —— 把内容（或 `src="页面名"` 指的模板页）登记为**整页** CSS。
 ///
 /// 样式不再收进正文：它由 [`crate::env`] 收集，去重后由调用方放在页面级
@@ -589,17 +780,95 @@ mod tests {
     #[test]
     fn code_template_carries_the_frontend_hints() {
         let html = render(
-            "::code lang=rust lines=off start=10 highlight=2-3\n  fn main() {}\n  // 注释\n",
+            "::code lang=rust lines=on start=10 highlight=10-11\n  fn main() {}\n  // 注释\n",
         );
         assert!(
             html.contains(r#"<pre class="mdpp-template-code""#),
             "{html}"
         );
-        assert!(html.contains(r#"data-mdpp-lines="off""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-lines="on""#), "{html}");
         assert!(html.contains(r#"data-mdpp-line-start="10""#), "{html}");
-        assert!(html.contains(r#"data-mdpp-highlight="2-3""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-highlight="10-11""#), "{html}");
         assert!(html.contains(r#"<code class="language-rust">"#), "{html}");
         assert!(html.contains("fn main() {}"), "{html}");
+    }
+
+    /// start= 会自动开行号；强调范围按显示行号校验并规范化
+    #[test]
+    fn code_start_implies_line_numbers_and_highlights_are_normalized() {
+        let html = render("::code start=10 highlight=\"10-11, 13\"\n  a\n  b\n  c\n  d\n");
+        assert!(html.contains(r#"data-mdpp-lines="on""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-line-start="10""#), "{html}");
+        assert!(html.contains(r#"data-mdpp-highlight="10-11,13""#), "{html}");
+    }
+
+    /// source / fold 才会生成 figure；source 链接安全，fold 默认展开与否可指定
+    #[test]
+    fn code_source_and_fold_are_structural() {
+        let html = render(
+            "::code lang=rust source=https://example.com/a.rs source-text=源码 fold=open\n  fn main() {}\n",
+        );
+        assert!(html.contains(r#"<figure class="mdpp-code">"#), "{html}");
+        assert!(
+            html.contains(r#"<figcaption class="mdpp-code__head">"#),
+            "{html}"
+        );
+        assert!(html.contains(r#"<a class="mdpp-code__source""#), "{html}");
+        assert!(
+            html.contains(r#"href="https://example.com/a.rs""#),
+            "{html}"
+        );
+        assert!(html.contains(r#"target="_blank""#), "{html}");
+        assert!(html.contains(r#"rel="noopener noreferrer""#), "{html}");
+        assert!(html.contains("源码"), "{html}");
+        assert!(
+            html.contains(r#"<details class="mdpp-code__fold" open="open">"#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"<summary class="mdpp-code__summary">"#),
+            "{html}"
+        );
+
+        let closed = render("::code fold=on\n  fn main() {}\n");
+        assert!(
+            closed.contains(r#"<details class="mdpp-code__fold">"#),
+            "{closed}"
+        );
+        assert!(!closed.contains(r#"open="open""#), "{closed}");
+    }
+
+    /// 没有 source / fold 时保持裸 `<pre>`，不额外套 figure
+    #[test]
+    fn code_without_source_or_fold_stays_a_plain_pre() {
+        let html = render("::code lines=on\n  fn main() {}\n");
+        assert!(!html.contains("<figure"), "{html}");
+        assert!(!html.contains("mdpp-code__fold"), "{html}");
+    }
+
+    /// 参数错误要在后端一次说清楚
+    #[test]
+    fn code_refuses_bad_options() {
+        let cases = [
+            ("::code fold=maybe\n  a\n", "fold="),
+            ("::code source=javascript:alert(1)\n  a\n", "source="),
+            ("::code source-text=源码\n  a\n", "source-text="),
+            ("::code lines=maybe\n  a\n", "lines="),
+            ("::code start=0\n  a\n", "start="),
+            ("::code lines=off start=2\n  a\n", "start="),
+            ("::code highlight=0-1\n  a\n", "highlight="),
+            ("::code highlight=2-1\n  a\n", "highlight="),
+            ("::code highlight=5\n  a\n", "highlight="),
+            ("::code highlight=\n  a\n", "highlight="),
+        ];
+        for (source, why) in cases {
+            let html = render(source);
+            assert!(
+                html.contains("mdpp-template--problem"),
+                "应拒绝 {source:?}: {html}"
+            );
+            assert!(html.contains(why), "错误信息应提到 {why}: {html}");
+        }
     }
 
     /// 代码里的记号一个都不动 —— 被 markdown 解析过就不是代码块了

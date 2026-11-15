@@ -6,6 +6,7 @@
 //!   `vbscript:`）；
 //! - `width=` / `height=` 是**上限**（`max-width` / `max-height`），数字与单位都受限
 //!   （见 [`size_rule`]），免得有人拿尺寸参数往 `style` 里塞别的东西；
+//! - `mode=` 决定摆放方式；图片另有 `inline` 模式，像图标一样嵌进行内；
 //! - 图注两种写法：`caption="…"`，或者**在块里写一行**。
 //!
 //! 区别只在最后落成什么标签：`::image` 是一张图（懒加载），`::video` / `::audio` 是
@@ -19,11 +20,14 @@ use super::{caption_of, size_rule};
 use crate::registry::Block;
 use markdown_it::{Node, Renderer};
 
-/// `::image src=…` —— 插入图片。`src` 必给；尺寸、位置、注释都可选：
+/// `::image src=…` —— 插入图片。`src` 必给；尺寸、模式、注释都可选：
 ///
-/// - `align=left|center|right`（默认居中）；
+/// - `mode=left|center|right`（默认居中）决定图片在正文里的位置；
+/// - `mode=inline` 输出一个行内 `<img>`，高度是 `1em`，随所在行的字号变化，
+///   适合当图标；此时不生成 `figure`，也不接受图注；
 /// - `width=` / `height=` —— 都是**上限**（`max-width` / `max-height`），图片不会被拉变形，
-///   数量与单位都受限（见 [`size_rule`]），免得有人拿尺寸参数往 `style` 里塞别的东西；
+///   数量与单位都受限（见 [`size_rule`]），免得有人拿尺寸参数往 `style` 里塞别的东西。
+///   行内模式忽略这两个上限，避免把图标定死成固定尺寸；
 /// - 注释有两种写法：**图片下面写一行**（最自然），或者 `caption="…"`。
 ///
 /// 协议只挡能执行或能外传数据的三种：`javascript:` / `data:` / `vbscript:`。
@@ -32,14 +36,39 @@ pub(super) fn render_image(block: &Block, _node: &Node, fmt: &mut dyn Renderer) 
         return;
     };
 
-    let align = align_of(block);
+    let Some(mode) = mode_of(block, fmt, true) else {
+        return;
+    };
+
+    if mode == "inline" {
+        let has_caption = block
+            .param("caption")
+            .is_some_and(|caption| !caption.trim().is_empty())
+            || !block.body.trim().is_empty();
+        if has_caption {
+            render_problem(block, fmt, "mode=inline 的图片不能写图注");
+            return;
+        }
+
+        // 不写 cr：行内图片要跟相邻文字贴在同一行里。
+        fmt.self_close(
+            "img",
+            &[
+                ("class", "mdpp-image mdpp-image--inline".to_string()),
+                ("src", source),
+                ("alt", block.param("alt").unwrap_or("").trim().to_string()),
+                ("loading", "lazy".to_string()),
+            ],
+        );
+        return;
+    }
 
     let style = size_style(block);
 
     fmt.cr();
     fmt.open(
         "figure",
-        &[("class", format!("mdpp-image mdpp-image--{align}"))],
+        &[("class", format!("mdpp-image mdpp-image--{mode}"))],
     );
     fmt.cr();
     let mut attrs: Vec<(&str, String)> = vec![
@@ -62,7 +91,8 @@ pub(super) fn render_image(block: &Block, _node: &Node, fmt: &mut dyn Renderer) 
 /// `::video src=片子.mp4` —— 摆一个播放器。
 ///
 /// 与 `::image` 同一套参数：`src` 必给，`width=` / `height=` 是**上限**，
-/// 注释写在块里一行或由 `caption=` 给出。`align=` 只对视频有意义（音频是个窄条）。
+/// 注释写在块里一行或由 `caption=` 给出。`mode=left|center|right` 决定位置；
+/// 视频和音频没有 `inline` 模式。
 pub(super) fn render_video(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     render_media(block, node, fmt, "video");
 }
@@ -78,7 +108,9 @@ fn render_media(block: &Block, _node: &Node, fmt: &mut dyn Renderer, kind: &str)
         return;
     };
 
-    let align = align_of(block);
+    let Some(mode) = mode_of(block, fmt, false) else {
+        return;
+    };
 
     let style = size_style(block);
 
@@ -87,7 +119,7 @@ fn render_media(block: &Block, _node: &Node, fmt: &mut dyn Renderer, kind: &str)
         "figure",
         &[(
             "class",
-            format!("mdpp-media mdpp-media--{kind} mdpp-media--{align}"),
+            format!("mdpp-media mdpp-media--{kind} mdpp-media--{mode}"),
         )],
     );
     fmt.cr();
@@ -165,12 +197,46 @@ fn checked_source(block: &Block, fmt: &mut dyn Renderer, missing: &str) -> Optio
     Some(source.to_string())
 }
 
-/// `align=`：只认三个值，其余一律当居中 —— 摆歪了不如摆正。
-fn align_of(block: &Block) -> &'static str {
-    match block.param("align").map(str::trim) {
-        Some("left") => "left",
-        Some("right") => "right",
-        _ => "center",
+/// `mode=`：位置只认三个值；图片额外允许 `inline`。
+/// 没写时默认居中；写错时直接报问题，而不是悄悄摆正。
+fn mode_of(block: &Block, fmt: &mut dyn Renderer, allow_inline: bool) -> Option<&'static str> {
+    let Some(value) = block.param("mode") else {
+        if block.param("align").is_some() {
+            render_problem(
+                block,
+                fmt,
+                "align= 已改为 mode=，请写 mode=left / center / right",
+            );
+            return None;
+        }
+        return Some("center");
+    };
+    match value.trim() {
+        "left" => Some("left"),
+        "center" => Some("center"),
+        "right" => Some("right"),
+        "inline" if allow_inline => Some("inline"),
+        "inline" => {
+            render_problem(
+                block,
+                fmt,
+                "视频和音频没有 mode=inline，只能 left / center / right",
+            );
+            None
+        }
+        other => {
+            let allowed = if allow_inline {
+                "left / center / right / inline"
+            } else {
+                "left / center / right"
+            };
+            render_problem(
+                block,
+                fmt,
+                &format!("mode= 只认 {allowed}，写成了 `{other}`"),
+            );
+            None
+        }
     }
 }
 
@@ -206,8 +272,8 @@ mod tests {
 
     /// 位置、尺寸上限与图注三种参数一起写：尺寸落成上限声明，位置落成修饰类
     #[test]
-    fn image_carries_alignment_and_limits() {
-        let html = render("::image src=/logo.svg align=right width=320 caption=\"桥体\"\n");
+    fn image_carries_mode_and_limits() {
+        let html = render("::image src=/logo.svg mode=right width=320 caption=\"桥体\"\n");
         assert!(
             html.contains(r#"<figure class="mdpp-image mdpp-image--right">"#),
             "{html}"
@@ -215,6 +281,45 @@ mod tests {
         assert!(html.contains(r#"src="/logo.svg""#), "{html}");
         assert!(html.contains("max-width: 320px"), "{html}");
         assert!(html.contains("<figcaption>桥体</figcaption>"), "{html}");
+    }
+
+    /// 行内模式：不生成 figure，图片高度交给 CSS 的 1em 随行高缩放
+    #[test]
+    fn image_inline_mode_is_an_inline_image() {
+        let html = render("::image src=/star.svg mode=inline alt=星标\n");
+        assert!(!html.contains("<figure"), "{html}");
+        assert!(!html.contains("<figcaption"), "{html}");
+        assert!(
+            html.contains(r#"<img class="mdpp-image mdpp-image--inline""#),
+            "{html}"
+        );
+        assert!(html.contains(r#"alt="星标""#), "{html}");
+    }
+
+    /// 行内图片不能带图注，也不能用 width/height 把尺寸定死
+    #[test]
+    fn image_inline_mode_refuses_a_caption() {
+        let html = render("::image src=/star.svg mode=inline\n  星标\n");
+        assert!(html.contains("template--problem"), "{html}");
+        assert!(!html.contains("<img"), "{html}");
+    }
+
+    /// mode 写错要报问题，而不是悄悄当成居中
+    #[test]
+    fn image_refuses_an_unknown_mode() {
+        let html = render("::image src=/logo.svg mode=wat\n");
+        assert!(html.contains("template--problem"), "{html}");
+        assert!(!html.contains("<img"), "{html}");
+        assert!(html.contains("left / center / right / inline"), "{html}");
+    }
+
+    /// 旧参数不能静默当成居中；给出改名提示。
+    #[test]
+    fn image_rejects_the_old_align_parameter() {
+        let html = render("::image src=/logo.svg align=right\n");
+        assert!(html.contains("template--problem"), "{html}");
+        assert!(!html.contains("<img"), "{html}");
+        assert!(html.contains("align= 已改为 mode="), "{html}");
     }
 
     /// 图注两种写法：块里写一行最自然，`caption=` 优先；都没有时一个 `<figcaption>` 都不摆

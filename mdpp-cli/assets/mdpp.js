@@ -409,6 +409,118 @@
 
   // ===== 6. mermaid / KaTeX / highlight.js ==============================
 
+  // 把 highlight.js 已经分好词的 DOM 拆成逻辑行。不能直接按换行切 innerHTML：
+  // 一个高亮 span 可能跨行，直接切会把标签截断。这里的做法是沿着 DOM 走，
+  // 每遇到换行就收一条 line，并把仍开着的 span 在新行里重新克隆出来。
+  function splitCodeLines(code) {
+    var fragment = document.createDocumentFragment();
+    var line = document.createElement("span");
+    line.className = "mdpp-code__line";
+    var stack = [];
+    var holder = line;
+
+    function newLine() {
+      fragment.appendChild(line);
+      line = document.createElement("span");
+      line.className = "mdpp-code__line";
+      holder = line;
+      for (var i = 0; i < stack.length; i += 1) {
+        var clone = stack[i].template.cloneNode(false);
+        holder.appendChild(clone);
+        holder = clone;
+        stack[i].clone = clone;
+      }
+    }
+
+    function appendText(text) {
+      var parts = text.split(/\r\n|\n|\r/);
+      for (var i = 0; i < parts.length; i += 1) {
+        if (parts[i]) {
+          holder.appendChild(document.createTextNode(parts[i]));
+        }
+        if (i < parts.length - 1) {
+          newLine();
+        }
+      }
+    }
+
+    function walk(node) {
+      if (node.nodeType === 3) {
+        appendText(node.nodeValue || "");
+        return;
+      }
+      if (node.nodeType !== 1) {
+        return;
+      }
+      var clone = node.cloneNode(false);
+      holder.appendChild(clone);
+      stack.push({ template: node, clone: clone });
+      holder = clone;
+      for (var child = node.firstChild; child; child = child.nextSibling) {
+        walk(child);
+      }
+      stack.pop();
+      holder = stack.length ? stack[stack.length - 1].clone : line;
+    }
+
+    for (var child = code.firstChild; child; child = child.nextSibling) {
+      walk(child);
+    }
+    fragment.appendChild(line);
+    code.textContent = "";
+    code.appendChild(fragment);
+  }
+
+  function applyCodeHighlights(pre, code) {
+    var spec = pre.getAttribute("data-mdpp-highlight");
+    var start = parseInt(pre.getAttribute("data-mdpp-line-start") || "1", 10);
+    if (!spec || !(start > 0)) {
+      return;
+    }
+    var lines = code.querySelectorAll(".mdpp-code__line");
+    spec.split(",").forEach(function (piece) {
+      var bounds = piece.trim().split("-");
+      var from = parseInt(bounds[0], 10);
+      var to = bounds.length > 1 ? parseInt(bounds[1], 10) : from;
+      if (!(from > 0) || !(to >= from)) {
+        return;
+      }
+      for (var number = from; number <= to; number += 1) {
+        var index = number - start;
+        if (index >= 0 && index < lines.length) {
+          lines[index].classList.add("mdpp-code__line--highlight");
+        }
+      }
+    });
+  }
+
+  function bindCodeBlocks() {
+    document.querySelectorAll("pre.mdpp-template-code").forEach(function (pre) {
+      if (pre.hasAttribute("data-mdpp-code-bound")) {
+        return;
+      }
+      var linesOn = pre.getAttribute("data-mdpp-lines") === "on";
+      var highlight = pre.getAttribute("data-mdpp-highlight");
+      if (!linesOn && !highlight) {
+        return;
+      }
+      var code = pre.querySelector(":scope > code");
+      if (!code) {
+        return;
+      }
+      var start = parseInt(pre.getAttribute("data-mdpp-line-start") || "1", 10);
+      if (!(start > 0)) {
+        start = 1;
+      }
+      splitCodeLines(code);
+      code.style.setProperty("--mdpp-line-start", String(start - 1));
+      if (highlight) {
+        applyCodeHighlights(pre, code);
+      }
+      pre.setAttribute("data-mdpp-code-bound", "");
+    });
+  }
+
   function bindDiagrams() {
     if (window.mermaid) {
       window.mermaid.initialize({ startOnLoad: false });
@@ -428,6 +540,7 @@
     if (window.hljs) {
       window.hljs.highlightAll();
     }
+    bindCodeBlocks();
   }
 
   // ===== 7. 公共 API ==================================================

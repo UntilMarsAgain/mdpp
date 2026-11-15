@@ -292,6 +292,14 @@
       println!("{:#?}", &[1, 2, 3]);
   }
 
+`::code` 还可以带来源链接、行号、起始行、强调行和折叠：
+
+::code lang=rust lines=on start=10 highlight=10-11 fold=open source=https://example.com/demo.rs
+  fn main() {
+      let answer = 42;
+      println!("{answer}");
+  }
+
 ::mermaid
   graph TD
     A[开始] --> B{行不行}
@@ -335,8 +343,11 @@
 
 尺寸参数是**上限**（`max-width` / `max-height`），不是拉伸。
 
-::image src=图片.png width=320 align=center
+::image src=图片.png width=320 mode=center
   图注写在图片下面这一行
+
+::element tag=p inline=on
+  ::image src=图片.png mode=inline alt=行内图标
 
 ::video src=片子.mp4 width=480
 ::audio src=录音.mp3
