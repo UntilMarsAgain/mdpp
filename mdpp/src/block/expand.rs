@@ -1,7 +1,8 @@
 //! **用户自定义块**的展开：`::卡片` → 找模板页 `卡片` → 填 `{{param}}` → 解析成节点。
 //!
-//! 与内置块的界在名字：内置名字按注册表走，非内置名字才来这里找同名页。所以这一步的
-//! 产物**不是一个「渲染成某个样子」的块，而是一段内容** —— 页面里怎么写就怎么长。
+//! 与内置块的界在名字：内置名字按注册表走，非内置名字才来这里找同名页。模板页本身
+//! 不声明输出形态；展开后把产物缓冲下来，按调用处的期望和实际识别出的形态决定是否
+//! 补段落、剥段落或回滚成诊断。
 //!
 //! 两种「停下来说清楚」的情形都返回一段说明而不是硬展开：这一页**在但读不出来**
 //! （报成「未知块」会把作者引向错的方向），以及套得太深（多半是块自己嵌自己）。
@@ -104,10 +105,11 @@ pub(crate) fn expand_user_block(
     node
 }
 
-/// 用户块展开后的节点：它自己没有 HTML，只把解析出来的子节点写出去。
+/// 用户块展开后的节点：它自己没有固定 HTML，而是缓冲解析出来的子节点。
 ///
-/// 与旧版 `ExpandedBlock` 的差别只在渲染前把模板作用域装回来 —— `::if` 的
-/// `{{@body}}`、模板里再嵌模板的晚绑定参数都要靠它。
+/// 渲染前把模板作用域装回来 —— `::if` 的 `{{@body}}`、模板里再嵌模板的晚绑定
+/// 参数都要靠它；随后按 [`typecheck::classify`] 识别实际产物，与调用处的
+/// [`TemplateType`] 比较。
 #[derive(Debug)]
 struct ScopedBlock {
     block: Block,
@@ -118,25 +120,62 @@ struct ScopedBlock {
 impl NodeValue for ScopedBlock {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         let _scope = context::enter_template_vars(Arc::clone(&self.vars));
-        if self.kind == TemplateType::Block {
-            fmt.cr();
-            fmt.contents(&node.children);
-            fmt.cr();
-            return;
-        }
 
-        // 行内模板的产物先收进缓冲区：检查不过时整段丢弃，不能把半截 HTML 写出去。
+        // 模板不声明自己输出什么，调用处只说这次需要什么。先把产物完整收进
+        // 缓冲区，再识别实际形态；失败时整段回滚，不能把半截 HTML 写出去。
         let snapshot = crate::env::snapshot();
         let mut capture = Capture::default();
         capture.contents(&node.children);
         let html = capture.into_string();
-        match typecheck::check_inline(&html) {
-            Ok(html) => fmt.text_raw(&html),
+
+        let classified = match typecheck::classify(&html) {
+            Ok(classified) => classified,
             Err(why) => {
                 if let Some(snapshot) = snapshot {
                     crate::env::restore(snapshot);
                 }
-                dispatch::render_inline_problem(&self.block, fmt, &why);
+                if self.kind == TemplateType::Inline {
+                    dispatch::render_inline_problem(&self.block, fmt, &why);
+                } else {
+                    fmt.cr();
+                    dispatch::render_problem(&self.block, fmt, &why);
+                    fmt.cr();
+                }
+                return;
+            }
+        };
+
+        match self.kind {
+            TemplateType::Inline => {
+                if let Some(inline) = classified.inline {
+                    fmt.text_raw(&inline);
+                } else {
+                    if let Some(snapshot) = snapshot {
+                        crate::env::restore(snapshot);
+                    }
+                    dispatch::render_inline_problem(
+                        &self.block,
+                        fmt,
+                        "行内调用收到块级输出，不能写进行内位置",
+                    );
+                }
+            }
+            TemplateType::Block => {
+                fmt.cr();
+                match classified.kind {
+                    typecheck::OutputKind::Inline => {
+                        let inline = classified.inline.unwrap_or_default();
+                        if !inline.is_empty() {
+                            fmt.open("p", &[]);
+                            fmt.text_raw(&inline);
+                            fmt.close("p");
+                        }
+                    }
+                    typecheck::OutputKind::Paragraph | typecheck::OutputKind::Block => {
+                        fmt.text_raw(&classified.html);
+                    }
+                }
+                fmt.cr();
             }
         }
     }
@@ -422,13 +461,27 @@ mod tests {
     }
 
     #[test]
+    fn an_inline_template_can_output_pure_inline_markup() {
+        let html = render_call(
+            "卡片",
+            TemplatePage::Ready("::element tag=span inline=on\n  行内".into()),
+            "::卡片 type=inline\n",
+        );
+        assert!(html.contains("<span>"), "{html}");
+        assert!(html.contains("行内"), "{html}");
+        assert!(!html.contains("<p>"), "{html}");
+        assert!(!html.contains("template--problem"), "{html}");
+    }
+
+    #[test]
     fn a_block_shaped_inline_template_is_refused() {
         let html = render_call(
             "卡片",
             TemplatePage::Ready("::element tag=div\n  块内容".into()),
             "::卡片 type=inline\n",
         );
-        assert!(html.contains("mdpp-template--problem-inline"), "{html}");
+        assert!(html.contains("mdpp-inline-error"), "{html}");
+        assert!(!html.contains("mdpp-template__badge"), "{html}");
         assert!(!html.contains("<div>"), "{html}");
     }
 
@@ -474,12 +527,31 @@ mod tests {
                 ("卡片", "一段**文字**"),
                 ("框", "::element tag=span inline=on\n  ::卡片"),
             ],
-            "::框\n",
+            "::框 type=inline\n",
         );
         assert!(html.contains("<span>"), "{html}");
         assert!(html.contains("<strong>文字</strong>"), "{html}");
         assert!(!html.contains("<p>"), "{html}");
         assert!(!html.contains("template--problem"), "{html}");
+    }
+
+    #[test]
+    fn a_block_call_wraps_inline_template_output_in_one_paragraph() {
+        let html = render_call(
+            "卡片",
+            TemplatePage::Ready("::element tag=span inline=on\n  行内".into()),
+            "::卡片\n",
+        );
+        assert!(html.contains("<p><span>"), "{html}");
+        assert!(html.contains("行内"), "{html}");
+        assert_eq!(html.matches("<p>").count(), 1, "{html}");
+    }
+
+    #[test]
+    fn a_block_call_leaves_a_paragraph_template_alone() {
+        let html = render_call("卡片", TemplatePage::Ready("一段".into()), "::卡片\n");
+        assert_eq!(html.matches("<p>").count(), 1, "{html}");
+        assert!(!html.contains("<p><p>"), "{html}");
     }
 
     #[test]
@@ -495,7 +567,7 @@ mod tests {
             TemplatePage::Ready(source.into()),
             "::卡片 type=inline\n",
         );
-        assert!(html.contains("mdpp-template--problem-inline"), "{html}");
+        assert!(html.contains("mdpp-inline-error"), "{html}");
         assert!(!html.contains("rollback-inline"), "{html}");
     }
 }

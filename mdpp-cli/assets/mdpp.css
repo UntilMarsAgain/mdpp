@@ -301,6 +301,17 @@
 
 /* ---- 出问题时摆的那几个框 ------------------------------------------ */
 
+/* 行内诊断只是文字：不画框、不加内边距，避免在段落里叠成一排盒子。 */
+.mdpp-content .mdpp-inline-error {
+  color: var(--mdpp-danger, #b42318);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-style: wavy;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
+  margin-inline: 0.1em;
+}
+
 .mdpp-content .mdpp-template {
   margin: var(--mdpp-gap) 0;
   padding: 0.7rem 1rem;

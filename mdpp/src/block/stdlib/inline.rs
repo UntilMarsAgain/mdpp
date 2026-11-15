@@ -105,7 +105,7 @@ mod tests {
             "::inline\n",
         ] {
             let html = render(source);
-            assert!(html.contains("template--problem"), "{source:?}: {html}");
+            assert!(html.contains("mdpp-inline-error"), "{source:?}: {html}");
         }
     }
 
@@ -115,14 +115,14 @@ mod tests {
         let html = render_with_template("span", span, "::inline\n  ::span\n");
         assert!(html.contains("<span>"), "{html}");
         assert!(html.contains("<strong>内容</strong>"), "{html}");
-        assert!(!html.contains("template--problem"), "{html}");
+        assert!(!html.contains("mdpp-inline-error"), "{html}");
     }
 
     #[test]
     fn inline_refuses_a_block_template_and_rolls_back_its_styles() {
         let block = "::css\n  .rollback { color: red; }\n::element tag=div\n  块内容";
         let html = render_with_template("block", block, "::inline\n  ::block\n");
-        assert!(html.contains("template--problem"), "{html}");
+        assert!(html.contains("mdpp-inline-error"), "{html}");
         assert!(!html.contains("<div>"), "{html}");
         assert!(!html.contains("rollback"), "{html}");
     }

@@ -150,6 +150,7 @@ fn the_tour_visits_every_builtin_block() {
         // 「是模板页来的」还是「是别处来的」。
         ("card", "<strong>一个模板页</strong>"),
         ("panel", "<p>另一个模板页</p>"),
+        ("badge", r#"class="mdpp-inline-badge""#),
         ("rows", r#"class="mdpp-row-demo""#),
         ("disclose", "原语折叠"),
         ("style-vars", "--demo-bg: #eef4ff"),
@@ -181,11 +182,7 @@ fn the_tour_shows_intentional_problem_examples() {
 
     let html = render(&tour);
     assert_eq!(html.matches("mdpp-template--unknown").count(), 1, "{html}");
-    assert_eq!(
-        html.matches("mdpp-template--problem-inline").count(),
-        3,
-        "{html}"
-    );
+    assert_eq!(html.matches("mdpp-inline-error").count(), 3, "{html}");
     assert_eq!(
         html.matches(r#"class="mdpp-template mdpp-template--problem""#)
             .count(),

@@ -799,7 +799,7 @@ mod tests {
 
         let block = render("::element tag=span inline=on\n  ::element tag=div\n    块\n");
         assert!(block.contains("<span>"), "{block}");
-        assert!(block.contains("template--problem-inline"), "{block}");
+        assert!(block.contains("mdpp-inline-error"), "{block}");
         assert!(!block.contains("<div>"), "{block}");
     }
 
@@ -1017,10 +1017,7 @@ mod tests {
             "::style-vars tag=span --x=1rem\n  ::element tag=div\n    块\n",
         ] {
             let html = render(source);
-            assert!(
-                html.contains("template--problem-inline"),
-                "{source:?}: {html}"
-            );
+            assert!(html.contains("mdpp-inline-error"), "{source:?}: {html}");
             assert!(!html.contains("<div>"), "{source:?}: {html}");
         }
     }

@@ -1,0 +1,14 @@
+::css
+  /* 巡览用的小徽章；模板页本身不声明输出类型。 */
+  .mdpp-inline-badge {
+    display: inline-block;
+    padding: 0.1em 0.45em;
+    border: 1px solid var(--mdpp-border, #d8dce1);
+    border-radius: 999px;
+    background: var(--mdpp-surface, #f3f5f7);
+    color: var(--mdpp-text-dim, #5c636b);
+    font-size: 0.85em;
+  }
+
+::element tag=span inline=on class=mdpp-inline-badge
+  {{body}}

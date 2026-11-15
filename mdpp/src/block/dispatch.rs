@@ -84,25 +84,10 @@ pub fn render_problem(block: &Block, fmt: &mut dyn Renderer, why: &str) {
 /// 但外壳必须是行内元素，否则会制造新的非法 HTML。
 pub(crate) fn render_inline_problem(block: &Block, fmt: &mut dyn Renderer, why: &str) {
     crate::env::misused_problem();
-    crate::env::note_problem(
-        "行内内容有问题",
-        "mdpp-template--problem-inline",
-        &block.name,
-        why,
-    );
-    fmt.open(
-        "span",
-        &[(
-            "class",
-            "mdpp-template mdpp-template--problem-inline".to_string(),
-        )],
-    );
-    fmt.open("span", &[("class", "mdpp-template__badge".to_string())]);
-    fmt.text("行内内容有问题");
-    fmt.close("span");
-    fmt.open("span", &[("class", "mdpp-template__why".to_string())]);
+    crate::env::note_problem("行内内容有问题", "mdpp-inline-error", &block.name, why);
+    fmt.open("span", &[("class", "mdpp-inline-error".to_string())]);
+    fmt.text("行内内容有问题：");
     fmt.text(why);
-    fmt.close("span");
     fmt.close("span");
 }
 
