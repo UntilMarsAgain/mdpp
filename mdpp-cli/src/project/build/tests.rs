@@ -177,6 +177,7 @@ fn build_options() -> Build {
     Build {
         clean: false,
         strict: false,
+        builtin: false,
         external_script: String::from("cdn"),
         jobs: 0,
         allow_outside: false,

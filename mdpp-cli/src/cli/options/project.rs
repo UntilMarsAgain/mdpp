@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Args;
 
-use super::help::HELP_TEMPLATE;
+use super::help::{HELP_TEMPLATE, HELP_TEMPLATE_BARE};
 
 /// `mdpp init` —— 建项目骨架。
 #[derive(Args, Debug)]
@@ -41,3 +41,14 @@ pub struct New {
     #[arg(short, long, value_name = "标题")]
     pub title: Option<String>,
 }
+
+/// `mdpp repair` —— 把站点模板与三份前端资源恢复成内建版本。
+#[derive(Args, Debug)]
+#[command(
+    next_help_heading = "选项",
+    disable_help_flag = true,
+    disable_version_flag = true,
+    help_template = HELP_TEMPLATE_BARE,
+    override_usage = "mdpp repair"
+)]
+pub struct Repair {}

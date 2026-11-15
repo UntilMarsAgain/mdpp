@@ -228,7 +228,7 @@ fn the_assets_are_copied_out_but_the_template_stays() {
     assert!(dir.path().join("assets/site.css").is_file());
     assert!(dir.path().join("assets/mdpp.js").is_file());
     assert!(
-        !dir.path().join("assets/site.html").exists(),
+        !dir.path().join("assets/template.html").exists(),
         "模板不该进产物"
     );
     // 拷出来的字节与嵌进来的一样

@@ -21,4 +21,8 @@ pub struct Serve {
     /// 听在哪个地址上。默认只听本机；要让容器外面的浏览器看得到，写 0.0.0.0
     #[arg(long, value_name = "地址", default_value = "127.0.0.1")]
     pub host: String,
+
+    /// 内建模式：不读站点里的 `template.html` / 自定义 CSS / JS，全部使用内建版本
+    #[arg(long)]
+    pub builtin: bool,
 }

@@ -114,8 +114,19 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
 
     let site = Site::collect(&pages_dir)?;
     let templates = templates_of(project)?;
-    let extra_css = read_all(project, &project.config.extra_css, "extra_css")?;
-    let extra_js = read_all(project, &project.config.extra_js, "extra_js")?;
+    let site_files = shell::SiteFiles::load(project, options.builtin)?;
+    // 内建模式只认内建的站点模板、CSS、JS 与页面外壳；配置里附加的样式/脚本
+    // 和 override 都跳过，否则它们能绕过 `--builtin`。
+    let extra_css = if options.builtin {
+        Vec::new()
+    } else {
+        read_all(project, &project.config.extra_css, "extra_css")?
+    };
+    let extra_js = if options.builtin {
+        Vec::new()
+    } else {
+        read_all(project, &project.config.extra_js, "extra_js")?
+    };
 
     // 目标目录先整个清掉：临时目录里可能有上一次崩溃留下的半截，而 serve 与测试
     // 直接出到给定目录，不清就会与这一遍的产物混在一起。
@@ -152,9 +163,10 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
     // 导航：配置里那几项 + 自动补上的目录按钮，对着站点查好相对地址
     let nav = resolve_nav(&project.config.nav, &toc_key, &site)?;
 
-    // 资源从二进制里拷到产物里：页面指的是 `assets/mdpp.css`，那些字节得真的在那儿。
-    // 每个页面都内联一遍的话，几十个页面就是几十份拷贝
-    let assets = shell::copy_assets(site_dir)?;
+    // 资源从站点自己的 `assets/`（缺了就用内建那份）拷到产物里：页面指的是
+    // `assets/mdpp.css`，那些字节得真的在那儿。每个页面都内联一遍的话，
+    // 几十个页面就是几十份拷贝。
+    let assets = shell::copy_assets_with(&site_files, site_dir)?;
     debug!(assets, "资源已拷进产物");
 
     // 标签页上那个图标：也是一页资源，一样落在 `assets/` 里。
@@ -286,35 +298,41 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
             .map(|name| format!("{assets_prefix}/{name}"))
             .unwrap_or_default();
         let context = footer_context(project, &site, &templates, &missing, page);
-        let document = shell::document(&shell::Page {
-            title: &title,
-            lang: project.config.lang.as_deref(),
-            theme: Some(project.config.theme.as_str()),
-            chrome: chrome(project, &parser, &nav, &logo, &context)?,
-            canonical: shell::Canonical {
-                root: project.config.base_url.clone(),
-                path: page.url_path(),
+        let document = shell::document_with_template(
+            &shell::Page {
+                title: &title,
+                lang: project.config.lang.as_deref(),
+                theme: Some(project.config.theme.as_str()),
+                chrome: chrome(project, &parser, &nav, &logo, &context)?,
+                canonical: shell::Canonical {
+                    root: project.config.base_url.clone(),
+                    path: page.url_path(),
+                },
+                // 嵌套页里的图标地址也要数对层数（`../../assets/favicon.svg`）——
+                // `favicon` 存的是相对站点根的那一份
+                favicon: favicon
+                    .as_deref()
+                    .map(|name| format!("{assets_prefix}/{name}"))
+                    .as_deref(),
+                body: &body_html,
+                toc: &body.sidebar,
+                extra_css: &page_css,
+                extra_js: &extra_js,
+                assets: shell::Assets::Linked(assets_prefix.clone()),
+                external_script,
+                features: body.features,
             },
-            // 嵌套页里的图标地址也要数对层数（`../../assets/favicon.svg`）——
-            // `favicon` 存的是相对站点根的那一份
-            favicon: favicon
-                .as_deref()
-                .map(|name| format!("{assets_prefix}/{name}"))
-                .as_deref(),
-            body: &body_html,
-            toc: &body.sidebar,
-            extra_css: &page_css,
-            extra_js: &extra_js,
-            assets: shell::Assets::Linked(assets_prefix.clone()),
-            external_script,
-            features: body.features,
-        });
+            &site_files.template,
+        );
         project::write_file(&site_dir.join(&page.output), &document)?;
         debug!(page = %page.key, out = %page.output.display(), "一页");
     }
 
-    // 覆盖层：把 `override/` 里的东西原样拷到产物里，重复就覆盖
-    copy_override(project, site_dir)?;
+    // 覆盖层：把 `override/` 里的东西原样拷到产物里，重复就覆盖。
+    // 内建模式不碰它 —— 它能在资源拷完之后把内建文件顶掉。
+    if !options.builtin {
+        copy_override(project, site_dir)?;
+    }
 
     let mut links: Vec<String> = missing
         .lock()

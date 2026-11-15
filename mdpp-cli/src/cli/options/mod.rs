@@ -17,7 +17,7 @@ mod render;
 mod serve;
 
 pub use build::Build;
-pub use project::{Init, New};
+pub use project::{Init, New, Repair};
 pub use render::Render;
 pub use serve::Serve;
 
@@ -88,6 +88,9 @@ pub enum Command {
 
     /// 在 pages/ 下新建一页
     New(New),
+
+    /// 恢复内建的站点模板、CSS 与 JS（原有文件改名为 .bak）
+    Repair(Repair),
 
     /// 把 pages/ 渲染成一个可静态部署的站点，写进 site_dir
     Build(Build),

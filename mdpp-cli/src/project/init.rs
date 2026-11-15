@@ -117,19 +117,23 @@ mod tests {
             ".gitignore",
             "pages/index.mdpp",
             "templates/example.mdpp",
+            "template.html",
             "assets/favicon.svg",
             "assets/logo.svg",
+            "assets/mdpp.css",
+            "assets/site.css",
+            "assets/mdpp.js",
             "build",
         ] {
             assert!(dir.path().join(path).exists(), "少了 {path}");
         }
-        // 骨架里没有的，init 也不该造出来：根上正好是 mdpp.toml、.gitignore 与四个目录
+        // 骨架里没有的，init 也不该造出来：根上正好是配置、模板与四个目录
         let top: Vec<String> = std::fs::read_dir(dir.path())
             .expect("读得动")
             .filter_map(Result::ok)
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .collect();
-        assert_eq!(top.len(), 6, "根上多了或少了东西：{top:?}");
+        assert_eq!(top.len(), 7, "根上多了或少了东西：{top:?}");
     }
 
     /// init 的产出得真的能 build —— 骨架里的块名/参数一改，这里就先红

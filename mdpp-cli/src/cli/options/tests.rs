@@ -237,7 +237,13 @@ fn build_is_forgiving_by_default() {
         Command::Build(build) => {
             assert!(!build.clean);
             assert!(!build.strict);
+            assert!(!build.builtin);
         }
+        other => panic!("要的是 build，给的是 {other:?}"),
+    }
+
+    match parse(&["build", "--builtin"]).command {
+        Command::Build(build) => assert!(build.builtin),
         other => panic!("要的是 build，给的是 {other:?}"),
     }
 }
@@ -251,6 +257,7 @@ fn serve_has_a_port_and_an_address() {
     };
     assert_eq!(serve.port, 8080);
     assert_eq!(serve.host, "127.0.0.1");
+    assert!(!serve.builtin);
 
     let serve = match parse(&["serve", "-p", "0", "--host", "0.0.0.0"]).command {
         Command::Serve(serve) => serve,
@@ -258,15 +265,33 @@ fn serve_has_a_port_and_an_address() {
     };
     assert_eq!(serve.port, 0);
     assert_eq!(serve.host, "0.0.0.0");
+
+    match parse(&["serve", "--builtin"]).command {
+        Command::Serve(serve) => assert!(serve.builtin),
+        other => panic!("要的是 serve，给的是 {other:?}"),
+    }
 }
 
 /// 帮助里要能看见每个子命令 —— 少写一个变体，那个命令就没人知道了
 #[test]
 fn the_help_lists_every_subcommand() {
     let help = Cli::command().render_long_help().to_string();
-    for name in ["render", "init", "new", "build", "serve"] {
+    for name in ["render", "init", "new", "build", "serve", "repair"] {
         assert!(help.contains(name), "帮助里少了 {name}：\n{help}");
     }
+}
+
+/// `repair` 不接受多余参数：它只恢复固定的那几份文件。
+#[test]
+fn repair_takes_no_arguments() {
+    match parse(&["repair"]).command {
+        Command::Repair(_) => {}
+        other => panic!("要的是 repair，给的是 {other:?}"),
+    }
+    assert!(
+        fail(&["repair", "多余"]).contains("unexpected")
+            || fail(&["repair", "多余"]).contains("错误")
+    );
 }
 
 /// `render` 的那些选项都搬过来了，一个都不能少 —— 少一个就是少一个功能

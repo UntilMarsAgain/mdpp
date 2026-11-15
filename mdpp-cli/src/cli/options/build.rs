@@ -25,6 +25,10 @@ pub struct Build {
     #[arg(long)]
     pub strict: bool,
 
+    /// 内建模式：不读站点里的 `template.html` / 自定义 CSS / JS，全部使用内建版本
+    #[arg(long)]
+    pub builtin: bool,
+
     /// mermaid / math / 代码高亮 前端脚本的加载方式：cdn（默认，从 CDN 引入）、none（不加载）。
     /// 页面里若用了 ::mermaid / ::math 或写了代码块，才会把对应的资源写进 HTML。
     /// 代码高亮的 JS 连同主题（github 浅色 / 深色，随系统深浅自动挑一份）一并引入；

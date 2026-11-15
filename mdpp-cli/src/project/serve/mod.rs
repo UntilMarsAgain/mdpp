@@ -76,6 +76,7 @@ pub fn run(options: &Serve) -> Result<(), String> {
     let options = Build {
         clean: false,
         strict: false,
+        builtin: options.builtin,
         external_script: String::from("cdn"),
         jobs: 0,
         // 预览出到系统临时目录，不在项目里 —— 这个开关只在这里为真

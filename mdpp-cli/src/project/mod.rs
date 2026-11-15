@@ -17,6 +17,7 @@ pub mod build;
 pub mod config;
 pub mod init;
 pub mod new_page;
+pub mod repair;
 pub mod serve;
 pub mod site;
 

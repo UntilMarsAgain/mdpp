@@ -2,13 +2,18 @@ use std::path::Path;
 
 use include_dir::{Dir, File, include_dir};
 
+use crate::project::Project;
+use crate::support::limits::read_text;
+
+use tracing::warn;
+
 use super::text::escape;
 
 /// 页面模板的文件名。它**不**跟着 [`copy_assets`] 拷进产物 —— 它是模板，不是资源
-pub const TEMPLATE_FILE: &str = "site.html";
+pub const TEMPLATE_FILE: &str = "template.html";
 
 /// 默认脚本的文件名
-pub(super) const SCRIPT_FILE: &str = "mdpp.js";
+pub const SCRIPT_FILE: &str = "mdpp.js";
 
 /// 资源在产物里的目录名（页面上是 `assets/mdpp.css` 这样）
 pub const ASSET_DIR: &str = "assets";
@@ -19,13 +24,13 @@ static ASSETS: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets");
 /// 正文样式表的文件名。**正文只有这一份**：配色变量、通用排版、每个块的
 /// 样子、打印规则都在里面 —— 分发时少一堆文件，也少一处「漏拼一个文件」的
 /// 静默故障。
-pub(super) const CORE_CSS: &str = "mdpp.css";
+pub const CORE_CSS: &str = "mdpp.css";
 
 /// **站点模式额外**的那一份：顶栏、那一列的限宽与卡片、页首页尾。
 ///
 /// 与正文分开放 —— `render --full` 要的是一个自足的单文件页面，而这一份是给
 /// 整站用的外壳，对单文件页面没有意义。
-pub(super) const SITE_CSS: &str = "site.css";
+pub const SITE_CSS: &str = "site.css";
 
 /// mermaid.js 的 CDN 地址（jsDelivr）。
 pub(super) const MERMAID_CDN: &str = "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js";
@@ -52,6 +57,89 @@ pub(super) const HLJS_CSS_LIGHT_CDN: &str =
 pub(super) const HLJS_CSS_DARK_CDN: &str =
     "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.7.0/build/styles/github-dark.min.css";
 
+/// 一个站点自己的页面外壳与样式/脚本。
+///
+/// 正常构建优先读项目根下的 `template.html` 与 `assets/` 里那三份；
+/// 读不到就用编译期嵌入的默认值 —— 旧项目因此不必先补文件。
+/// `--builtin` 直接取嵌入值，不碰项目里的任何一份。
+#[derive(Debug, Clone)]
+pub struct SiteFiles {
+    pub template: String,
+    pub core_css: String,
+    pub site_css: String,
+    pub script: String,
+}
+
+impl SiteFiles {
+    /// 编译期嵌进来的那一套。
+    pub fn embedded() -> Self {
+        Self {
+            template: template().to_string(),
+            core_css: default_css(),
+            site_css: asset(SITE_CSS).to_string(),
+            script: default_js().to_string(),
+        }
+    }
+
+    /// 正常构建读站点里的覆盖文件，缺一份就回退那一份的默认值；
+    /// `builtin` 时全部用默认值。
+    pub fn load(project: &Project, builtin: bool) -> Result<Self, String> {
+        if builtin {
+            return Ok(Self::embedded());
+        }
+        let mut fallback = Self::embedded();
+        if let Some(template) = read_site_file(project, Path::new(TEMPLATE_FILE), "template.html")?
+        {
+            warn_missing_placeholders(&template);
+            fallback.template = template;
+        }
+        fallback.core_css = read_site_file(
+            project,
+            &Path::new(ASSET_DIR).join(CORE_CSS),
+            "assets/mdpp.css",
+        )?
+        .unwrap_or(fallback.core_css);
+        fallback.site_css = read_site_file(
+            project,
+            &Path::new(ASSET_DIR).join(SITE_CSS),
+            "assets/site.css",
+        )?
+        .unwrap_or(fallback.site_css);
+        fallback.script = read_site_file(
+            project,
+            &Path::new(ASSET_DIR).join(SCRIPT_FILE),
+            "assets/mdpp.js",
+        )?
+        .unwrap_or(fallback.script);
+        Ok(fallback)
+    }
+}
+
+/// 自定义模板缺了关键占位符时提醒一句，但不阻止构建：
+/// 模板是站点的，作者可能确实想省略某一块。正文丢了通常不是本意。
+fn warn_missing_placeholders(template: &str) {
+    let missing: Vec<String> = ["body", "styles", "scripts"]
+        .into_iter()
+        .filter(|name| !template.contains(&format!("{{{{{name}}}}}")))
+        .map(|name| format!("{{{{{name}}}}}"))
+        .collect();
+    if !missing.is_empty() {
+        warn!(
+            placeholders = %missing.join("、"),
+            "站点模板 template.html 缺少占位符；对应内容不会出现在产物里（若有意省略可忽略）"
+        );
+    }
+}
+
+/// 项目里存在就读，不存在就 `None`。边界与符号链接交给 `Project::contained`。
+fn read_site_file(project: &Project, path: &Path, what: &str) -> Result<Option<String>, String> {
+    let path = project.contained(path, what)?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    read_text(&path).map(Some)
+}
+
 /// 默认样式表：正文那唯一的一份
 pub fn default_css() -> String {
     asset(CORE_CSS).to_string()
@@ -70,37 +158,34 @@ pub(crate) fn asset(name: &str) -> &'static str {
         .unwrap_or_else(|| panic!("assets/{name} 没被嵌进来"))
 }
 
-/// 把 `assets/` 里那些资源拷到 `<dest>/assets/`，模板不拷。
-///
-/// 站点模式用它：页面指的是 `assets/mdpp.css`，那些字节得真的在那儿。
+/// 测试用：把内建的三份资源拷到 `<dest>/assets/`。
+#[cfg(test)]
 pub fn copy_assets(dest: &Path) -> Result<usize, String> {
+    copy_assets_with(&SiteFiles::embedded(), dest)
+}
+
+/// 把站点实际使用的那三份样式/脚本写进 `<dest>/assets/`。
+///
+/// `template.html` 不拷：它是模板，不是浏览器要请求的资源。
+pub fn copy_assets_with(files: &SiteFiles, dest: &Path) -> Result<usize, String> {
     let dir = dest.join(ASSET_DIR);
     std::fs::create_dir_all(&dir).map_err(|error| format!("建不了 {}：{error}", dir.display()))?;
 
-    let mut copied = 0usize;
-    for file in ASSETS.files() {
-        if file.path() == std::path::Path::new(TEMPLATE_FILE) {
-            continue;
-        }
-        let to = dir.join(file_name(file));
-        std::fs::write(&to, file.contents())
+    for (name, content) in [
+        (CORE_CSS, files.core_css.as_bytes()),
+        (SITE_CSS, files.site_css.as_bytes()),
+        (SCRIPT_FILE, files.script.as_bytes()),
+    ] {
+        let to = dir.join(name);
+        std::fs::write(&to, content)
             .map_err(|error| format!("写不了 {}：{error}", to.display()))?;
-        copied += 1;
     }
-    Ok(copied)
+    Ok(3)
 }
 
 /// 模板原文
 pub(crate) fn template() -> &'static str {
     asset(TEMPLATE_FILE)
-}
-
-/// 一个资源文件的名字（那一层是平的，目录里没有子目录）
-pub(super) fn file_name(file: &File) -> String {
-    file.path()
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default()
 }
 
 /// 资源在 URL 里用的名字：就是那个文件名，按**属性值**的规矩转义。

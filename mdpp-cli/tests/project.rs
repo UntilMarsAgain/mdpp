@@ -581,7 +581,8 @@ fn a_favicon_that_cannot_be_read_is_refused() {
 fn a_favicon_may_not_take_over_a_built_in_asset() {
     let dir = empty_dir();
     let root = init(dir.path());
-    std::fs::write(root.join("assets/mdpp.css"), "body { color: red; }").expect("写得下");
+    std::fs::create_dir(root.join("other")).expect("建得出");
+    std::fs::write(root.join("other/mdpp.js"), "body { color: red; }").expect("写得下");
 
     let config = root.join("mdpp.toml");
     let text = std::fs::read_to_string(&config).expect("读得动");
@@ -589,7 +590,7 @@ fn a_favicon_may_not_take_over_a_built_in_asset() {
         &config,
         text.replace(
             "favicon = \"assets/favicon.svg\"",
-            "favicon = \"assets/mdpp.css\"",
+            "favicon = \"other/mdpp.js\"",
         ),
     )
     .expect("改得下");
@@ -598,7 +599,7 @@ fn a_favicon_may_not_take_over_a_built_in_asset() {
     assert!(!out.status.success(), "同名资源该被拒绝");
     let message = stderr_of(&out);
     assert!(message.contains("拒绝覆盖"), "{message}");
-    assert!(message.contains("mdpp.css"), "{message}");
+    assert!(message.contains("mdpp.js"), "{message}");
 }
 
 /// favicon 与 logo 指到同一个文件是合理的：拷第二遍时内容相同，不该报重名
@@ -1296,4 +1297,184 @@ fn footer_can_use_a_project_template() {
     assert!(home.contains("来自模板"), "{home}");
     let footer = home.split_once("mdpp-foot__text").expect("有 footer").1;
     assert!(!footer.contains("template--unknown"), "{footer}");
+}
+
+/// 站点可以自己换 shell 模板与三份前端资源；`--builtin` 则完全回到内建版本。
+#[test]
+fn a_site_can_replace_its_shell_and_frontend_assets() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+
+    std::fs::write(
+        root.join("template.html"),
+        r#"<!doctype html>
+<html{{lang_attr}}{{theme_attr}}>
+<head><meta charset="utf-8"><title>{{title}}</title>{{styles}}{{scripts}}{{meta}}</head>
+<body data-site-template="custom">{{bar}}{{toc}}{{foot}}{{body}}</body>
+</html>"#,
+    )
+    .expect("写得下 template");
+    std::fs::write(root.join("assets/mdpp.css"), "/* custom-site-css */\n").expect("写得下 css");
+    std::fs::write(root.join("assets/site.css"), "/* custom-shell-css */\n").expect("写得下 css");
+    std::fs::write(root.join("assets/mdpp.js"), "/* custom-site-js */\n").expect("写得下 js");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "build 失败：{}", stderr_of(&out));
+
+    let html = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(html.contains(r#"data-site-template="custom""#), "{html}");
+    let css = std::fs::read_to_string(root.join("build/assets/mdpp.css")).expect("读得动");
+    assert!(css.contains("custom-site-css"), "{css}");
+    assert!(
+        std::fs::read_to_string(root.join("build/assets/site.css"))
+            .expect("读得动")
+            .contains("custom-shell-css")
+    );
+    assert!(
+        std::fs::read_to_string(root.join("build/assets/mdpp.js"))
+            .expect("读得动")
+            .contains("custom-site-js")
+    );
+
+    // 内建模式：模板与资源都回内建版本，自定义的一个字节都不进产物
+    let out = mdpp(&root, &["build", "--builtin"]);
+    assert!(
+        out.status.success(),
+        "build --builtin 失败：{}",
+        stderr_of(&out)
+    );
+    let html = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(!html.contains("data-site-template"), "{html}");
+    let css = std::fs::read_to_string(root.join("build/assets/mdpp.css")).expect("读得动");
+    assert!(!css.contains("custom-site-css"), "{css}");
+    assert!(css.contains("--mdpp-bg"), "内建模式该用内建样式：{css}");
+}
+
+/// 自定义模板少了 `{{body}}` 只警告，不阻止构建：作者可能是有意省略。
+#[test]
+fn a_template_missing_placeholders_warns_but_builds() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    std::fs::write(
+        root.join("template.html"),
+        r#"<!doctype html>
+<html><head><title>{{title}}</title>{{styles}}{{scripts}}</head>
+<body>{{bar}}</body></html>"#,
+    )
+    .expect("写得下 template");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "build 失败：{}", stderr_of(&out));
+    let stderr = stderr_of(&out);
+    assert!(stderr.contains("缺少占位符"), "{stderr}");
+    assert!(stderr.contains("body"), "{stderr}");
+    let html = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(!html.contains("欢迎使用Markdown++"), "{html}");
+}
+
+/// `mdpp repair` 恢复四份默认文件；旧文件留在 `.bak`，再修一次留 `.bak.1`。
+#[test]
+fn repair_restores_defaults_and_keeps_backups() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+
+    std::fs::write(root.join("template.html"), "BROKEN TEMPLATE").expect("写得下");
+    std::fs::write(root.join("assets/mdpp.css"), "BROKEN CSS").expect("写得下");
+
+    let out = mdpp(&root, &["repair"]);
+    assert!(out.status.success(), "repair 失败：{}", stderr_of(&out));
+
+    let template = std::fs::read_to_string(root.join("template.html")).expect("读得动");
+    assert!(
+        template.to_ascii_lowercase().contains("<!doctype html>"),
+        "{template}"
+    );
+    let css = std::fs::read_to_string(root.join("assets/mdpp.css")).expect("读得动");
+    assert!(css.contains("--mdpp-bg"), "{css}");
+
+    assert_eq!(
+        std::fs::read_to_string(root.join("template.html.bak")).expect("读得动"),
+        "BROKEN TEMPLATE"
+    );
+    assert_eq!(
+        std::fs::read_to_string(root.join("assets/mdpp.css.bak")).expect("读得动"),
+        "BROKEN CSS"
+    );
+
+    // 第二次修复：上一份 .bak 不能丢，改用 .bak.1
+    let out = mdpp(&root, &["repair"]);
+    assert!(out.status.success(), "repair 失败：{}", stderr_of(&out));
+    assert!(root.join("template.html.bak.1").is_file());
+    assert!(root.join("assets/mdpp.css.bak.1").is_file());
+    assert_eq!(
+        std::fs::read_to_string(root.join("template.html.bak")).expect("读得动"),
+        "BROKEN TEMPLATE"
+    );
+}
+
+/// 没有自定义文件的旧项目继续用内建模板与资源。
+#[test]
+fn a_project_without_custom_shell_files_still_builds() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    for path in [
+        "template.html",
+        "assets/mdpp.css",
+        "assets/site.css",
+        "assets/mdpp.js",
+    ] {
+        std::fs::remove_file(root.join(path)).expect("删得掉");
+    }
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "build 失败：{}", stderr_of(&out));
+    let html = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(html.contains("mdpp-main"), "{html}");
+    assert!(
+        std::fs::read_to_string(root.join("build/assets/mdpp.css"))
+            .expect("读得动")
+            .contains("--mdpp-bg")
+    );
+}
+
+/// `--builtin` 也跳过 extra_css / extra_js / override；普通模式则照常使用。
+#[test]
+fn builtin_mode_ignores_extra_and_override_content() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    std::fs::write(root.join("extra.css"), ".extra-marker { color: red; }\n").expect("写得下");
+    std::fs::write(root.join("extra.js"), "/* extra-js-marker */\n").expect("写得下");
+    std::fs::create_dir(root.join("override")).expect("建得出");
+    std::fs::write(root.join("override/override-marker.txt"), "override").expect("写得下");
+
+    let config = root.join("mdpp.toml");
+    let text = std::fs::read_to_string(&config).expect("读得动");
+    let text = text
+        .replace(
+            "# extra_css = []",
+            "extra_css = [\"extra.css\"]\nextra_js = [\"extra.js\"]",
+        )
+        .replace(
+            "# override_dir = \"override\"",
+            "override_dir = \"override\"",
+        );
+    std::fs::write(&config, text).expect("改得下");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "build 失败：{}", stderr_of(&out));
+    let html = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(html.contains("extra-marker"), "{html}");
+    assert!(html.contains("extra-js-marker"), "{html}");
+    assert!(root.join("build/override-marker.txt").is_file());
+
+    let out = mdpp(&root, &["build", "--builtin"]);
+    assert!(
+        out.status.success(),
+        "build --builtin 失败：{}",
+        stderr_of(&out)
+    );
+    let html = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(!html.contains("extra-marker"), "{html}");
+    assert!(!html.contains("extra-js-marker"), "{html}");
+    assert!(!root.join("build/override-marker.txt").exists());
 }

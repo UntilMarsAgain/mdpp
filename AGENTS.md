@@ -49,7 +49,7 @@ cargo run -p mdpp-cli -- render --link-prefix /notes/ -T examples/templates exam
 | 命令行子命令 | `mdpp-cli/src/cli/options/` |
 | 整站构建 | `mdpp-cli/src/project/build/` |
 | 本地预览 | `mdpp-cli/src/project/serve/` 与 `server/http.rs` |
-| 页面外壳 | `mdpp-cli/src/render/page/` 与 `assets/site.html` |
+| 页面外壳 | `mdpp-cli/src/render/page/` 与 `assets/template.html` |
 | 前端样式与脚本 | `mdpp-cli/assets/` |
 
 各目录的 `//!` 文档已经写了职责与设计理由，先读最近的模块文档，再全库搜索。

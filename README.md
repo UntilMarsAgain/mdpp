@@ -95,20 +95,36 @@ cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 
 ```text
 我的站点/
-  mdpp.toml     站点叫什么、东西都在哪
-  pages/        正文，一页一个文件；子目录就是路径
-  templates/    模板页，::名字 从这里取
-  build/        产物，不进版本库
+  mdpp.toml      站点叫什么、东西都在哪
+  template.html  页面外壳；想改就改这一份
+  assets/        站点自带的样式、脚本与图标
+    mdpp.css
+    site.css
+    mdpp.js
+  pages/         正文，一页一个文件；子目录就是路径
+  templates/     模板页，::名字 从这里取
+  build/         产物，不进版本库
 ```
 
 `mdpp init` 把 [`mdpp-cli/site/`](mdpp-cli/site/) 那个骨架目录整个拷过去，**目标目录
-得是空的** —— 里面有东西（含隐藏文件）就报错退出，不覆盖也不合并。想改新项目长什么样，
-改那个目录里的文件就好：它和 `assets/` 一样是在编译期整个嵌进二进制的。
+得是空的** —— 里面有东西（含隐藏文件）就报错退出，不覆盖也不合并。`template.html`
+与 `assets/` 里的三份前端资源都是**项目文件**：想改外壳、配色或行为，直接改它们，
+不用碰 mdpp 的二进制。旧项目没有这几份文件时会回退到内建版本。
 
 `mdpp build` 递归扫 `pages/`（`.md` 与 `.mdpp` 都算页面），每一页渲染成一个整页，
-落在 `build/<路径>/index.html`。页面从 `assets/` 外链样式与脚本，那份资源由 `build`
-从二进制里拷出来 —— 几十个页面共用一份，不必每页里都塞一遍。站内链接是**相对**的，
+落在 `build/<路径>/index.html`。页面从 `assets/` 外链样式与脚本，`build` 把项目里的
+那三份拷过去 —— 几十个页面共用一份，不必每页里都塞一遍。站内链接是**相对**的，
 所以整个 `build/` 拷到任何地方、挂在子路径下，链接都还对。
+
+`mdpp build --builtin` 用一个**完全内建**的版本：不读站点的 `template.html` 与三份
+前端资源，也跳过配置里的 `extra_css`、`extra_js` 和 `override_dir`。适合站点文件
+被改坏、或只想确认默认外观时。`mdpp repair` 则把 `template.html` 与
+`assets/{mdpp.css,site.css,mdpp.js}` 恢复成内建版本；原有文件先改名为 `.bak`，
+已有 `.bak` 就接着用 `.bak.1`、`.bak.2`，不会覆盖上一份备份。
+
+自定义 `template.html` 若缺少 `{{body}}`、`{{styles}}` 或 `{{scripts}}`，`build`
+会在 stderr 给出警告，但不会阻止构建：模板是站点的，可能确实想省略某一块；对应
+内容不会出现在产物里。
 
 构建是**整目录替换**：先出到同级的临时目录，全部成功才换名；中途失败时旧站点一个
 字都不动，上一次留下、这一版不再生成的文件也不会继续留在产物里。`--clean` 保留为

@@ -69,6 +69,7 @@ fn main() -> ExitCode {
         Command::Render(options) => render::run(options),
         Command::Init(options) => project::init::run(options),
         Command::New(options) => project::new_page::run(options),
+        Command::Repair(_) => project::repair::run(),
         Command::Build(options) => project::build::run(options),
         Command::Serve(options) => project::serve::run(options),
     };

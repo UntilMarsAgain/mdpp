@@ -4,6 +4,18 @@
 
 这一版把 demo 形状收成了可部署的形状，公开 API 仍按 0.1 处理，版本号不变。
 
+### 站点外壳与前端资源
+
+- 站点外壳与三份前端资源改为项目文件：站点根 `template.html`，以及
+  `assets/mdpp.css`、`assets/site.css`、`assets/mdpp.js`；`mdpp init` 默认生成它们，
+  `build` 优先读项目文件，缺失时回退到内建版本。
+- `mdpp build --builtin` / `mdpp serve --builtin` 使用内建模板与前端资源，并跳过
+  `extra_css`、`extra_js` 与 `override_dir`。
+- 新增 `mdpp repair`：恢复内建的 `template.html` 与三份前端资源；旧文件改名为
+  `.bak`，冲突时递增为 `.bak.1`、`.bak.2`。
+- 自定义 `template.html` 缺少 `{{body}}` / `{{styles}}` / `{{scripts}}` 时给出
+  构建警告但不中止：允许有意省略，同时避免正文静默消失。
+
 ### 安全与数据完整性
 
 - 页面键统一校验：拒绝 `.` / `..` / 反斜杠 / 控制字符 / Windows 保留名；页面扫描
@@ -32,6 +44,16 @@
   条目计算。预览缓存移进权限 0700 的临时目录。
 - `render_nested` 与 `<markdown>` 的嵌套超限诊断现在计入 `Rendered.problems`，
   `build --strict` 与 `render --stats` 不再出现「页面有框、报告说没有」。
+
+### 行内调用与诊断
+
+- 新增行内模板调用：`::名字[]`、`::名字[参数]`、`::名字{正文}`、
+  `::名字[参数]{正文}`；裸 `::名字` 仍是块调用。行内调用的正文按行内 Markdown
+  解析，调用处强制期望行内输出，失败时回退成一条行内诊断。
+- 诊断改为节点化：`::problem`、`::guard` 失败、未知模板与行内类型错误共用
+  `ProblemNode`；行内上下文输出 `<span class="mdpp-inline-error">`，块上下文仍输出
+  原来的诊断框。内层诊断的 badge / name / why 不再被外层“此处需要行内”覆盖。
+- `::guard` 失败时保留第一个内层诊断，并回滚该 guard 的样式、脚本、资源与计数。
 
 ### 用户模板与条件
 
@@ -167,6 +189,13 @@
 - 删除 `raw::Fences` / `Raw` / `FenceLine` 与 `starts_html_block`：原始区统一由
   `raw::raw_zones` 给出，它现在也认 `::code` 这类 Raw 块，不再依赖另一套手写
   围栏状态机。
+
+### 工程
+
+- `rust-version` 提高到 1.88；最小版本检查命令为
+  `cargo +1.88.0 check --workspace --all-targets`。
+- 站点页脚改用页面级 `RenderContext`，内部链接走项目解析；页脚只接受行内内容，
+  块级页脚会报错而不是塞进 `<span>`。
 
 ### 前端
 

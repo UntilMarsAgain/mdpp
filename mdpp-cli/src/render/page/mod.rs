@@ -1,11 +1,12 @@
 //! 整页外壳：**这个二进制**的活，不是库的。
 //!
 //! 库（`mdpp`）给的是 HTML **片段**，「外面长什么样、点一下会发生什么」一概不问。所以
-//! 外壳、以及它带的那几样东西，都在 `mdpp-cli/assets/`：
+//! 外壳、以及它带的那几样东西，默认在 `mdpp-cli/assets/`；站点根可以放
+//! `template.html` 和 `assets/` 下的同名文件覆盖它们，`--builtin` 则强制用内建版本：
 //!
 //! | 文件 | 是什么 |
 //! |---|---|
-//! | `site.html` | 页面**模板**：带 `{{placeholder}}`，是这个二进制的页面骨架 |
+//! | `template.html` | 页面**模板**：带 `{{placeholder}}`；站点根可放一份覆盖 |
 //! | `mdpp.css` | **可选的基础主题**：配色变量、通用排版、问题框与打印 |
 //! | `mdpp.js` | **最简**的默认行为：点一下就切选项卡 |
 //! | `site.css` | **只在站点里**的那一层外壳：顶栏、那一列的限宽与卡片、页首页尾 |
@@ -68,13 +69,17 @@ mod tests;
 
 #[cfg(test)]
 pub(super) use assets::asset;
+#[cfg(test)]
+pub use assets::copy_assets;
 use assets::template;
-pub use assets::{ASSET_DIR, copy_assets, default_css, default_js};
+pub use assets::{
+    ASSET_DIR, CORE_CSS, SCRIPT_FILE, SITE_CSS, SiteFiles, TEMPLATE_FILE, copy_assets_with,
+    default_css, default_js,
+};
 
 use assets::{
-    CORE_CSS, HLJS_CDN, HLJS_CSS_DARK_CDN, HLJS_CSS_LIGHT_CDN, KATEX_CDN, KATEX_CSS_CDN,
-    MERMAID_CDN, SCRIPT_FILE, SITE_CSS, close_tag, inline_blocks, join_blocks, link_tag,
-    script_tag,
+    HLJS_CDN, HLJS_CSS_DARK_CDN, HLJS_CSS_LIGHT_CDN, KATEX_CDN, KATEX_CSS_CDN, MERMAID_CDN,
+    close_tag, inline_blocks, join_blocks, link_tag, script_tag,
 };
 use chrome::{bar_color_style, bottom_bar, icons, meta, top_bar};
 pub use text::escape;
@@ -226,8 +231,16 @@ pub struct Page<'a> {
     pub features: mdpp::Features,
 }
 
-/// 按模板填出一个整页。
+/// 按编译期模板填出一个整页（测试与 `render --full` 的默认路径）。
 pub fn document(page: &Page) -> String {
+    document_with_template(page, template())
+}
+
+/// 按给定的站点模板填出一个整页。
+///
+/// `template` 是项目根 `template.html`（或 `--builtin` 时的内建版本）；
+/// `document` 保留给单文件渲染和不关心站点定制的测试。
+pub fn document_with_template(page: &Page, template: &str) -> String {
     let styles = match &page.assets {
         // 内联的那一份**不含**站点外壳：单文件页面里没有顶栏、没有那一列
         Assets::Inline => format!("<style>\n{}\n</style>", close_tag(&default_css(), "style")),
@@ -338,7 +351,7 @@ pub fn document(page: &Page) -> String {
     };
 
     fill(
-        template(),
+        template,
         &[
             ("lang_attr", &lang_attr),
             ("theme_attr", &theme_attr),
