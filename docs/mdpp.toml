@@ -1,67 +1,24 @@
-# Markdown++ 站点配置
-
-# 站点名称（必填）
 site_name = "Markdown++"
-
-# 站点描述
-site_description = ""
-
-# 站点语言
+site_description = "一个简易、高效、紧密联系的标记语言和静态站点生成器"
 lang = "zh-Hans"
-
-# 站点地址
-# 在静态托管部署时，需要使用站点地址以确保链接指向正确页面
-# 本地预览时可不填写
 # base_url = "https://example.github.io/repo/"
-
-# 仓库地址
-# 站点的仓库地址，没有时可不填写
-# repo_url = ""
-
-# 图标
-# 此图标会出现在浏览器的标签页上
-favicon = "assets/favicon.svg"
-
-# 标识
-# 此图标会出现在页面顶栏
+repo_url = "https://github.com/UntilMarsAgain/mdpp/"
+favicon = "assets/logo.svg"
 logo = "assets/logo.svg"
-
-# 底栏
-# 底栏可使用mdpp格式书写
-footer = "底栏显示在这里"
-
-# 正文文件夹（必填）
+footer = "版权所有 © 2026 Markdown++开发者。如无特别声明，本站点所有文章使用 [CC BY-SA 3.0 CN协议](https://creativecommons.org/licenses/by-sa/3.0/cn/legalcode.zh-hans) 授权使用。"
 pages_dir = "pages"
-
-# 模板文件夹（必填）
 templates_dir = "templates"
-
-# 用户模板最多嵌套层数（默认 64）
-# max_template_depth = 64
-
-# 站点输出文件夹（必填）
-# 构建静态站点时，会输出到此文件夹
+max_template_depth = 64
 build_dir = "build"
-
-# 覆盖目录
-# 此目录能在完成构建后，覆盖构建目录中的对应文件，并创建尚不存在的文件
 # override_dir = "override"
-
-# 页面主题
-# 可选：light、dark、system
 theme = "system"
-
-# 主题色
-# 顶栏文本会自动适配颜色亮暗
 theme_color = "#2f6fd0"
-
-# 附加的CSS与JS。
 # extra_css = []
 # extra_js = []
 
-# 导航栏
-# nav = ["首页", { "指南" = "指南/入门" }]
+nav = [
+    { "首页" = "index" },
+    { "语法" = "grammar" }
+]
 
-# 目录页在导航栏的显示名
-# 不提供则不生成
-toc = "contents"
+toc = "所有页面"
