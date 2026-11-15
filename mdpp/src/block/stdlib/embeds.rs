@@ -15,7 +15,11 @@ use super::super::dispatch::render_problem;
 use super::super::fill;
 use crate::assets::{AssetKind, AssetPolicy, AssetUse, use_asset, use_asset_with};
 use crate::registry::Block;
+use html5ever::serialize::{SerializeOpts, TraversalScope, serialize};
+use html5ever::tendril::TendrilSink;
+use html5ever::{ParseOpts, QualName, local_name, ns};
 use markdown_it::{Node, Renderer};
+use markup5ever_rcdom::{Handle, NodeData, RcDom, SerializableHandle};
 
 /// `::js` —— 把内容当**原始 JavaScript** 注入这一页，随页面加载执行。
 ///
@@ -160,7 +164,7 @@ pub(super) fn render_code(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 /// `<style>` 里（片段在开头，整页/站点在 `<head>`）。因此组件样式要自己带
 /// `var(--token, fallback)`，不能假设主题表一定在。
 ///
-/// 内容里的 `{{param}}` 会被替换；`@import` 与 `</style` 会被去掉。
+/// 内容里的 `{{param}}` 会被替换；`</style` 会被去掉（`@import` 与 `url()` 原样留着）。
 ///
 /// 在变体作用域里（`::theme` / `::tabs` / 自定义组）时仍是延迟资源：
 /// 输出通用惰性占位符，由页面脚本在选项激活时挂载。
@@ -216,7 +220,7 @@ pub(super) fn render_html(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
 
     // 写了 js：脚本提取成资源，其余 HTML 正常输出
     if fill::allows_js(block) {
-        let js_content = extract_script_contents(&filled);
+        let (html_without_scripts, js_content) = take_scripts(&filled);
         if !js_content.is_empty() {
             let escaped = fill::escape_script_end(&js_content);
             let pol = if fill::flag(block, "once") {
@@ -226,7 +230,6 @@ pub(super) fn render_html(block: &Block, _node: &Node, fmt: &mut dyn Renderer) {
             };
             settle_script(fmt, use_asset_with(AssetKind::Js, escaped, pol));
         }
-        let html_without_scripts = remove_script_tags(&filled);
         if !html_without_scripts.is_empty() {
             fmt.text_raw(&html_without_scripts);
         }
@@ -356,46 +359,67 @@ fn escape_attr(value: &str) -> String {
     html_escape::encode_double_quoted_attribute(value).into_owned()
 }
 
-/// 从 HTML 字符串中提取所有 <script>...</script> 的内容，拼接返回。
-fn extract_script_contents(html: &str) -> String {
-    let mut out = String::new();
-    let mut rest = html;
-    while let Some(start) = rest.find("<script") {
-        let after_tag = match rest[start..].find('>') {
-            Some(i) => start + i + 1,
-            None => break,
-        };
-        if let Some(end) = rest[after_tag..].find("</script>") {
-            out.push_str(&rest[after_tag..after_tag + end]);
-            out.push('\n');
-            rest = &rest[after_tag + end + 9..];
-        } else {
-            break;
+/// 把 `<script>` 从 HTML 里摘出来：返回 `(剩余 HTML, 脚本内容)`。
+///
+/// 用 HTML 解析器而不是字符串找 `<script`：注释里、属性值里、`<scripture>` 里都
+/// 可能出现这几个字母，字符串扫描会把它们当成脚本。
+fn take_scripts(html: &str) -> (String, String) {
+    let dom = html5ever::parse_fragment(
+        RcDom::default(),
+        ParseOpts::default(),
+        QualName::new(None, ns!(html), local_name!("body")),
+        Vec::new(),
+        true,
+    )
+    .from_utf8()
+    .one(html.as_bytes());
+
+    let mut scripts = String::new();
+    let mut stack = vec![dom.document.clone()];
+    while let Some(node) = stack.pop() {
+        let mut children = node.children.borrow_mut();
+        children.retain(|child| {
+            let is_script = matches!(
+                &child.data,
+                NodeData::Element { name, .. } if name.local.as_ref() == "script"
+            );
+            if is_script {
+                scripts.push_str(&text_content(child));
+                scripts.push('\n');
+            }
+            !is_script
+        });
+        for child in children.iter().rev() {
+            stack.push(child.clone());
         }
     }
-    out
+
+    let mut bytes = Vec::new();
+    serialize(
+        &mut bytes,
+        &SerializableHandle::from(dom.document),
+        SerializeOpts {
+            traversal_scope: TraversalScope::ChildrenOnly(None),
+            ..SerializeOpts::default()
+        },
+    )
+    .expect("序列化到内存不应失败");
+    let remaining = String::from_utf8(bytes).expect("html5ever 的输出必定是 UTF-8");
+    (remaining, scripts)
 }
 
-/// 从 HTML 字符串中移除所有 <script>...</script> 标签及其内容。
-fn remove_script_tags(html: &str) -> String {
+/// 元素里所有文字节点拼起来。
+fn text_content(root: &Handle) -> String {
     let mut out = String::new();
-    let mut rest = html;
-    while let Some(start) = rest.find("<script") {
-        out.push_str(&rest[..start]);
-        let after_tag = match rest[start..].find('>') {
-            Some(i) => start + i + 1,
-            None => {
-                out.push_str(&rest[start..]);
-                return out;
-            }
-        };
-        if let Some(end) = rest[after_tag..].find("</script>") {
-            rest = &rest[after_tag + end + 9..];
-        } else {
-            rest = &rest[after_tag..];
+    let mut stack = vec![root.clone()];
+    while let Some(node) = stack.pop() {
+        if let NodeData::Text { contents } = &node.data {
+            out.push_str(&contents.borrow());
+        }
+        for child in node.children.borrow().iter().rev() {
+            stack.push(child.clone());
         }
     }
-    out.push_str(rest);
     out
 }
 

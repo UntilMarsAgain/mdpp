@@ -1,3 +1,4 @@
+use super::markdown::marker;
 use super::*;
 
 /// 直接调净化器：这样测的是净化本身，不掺块边界那一层
@@ -164,7 +165,10 @@ fn the_lifted_markdown_is_byte_identical_to_the_source() {
     assert_eq!(slots[0], body, "取出来的那一段必须与原文逐字节相同");
     // 骨架里不该再留下 `<markdown` 这个标签，只剩占位记号
     assert!(!skeleton.contains("<markdown"), "{skeleton}");
-    assert!(skeleton.contains(SLOT_OPEN), "{skeleton}");
+    assert!(
+        skeleton.contains(&marker(0)),
+        "骨架里应当是占位元素，不是原文：{skeleton}"
+    );
     // 标签之外的内容一点没动
     assert!(skeleton.contains("<p>前</p>"), "{skeleton}");
     assert!(skeleton.contains("<p>后</p>"), "{skeleton}");
@@ -235,10 +239,10 @@ fn an_unclosed_markdown_element_does_not_swallow_the_page() {
     assert!(html.contains("后面"), "{html}");
 }
 
-/// 作者自己写的一对占位记号：认不出是哪一段，就当普通文字留着 —— **而且不能崩**。
+/// 作者自己写的一对私有区字符：认不出是哪一段，就当普通文字留着 —— **而且不能崩**。
 ///
-/// 记号是 3 个字节的私有区字符，切片切进它中间就是当场 panic；`::html` 是 Raw 档，
-/// 正文里什么字都进得来，所以这条路必须有人钉着
+/// 现在占位记号的形态是元素，私有区字符只剩「作者自己写的普通文字」这一种身份；
+/// `::html` 是 Raw 档，正文里什么字都进得来，所以这条路仍然有人钉着
 #[test]
 fn a_slot_marker_that_matches_nothing_stays_text_without_panicking() {
     // 一段 `<markdown>` 都没有：槽是空的，任何记号都落进「认不出」那一支
@@ -279,7 +283,7 @@ fn the_common_shapes_come_through_usable() {
         "<ul>",
         "<li>一</li>",
         "<blockquote",
-        "<details open>",
+        "<details open",
         "<summary>细</summary>",
     ] {
         assert!(html.contains(needle), "少了 {needle}: {html}");

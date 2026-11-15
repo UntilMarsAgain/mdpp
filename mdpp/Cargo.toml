@@ -37,11 +37,14 @@ include_dir = "0.7.4"
 # 写死，跟随不了主题。
 markdown-it = { version = "0.6", default-features = false, features = ["linkify"] }
 
-# `::html` 的净化器：按 HTML5 规范解析后按白名单重建。
-# 与 markdown-it 的渲染器无关（它输出原始 HTML），所以这是本 crate 里仅剩的
-# 「自己动手拼 HTML」的地方 —— 拼之前必须先按规范解析一遍，否则白名单就是一句空话。
+# HTML 解析树。净化器（ammonia）与类型判定都用它；`add_noopener` 还要在树上改
+# `rel` 再序列化，所以不能只经由 ammonia。
 html5ever = "0.39"
 markup5ever_rcdom = "0.39.0"
+
+# `::html` 的净化器：白名单由本 crate 给，解析、重建、转义、属性过滤交给它。
+# 它自带 html5ever 0.40，与上面判定用的 0.39 并存（两套解析器互不干扰）。
+ammonia = { version = "4.2", default-features = false }
 
 [dev-dependencies]
 # 只有 `standalone_page` 那个例子用它写文件出去，所以是 dev-dependencies。

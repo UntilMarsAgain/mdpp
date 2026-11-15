@@ -1,17 +1,15 @@
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
+
 /// 全局都允许的那几个。`class` 留着是刻意的：作者的模板要能挂自己那套样式。
 const COMMON: &[&str] = &["class", "title", "lang", "dir"];
-
-/// 布尔属性：只写名字、不带值。
-///
-/// `<details open>` 与 `<details open="">` 在 HTML 里是一回事，但输出成
-/// `open=""` 读起来像值被清空了 —— 输出是我们自己拼的，就拼成作者写的样子。
-pub(super) const BOOLEAN: &[&str] = &["open", "controls", "loop", "muted", "reversed"];
 
 /// 白名单本体：`(标签, 它能带的属性)`。
 ///
 /// 属性**逐标签**给：通配一份 `*` 是最容易出事的地方 —— `img` 拿到 `href` 就成了
 /// 链接、`a` 拿到 `src` 就成了脚本载体。
-/// 表里没有的标签 → 标签本身丢掉、内容留下（见 [`walk_node`]）。
+/// 表里没有的标签 → 标签本身丢掉、内容留下（ammonia 遇到不在 `tags` 里的标签会
+/// 拆掉标签、留下 children）。
 const RULES: &[(&str, &[&str])] = &[
     // —— 分块与分区
     ("address", COMMON),
@@ -147,122 +145,63 @@ const RULES: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// 按标签名查属性规则。`None` = 不在白名单里。
-pub(super) fn allowed(tag: &str) -> Option<&'static [&'static str]> {
-    RULES
-        .iter()
-        .find(|(name, _)| *name == tag)
-        .map(|(_, attrs)| *attrs)
+/// 白名单里的标签名；`allow_marker` 时再加上 `<markdown>` 的占位元素。
+pub(super) fn tags(allow_marker: bool) -> HashSet<&'static str> {
+    let mut tags: HashSet<&'static str> = RULES.iter().map(|(tag, _)| *tag).collect();
+    if allow_marker {
+        tags.insert(MARKER_TAG);
+    }
+    tags
 }
 
-/// 这些标签**连内容一起**丢掉。
+/// 每个标签能带的属性；`allow_marker` 时给占位元素加 `data-i`。
+pub(super) fn attributes(allow_marker: bool) -> HashMap<&'static str, HashSet<&'static str>> {
+    let mut map: HashMap<&'static str, HashSet<&'static str>> = RULES
+        .iter()
+        .map(|(tag, rules)| (*tag, rules.iter().copied().collect()))
+        .collect();
+    if allow_marker {
+        map.insert(MARKER_TAG, ["data-i"].into_iter().collect());
+    }
+    map
+}
+
+/// 连内容一起丢掉的标签；交给 ammonia 的 `clean_content_tags`。
 ///
 /// 与「不认识」的分界在这里：那边是「标签没了、内容留下」，这边是「内容可能正是危险
 /// 的那一份」—— `<script>` 的内容是代码、`<style>` 的内容是能外联的 CSS。
-pub(super) fn skip_subtree(tag: &str) -> bool {
-    matches!(
-        tag,
-        "script"
-            | "style"
-            | "link"
-            | "meta"
-            | "base"
-            | "object"
-            | "embed"
-            | "applet"
-            | "frame"
-            | "frameset"
-            | "noscript"
-            | "template"
-            | "form"
-            | "input"
-            | "button"
-            | "select"
-            | "option"
-            | "optgroup"
-            | "textarea"
-            | "label"
-            | "fieldset"
-            | "legend"
-            | "datalist"
-            | "output"
-            | "progress"
-            | "meter"
-            | "svg"
-            | "math"
-            | "canvas"
-    )
+pub(super) fn clean_content() -> HashSet<&'static str> {
+    [
+        "script", "style", "link", "meta", "base", "object", "embed", "applet", "frame",
+        "frameset", "noscript", "template", "form", "input", "button", "select", "option",
+        "optgroup", "textarea", "label", "fieldset", "legend", "datalist", "output", "progress",
+        "meter", "svg", "math", "canvas",
+    ]
+    .into_iter()
+    .collect()
 }
 
-/// 不用写结束标签的那些。
-pub(super) fn is_void(tag: &str) -> bool {
-    matches!(
-        tag,
-        "area"
-            | "base"
-            | "br"
-            | "col"
-            | "embed"
-            | "hr"
-            | "img"
-            | "input"
-            | "link"
-            | "meta"
-            | "param"
-            | "source"
-            | "track"
-            | "wbr"
-    )
-}
+/// `<markdown>` 在骨架里的占位元素名。
+///
+/// 不用私有区字符：槽位展开发生在净化之后，若按字符串替换，属性值里的槽位也会被
+/// 替换成 HTML，等于多开一个注入口。元素名只在标签位置出现，属性值里的 `<` 会被
+/// 序列化成 `&lt;`，字符串匹配不上。
+pub(super) const MARKER_TAG: &str = "mdpp-markdown";
 
-/// 属性留不留、拿什么值出去。`None` = 丢掉。返回的是**收拾过的值**：协议在这里验过，
-/// `target` 收窄过。
-pub(super) fn keep_attribute(name: &str, rules: &[&str], value: &str) -> Option<String> {
-    if !rules.contains(&name) {
-        return None;
-    }
-    // `style` 不在表里，但 `on*` 更该在这儿再兜一层 —— 免得以后加属性时手滑
-    if name == "style" || name.starts_with("on") {
-        return None;
-    }
-    match name {
-        "srcset" => safe_srcset(value).then(|| value.to_string()),
-        "href" | "src" | "cite" | "poster" | "download" => {
-            safe_url(value).then(|| value.to_string())
-        }
-        // `_top` 与框架名能把人带走，而这里没有框架
-        "target" => matches!(value, "_blank" | "_self").then(|| value.to_string()),
-        "rel" => Some(value.to_string()),
-        _ => Some(value.to_string()),
-    }
-}
-
-/// `target="_blank"` 的 `a` 补上 `rel="noopener noreferrer"`；已有的 `rel`
-/// 保留原词，只补缺的那两个。
-pub(super) fn finish_a_attrs(tag: &str, attrs: &mut Vec<(String, String)>) {
-    if tag != "a" {
-        return;
-    }
-    let blank = attrs
-        .iter()
-        .any(|(name, value)| name == "target" && value == "_blank");
-    if !blank {
-        return;
-    }
-    match attrs.iter_mut().find(|(name, _)| name == "rel") {
-        Some((_, rel)) => {
-            let mut tokens: Vec<&str> = rel.split_whitespace().collect();
-            for wanted in ["noopener", "noreferrer"] {
-                if !tokens
-                    .iter()
-                    .any(|token| token.eq_ignore_ascii_case(wanted))
-                {
-                    tokens.push(wanted);
-                }
-            }
-            *rel = tokens.join(" ");
-        }
-        None => attrs.push(("rel".to_string(), "noopener noreferrer".to_string())),
+/// 属性值的最后一道校验。
+///
+/// ammonia 的 `url_schemes` 只管 `href` / `src`；`srcset` 是一组候选地址，它不拆开，
+/// `target` / `cite` / `poster` / `download` 它也不看。
+pub(super) fn filter_attribute<'a>(
+    _element: &str,
+    attribute: &str,
+    value: &'a str,
+) -> Option<Cow<'a, str>> {
+    match attribute {
+        "target" => matches!(value, "_blank" | "_self").then_some(Cow::Borrowed(value)),
+        "srcset" => safe_srcset(value).then_some(Cow::Borrowed(value)),
+        "cite" | "poster" | "download" => safe_url(value).then_some(Cow::Borrowed(value)),
+        _ => Some(Cow::Borrowed(value)),
     }
 }
 

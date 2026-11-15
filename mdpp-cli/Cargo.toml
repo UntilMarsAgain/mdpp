@@ -52,6 +52,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time"]
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs"] }
 futures-util = "0.3"
+html5ever = "0.39"
+markup5ever_rcdom = "0.39.0"
 
 [dev-dependencies]
 # 只有这个包的测试用它造临时目录。库那边一个都不用 —— 它跟着使用者走。

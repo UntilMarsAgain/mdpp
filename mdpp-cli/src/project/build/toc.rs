@@ -22,9 +22,9 @@
 //! 软件与 Tab 键都只会碰到当前那一份。
 
 use crate::render::page::escape;
-
-/// 参与目录的标题层级。`h1` 是这一页的标题，不是章节。
-const LEVELS: [(&str, u8); 2] = [("h2", 2), ("h3", 3)];
+use html5ever::ParseOpts;
+use html5ever::tendril::TendrilSink;
+use markup5ever_rcdom::{Handle, NodeData, RcDom};
 
 /// 一条目录项
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -81,187 +81,64 @@ fn list(entries: &[Entry]) -> String {
 /// 没有 `id` 的标题（作者手写的裸 HTML）**跳过**：没有能跳过去的锚点，
 /// 放进目录就是一条点了不动的链接。
 fn entries(body: &str) -> Vec<Entry> {
+    let dom = html5ever::parse_document(RcDom::default(), ParseOpts::default())
+        .from_utf8()
+        .one(body.as_bytes());
     let mut out = Vec::new();
-    let mut at = 0;
-    while let Some((start, tag_end, tag, level)) = next_heading(body, at) {
-        let Some(close) = close_start(body, tag_end + 1, tag) else {
-            // 没闭合的标题 HTML 本身就不完整；跳过它，别让后面的正文都被吞掉
-            at = tag_end + 1;
-            continue;
-        };
-        let Some(id) = attribute(&body[start..=tag_end], "id") else {
-            at = close + 2;
-            continue;
-        };
-        let id = decode(&id);
-        let label = text_of(&body[tag_end + 1..close]);
-        if !id.trim().is_empty() && !label.is_empty() {
-            out.push(Entry { level, id, label });
-        }
-        at = close + 2;
-    }
-    out
-}
-
-/// 从 `from` 起找下一个 `<h2 …>` / `<h3 …>`，返回 `(起点, '>' 的位置, 标签名, 层级)`。
-fn next_heading(html: &str, from: usize) -> Option<(usize, usize, &'static str, u8)> {
-    let bytes = html.as_bytes();
-    let mut at = from;
-    while at < bytes.len() {
-        if bytes[at] == b'<' {
-            for (tag, level) in LEVELS {
-                let name = tag.as_bytes();
-                let end = at + 1 + name.len();
-                if end <= bytes.len()
-                    && bytes[at + 1..end].eq_ignore_ascii_case(name)
-                    && (end == bytes.len()
-                        || bytes[end].is_ascii_whitespace()
-                        || bytes[end] == b'>')
-                {
-                    if let Some(close) = tag_end(html, end) {
-                        return Some((at, close, tag, level));
+    let mut stack = vec![dom.document.clone()];
+    while let Some(node) = stack.pop() {
+        let mut heading = false;
+        if let NodeData::Element { name, attrs, .. } = &node.data {
+            let level = match name.local.as_ref() {
+                "h2" => 2,
+                "h3" => 3,
+                _ => 0,
+            };
+            if level != 0 {
+                heading = true;
+                let id = attrs
+                    .borrow()
+                    .iter()
+                    .find(|attr| attr.name.local.as_ref() == "id")
+                    .map(|attr| attr.value.to_string());
+                if let Some(id) = id {
+                    let label = text_content(&node);
+                    let label = label.split_whitespace().collect::<Vec<_>>().join(" ");
+                    if !id.trim().is_empty() && !label.is_empty() {
+                        out.push(Entry { level, id, label });
                     }
                 }
             }
         }
-        at += 1;
+        // 标题里不会再套标题；文字已经由 `text_content` 收过了，不必再往下走。
+        if !heading {
+            for child in node.children.borrow().iter().rev() {
+                stack.push(child.clone());
+            }
+        }
     }
-    None
+    out
 }
 
-/// 从 `from` 起找 `</tag`。大小写都认；后面必须是空白或 `>`（别把 `</h20>` 认成 `h2`）。
-fn close_start(html: &str, from: usize, tag: &str) -> Option<usize> {
-    let bytes = html.as_bytes();
-    let name = tag.as_bytes();
-    let mut at = from;
-    while at + 2 + name.len() <= bytes.len() {
-        if bytes[at] == b'<' && bytes[at + 1] == b'/' {
-            let end = at + 2 + name.len();
-            if bytes[at + 2..end].eq_ignore_ascii_case(name)
-                && (end == bytes.len() || bytes[end].is_ascii_whitespace() || bytes[end] == b'>')
+/// 元素里所有文字节点拼起来（`<code>` 这类行内标签也在内）。
+///
+/// 用显式栈：正文里的 HTML 深浅不受 markdown 约束。
+fn text_content(root: &Handle) -> String {
+    let mut out = String::new();
+    let mut stack = vec![root.clone()];
+    while let Some(node) = stack.pop() {
+        match &node.data {
+            NodeData::Text { contents } => out.push_str(&contents.borrow()),
+            NodeData::Element { name, .. }
+                if matches!(name.local.as_ref(), "script" | "style" | "template") =>
             {
-                return Some(at);
-            }
-        }
-        at += 1;
-    }
-    None
-}
-
-/// 找到开标签的 `>`。引号里的 `>` 不算 —— `id="a>b"` 不能把标签截断。
-fn tag_end(html: &str, from: usize) -> Option<usize> {
-    let bytes = html.as_bytes();
-    let mut quote = 0u8;
-    let mut at = from;
-    while at < bytes.len() {
-        let byte = bytes[at];
-        if quote != 0 {
-            if byte == quote {
-                quote = 0;
-            }
-        } else if byte == b'"' || byte == b'\'' {
-            quote = byte;
-        } else if byte == b'>' {
-            return Some(at);
-        }
-        at += 1;
-    }
-    None
-}
-
-/// 从一个开标签里取某个属性（大小写不敏感）。没有这个属性就是 `None`。
-fn attribute(tag: &str, wanted: &str) -> Option<String> {
-    let bytes = tag.as_bytes();
-    let mut at = 1;
-    // 跳过标签名（h2 / h3）
-    while at < bytes.len()
-        && !bytes[at].is_ascii_whitespace()
-        && bytes[at] != b'>'
-        && bytes[at] != b'/'
-    {
-        at += 1;
-    }
-    while at < bytes.len() {
-        while at < bytes.len() && bytes[at].is_ascii_whitespace() {
-            at += 1;
-        }
-        if at >= bytes.len() || bytes[at] == b'>' || bytes[at] == b'/' {
-            break;
-        }
-        let name_start = at;
-        while at < bytes.len()
-            && !bytes[at].is_ascii_whitespace()
-            && bytes[at] != b'='
-            && bytes[at] != b'>'
-            && bytes[at] != b'/'
-        {
-            at += 1;
-        }
-        let name = &tag[name_start..at];
-        while at < bytes.len() && bytes[at].is_ascii_whitespace() {
-            at += 1;
-        }
-        let mut value = None;
-        if at < bytes.len() && bytes[at] == b'=' {
-            at += 1;
-            while at < bytes.len() && bytes[at].is_ascii_whitespace() {
-                at += 1;
-            }
-            if at < bytes.len() && (bytes[at] == b'"' || bytes[at] == b'\'') {
-                let quote = bytes[at];
-                at += 1;
-                let start = at;
-                while at < bytes.len() && bytes[at] != quote {
-                    at += 1;
-                }
-                value = Some(&tag[start..at]);
-                if at < bytes.len() {
-                    at += 1;
-                }
-            } else {
-                let start = at;
-                while at < bytes.len() && !bytes[at].is_ascii_whitespace() && bytes[at] != b'>' {
-                    at += 1;
-                }
-                value = Some(&tag[start..at]);
-            }
-        }
-        if name.eq_ignore_ascii_case(wanted) {
-            return Some(value.unwrap_or("").to_string());
-        }
-    }
-    None
-}
-
-/// 标题里的行内标记去掉，只留文字。标签本身不是标题的一部分。
-fn text_of(inner: &str) -> String {
-    let mut text = String::with_capacity(inner.len());
-    let mut at = 0;
-    while let Some(found) = inner[at..].find('<') {
-        let start = at + found;
-        text.push_str(&inner[at..start]);
-        if inner[start..].starts_with("<!--") {
-            if let Some(end) = inner[start + 4..].find("-->") {
-                at = start + 4 + end + 3;
                 continue;
             }
+            _ => {}
         }
-        match tag_end(inner, start + 1) {
-            Some(end) => at = end + 1,
-            None => {
-                at = inner.len();
-                break;
-            }
+        for child in node.children.borrow().iter().rev() {
+            stack.push(child.clone());
         }
     }
-    if at < inner.len() {
-        text.push_str(&inner[at..]);
-    }
-    let decoded = html_escape::decode_html_entities(&text);
-    decoded.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// 属性值里的实体先解回原文，再在写进 `href` / 元素文字时统一转义。
-fn decode(value: &str) -> String {
-    html_escape::decode_html_entities(value).into_owned()
+    out
 }

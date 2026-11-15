@@ -1,7 +1,9 @@
-use std::fmt::Write;
+use super::rules::MARKER_TAG;
 
-pub(super) const SLOT_OPEN: char = '\u{E000}';
-pub(super) const SLOT_CLOSE: char = '\u{E001}';
+/// 槽位在骨架里的占位元素。下标放在属性里，展开时按精确字符串替换。
+pub(super) fn marker(index: usize) -> String {
+    format!("<{MARKER_TAG} data-i=\"{index}\"></{MARKER_TAG}>")
+}
 
 /// 把 `<markdown>…</markdown>` 那几段取出来，原处留下占位记号。
 ///
@@ -25,7 +27,7 @@ pub(super) fn lift_markdown(source: &str) -> (String, Vec<String>) {
         slots.push(body);
 
         out.push_str(&source[cursor..open]);
-        let _ = write!(out, "{SLOT_OPEN}{slot}{SLOT_CLOSE}");
+        out.push_str(&marker(slot));
         cursor = body_end;
     }
     out.push_str(&source[cursor..]);

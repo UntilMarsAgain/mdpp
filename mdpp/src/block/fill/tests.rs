@@ -166,10 +166,13 @@ fn on_inside_ordinary_words_is_left_alone() {
     assert!(html.contains("onboarding=2"), "{html}");
 }
 
-/// `@import` 必须先丢 —— 留着它，正文里一行 CSS 就能把页面支到外部去拉样式
+/// 外部样式是允许的：`@import` 不是净化对象，原样留着
 #[test]
-fn imports_are_dropped() {
-    assert_eq!(sanitize_css("@import url(x.css); .a { }"), " .a { }");
+fn imports_are_kept() {
+    assert_eq!(
+        sanitize_css("@import url(x.css); .a { }"),
+        "@import url(x.css); .a { }"
+    );
 }
 
 /// 正文里混进来的 `</style>` 会提前收掉样式块，把后面的字顶到页面上 —— 得先摘掉
