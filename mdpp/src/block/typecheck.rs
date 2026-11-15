@@ -118,7 +118,7 @@ pub(crate) fn classify(html: &str) -> Result<Classified, String> {
     // 单段落是 Markdown 模板的常态：块形式保留 <p>，行内形式剥掉外壳。
     if let [only] = nodes.as_slice()
         && let NodeData::Element { name, attrs, .. } = &only.data
-        && name.local.as_ref() == "p"
+        && &*name.local == "p"
     {
         if !attrs.borrow().is_empty() || has_block_descendant(only) {
             return Ok(block(trimmed));
@@ -148,7 +148,7 @@ pub(crate) fn classify(html: &str) -> Result<Classified, String> {
             }
             NodeData::Comment { .. } => {}
             NodeData::Element { name, .. } => {
-                let tag = name.local.as_ref();
+                let tag = &*name.local;
                 if !is_phrasing(tag) || has_block_descendant(node) {
                     return Ok(block(trimmed));
                 }
@@ -194,7 +194,7 @@ pub(crate) fn check_inline(html: &str) -> Result<String, String> {
 
 fn find_head(node: &Handle) -> Option<Handle> {
     if let NodeData::Element { name, .. } = &node.data
-        && name.local.as_ref() == "head"
+        && &*name.local == "head"
     {
         return Some(node.clone());
     }
@@ -208,7 +208,7 @@ fn find_head(node: &Handle) -> Option<Handle> {
 
 fn find_body(node: &Handle) -> Option<Handle> {
     if let NodeData::Element { name, .. } = &node.data
-        && name.local.as_ref() == "body"
+        && &*name.local == "body"
     {
         return Some(node.clone());
     }
@@ -236,7 +236,7 @@ fn has_block_descendant(node: &Handle) -> bool {
             continue;
         }
         if let NodeData::Element { name, .. } = &child.data
-            && !is_phrasing(name.local.as_ref())
+            && !is_phrasing(&name.local)
         {
             return true;
         }
@@ -251,11 +251,11 @@ fn is_asset_placeholder(node: &Handle) -> bool {
     let NodeData::Element { name, attrs, .. } = &node.data else {
         return false;
     };
-    name.local.as_ref() == "template"
+    &*name.local == "template"
         && attrs
             .borrow()
             .iter()
-            .any(|attr| attr.name.local.as_ref() == "data-mdpp-asset")
+            .any(|attr| &*attr.name.local == "data-mdpp-asset")
 }
 
 /// 可以作为行内容器的标签。保守列表：不把 `button` / 表单控件算进来，

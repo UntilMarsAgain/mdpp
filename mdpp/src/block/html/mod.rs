@@ -174,12 +174,12 @@ fn add_noopener(html: &str) -> String {
     let mut stack = vec![dom.document.clone()];
     while let Some(node) = stack.pop() {
         if let NodeData::Element { name, attrs, .. } = &node.data
-            && name.local.as_ref() == "a"
+            && &*name.local == "a"
         {
             let mut attrs = attrs.borrow_mut();
             let blank = attrs
                 .iter()
-                .any(|attr| attr.name.local.as_ref() == "target" && &*attr.value == "_blank");
+                .any(|attr| &*attr.name.local == "target" && &*attr.value == "_blank");
             if blank {
                 adjust_rel(&mut attrs);
             }
@@ -205,10 +205,7 @@ fn add_noopener(html: &str) -> String {
 
 /// 给一个 `<a>` 的 `rel` 补 `noopener` / `noreferrer`。
 fn adjust_rel(attrs: &mut Vec<Attribute>) {
-    let Some(index) = attrs
-        .iter()
-        .position(|attr| attr.name.local.as_ref() == "rel")
-    else {
+    let Some(index) = attrs.iter().position(|attr| &*attr.name.local == "rel") else {
         attrs.push(Attribute {
             name: QualName::new(None, ns!(html), local_name!("rel")),
             value: "noopener noreferrer".into(),
@@ -236,7 +233,7 @@ fn body_of(document: &Handle) -> Option<Handle> {
     let mut stack = vec![document.clone()];
     while let Some(node) = stack.pop() {
         if let NodeData::Element { name, .. } = &node.data
-            && name.local.as_ref() == "body"
+            && &*name.local == "body"
         {
             return Some(node);
         }

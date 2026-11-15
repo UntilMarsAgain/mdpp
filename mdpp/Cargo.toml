@@ -28,7 +28,7 @@ path = "src/lib.rs"
 tracing = "0.1"
 
 # HTML 文本/属性转义。不要自己写实体表。
-html-escape = "0.2"
+html-escape = "0.3"
 
 # 标准库模板在编译期嵌进库：运行时不碰文件系统。
 include_dir = "0.7.4"
@@ -39,11 +39,11 @@ markdown-it = { version = "0.6", default-features = false, features = ["linkify"
 
 # HTML 解析树。净化器（ammonia）与类型判定都用它；`add_noopener` 还要在树上改
 # `rel` 再序列化，所以不能只经由 ammonia。
-html5ever = "0.39"
-markup5ever_rcdom = "0.39.0"
+html5ever = "0.40"
+markup5ever_rcdom = "0.40.1"
 
 # `::html` 的净化器：白名单由本 crate 给，解析、重建、转义、属性过滤交给它。
-# 它自带 html5ever 0.40，与上面判定用的 0.39 并存（两套解析器互不干扰）。
+# 它依赖 html5ever 0.40，与上面判定用的是同一套解析器。
 ammonia = { version = "4.2", default-features = false }
 
 [dev-dependencies]

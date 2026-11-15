@@ -186,7 +186,7 @@ fn outline_of(html: &str) -> Vec<Heading> {
     while let Some(node) = stack.pop() {
         let mut heading = 0;
         if let NodeData::Element { name, attrs, .. } = &node.data {
-            heading = match name.local.as_ref() {
+            heading = match &*name.local {
                 "h1" => 1,
                 "h2" => 2,
                 "h3" => 3,
@@ -199,7 +199,7 @@ fn outline_of(html: &str) -> Vec<Heading> {
                 let id = attrs
                     .borrow()
                     .iter()
-                    .find(|attr| attr.name.local.as_ref() == "id")
+                    .find(|attr| &*attr.name.local == "id")
                     .map(|attr| attr.value.to_string());
                 let text = text_content(&node).trim().to_string();
                 outline.push(Heading {
@@ -227,7 +227,7 @@ fn text_content(root: &Handle) -> String {
         match &node.data {
             NodeData::Text { contents } => out.push_str(&contents.borrow()),
             NodeData::Element { name, .. }
-                if matches!(name.local.as_ref(), "script" | "style" | "template") =>
+                if matches!(&*name.local, "script" | "style" | "template") =>
             {
                 continue;
             }

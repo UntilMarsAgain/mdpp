@@ -572,7 +572,7 @@ fn take_scripts(html: &str) -> (String, String) {
         children.retain(|child| {
             let is_script = matches!(
                 &child.data,
-                NodeData::Element { name, .. } if name.local.as_ref() == "script"
+                NodeData::Element { name, .. } if &*name.local == "script"
             );
             if is_script {
                 scripts.push_str(&text_content(child));
