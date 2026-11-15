@@ -20,6 +20,9 @@
 //! 会变成站点里一个可下载的文件，而引用它的是一篇正文。
 
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, Mutex};
+
+use lol_html::{HtmlRewriter, Settings, element};
 
 use crate::support::url;
 
@@ -28,7 +31,7 @@ use crate::support::url;
 pub struct Scan {
     /// 改好了地址的 HTML
     pub html: String,
-    /// 要拷进产物的那些（按目标去重）
+    /// 每一处引用各记一条；同一个目标在拷贝时去重
     pub wanted: Vec<Wanted>,
     /// 指了但 `pages/` 里找不到的
     pub missing: Vec<String>,
@@ -59,169 +62,104 @@ pub struct Context<'a> {
 /// 扫一遍正文里的地址：本地相对的那些改写到 `assets/`，其余原样留着。
 ///
 /// 只认**标签里的属性**。正文、注释、`<script>`/`<style>` 的内容里出现
-/// `src="图.png"` 是字面量，不是属性，不能改写。
-pub fn scan(html: &str, context: &Context) -> Scan {
-    let mut scan = Scan {
-        html: String::with_capacity(html.len()),
-        ..Scan::default()
-    };
-    let mut at = 0usize;
-    while at < html.len() {
-        let Some(rel) = html[at..].find('<') else {
-            scan.html.push_str(&html[at..]);
-            break;
-        };
-        let start = at + rel;
-        scan.html.push_str(&html[at..start]);
-        let rest = &html[start..];
+/// `src="图.png"` 是字面量，不是属性，不能改写。改写交给 `lol_html`：
+/// 它按流式解析过一遍，没被改到的字节原样透传。
+pub fn scan(html: &str, context: &Context) -> Result<Scan, String> {
+    let owned = OwnedContext::new(context);
+    let wanted = Arc::new(Mutex::new(Vec::new()));
+    let missing = Arc::new(Mutex::new(Vec::new()));
+    let wanted_in = Arc::clone(&wanted);
+    let missing_in = Arc::clone(&missing);
 
-        if rest.starts_with("<!--") {
-            let end = rest
-                .find("-->")
-                .map(|offset| start + offset + 3)
-                .unwrap_or(html.len());
-            scan.html.push_str(&html[start..end]);
-            at = end;
-            continue;
+    let settings = Settings::new().append_element_content_handler(element!("*", move |el| {
+        let context = owned.context();
+        let mut wanted = wanted_in
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut missing = missing_in
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut changes = Vec::new();
+        for attribute in el.attributes() {
+            let name = attribute.name();
+            if !is_asset_attr(&name) {
+                continue;
+            }
+            let value = attribute.value();
+            if let Some(replacement) = resolve_asset(&value, &context, &mut wanted, &mut missing) {
+                changes.push((name, replacement));
+            }
         }
-        if rest.starts_with("<!") || rest.starts_with("<?") {
-            let end = rest
-                .find('>')
-                .map(|offset| start + offset + 1)
-                .unwrap_or(html.len());
-            scan.html.push_str(&html[start..end]);
-            at = end;
-            continue;
+        drop(wanted);
+        drop(missing);
+        for (name, value) in changes {
+            el.set_attribute(&name, &value).map_err(|error| {
+                Box::new(error) as Box<dyn std::error::Error + Send + Sync + 'static>
+            })?;
         }
-        if rest.starts_with("</") {
-            let end = rest
-                .find('>')
-                .map(|offset| start + offset + 1)
-                .unwrap_or(html.len());
-            scan.html.push_str(&html[start..end]);
-            at = end;
-            continue;
-        }
+        Ok(())
+    }));
 
-        let Some(name_end) = tag_name_end(html, start + 1) else {
-            scan.html.push('<');
-            at = start + 1;
-            continue;
-        };
-        let tag = &html[start + 1..name_end];
-        let (end, self_closing) = scan_start_tag(html, name_end, tag, context, &mut scan);
-        at = end;
+    let mut output = Vec::with_capacity(html.len());
+    let mut rewriter = HtmlRewriter::new(settings, |chunk: &[u8]| output.extend_from_slice(chunk));
+    rewriter
+        .write(html.as_bytes())
+        .map_err(|error| format!("资源扫描失败：{error}"))?;
+    rewriter
+        .end()
+        .map_err(|error| format!("资源扫描失败：{error}"))?;
+    let html =
+        String::from_utf8(output).map_err(|error| format!("资源扫描结果不是 UTF-8：{error}"))?;
 
-        if !self_closing && is_raw_text(tag) {
-            let close = find_close_tag(html, at, tag).unwrap_or(html.len());
-            scan.html.push_str(&html[at..close]);
-            at = close;
-        }
-    }
-    scan
+    let wanted = Arc::try_unwrap(wanted)
+        .map_err(|_| "资源扫描内部状态没释放".to_string())?
+        .into_inner()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let missing = Arc::try_unwrap(missing)
+        .map_err(|_| "资源扫描内部状态没释放".to_string())?
+        .into_inner()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    Ok(Scan {
+        html,
+        wanted,
+        missing,
+    })
 }
 
-/// 解析一个开始标签，原样复制，只在真正的资源属性上改值。
-fn scan_start_tag(
-    html: &str,
-    name_end: usize,
-    tag: &str,
+/// 处理函数要求 `'static`，这里把借用来的上下文拷成自己的一份
+struct OwnedContext {
+    page_dir: PathBuf,
+    pages_dir: PathBuf,
+    assets_dir: PathBuf,
+    assets_prefix: String,
+}
+
+impl OwnedContext {
+    fn new(context: &Context) -> Self {
+        Self {
+            page_dir: context.page_dir.to_path_buf(),
+            pages_dir: context.pages_dir.to_path_buf(),
+            assets_dir: context.assets_dir.to_path_buf(),
+            assets_prefix: context.assets_prefix.to_string(),
+        }
+    }
+
+    fn context(&self) -> Context<'_> {
+        Context {
+            page_dir: &self.page_dir,
+            pages_dir: &self.pages_dir,
+            assets_dir: &self.assets_dir,
+            assets_prefix: &self.assets_prefix,
+        }
+    }
+}
+
+fn resolve_asset(
+    value: &str,
     context: &Context,
-    scan: &mut Scan,
-) -> (usize, bool) {
-    scan.html.push('<');
-    scan.html.push_str(tag);
-    let bytes = html.as_bytes();
-    let mut at = name_end;
-
-    while at < html.len() {
-        if bytes[at].is_ascii_whitespace() {
-            let begin = at;
-            while at < html.len() && bytes[at].is_ascii_whitespace() {
-                at += 1;
-            }
-            scan.html.push_str(&html[begin..at]);
-            continue;
-        }
-        if bytes[at] == b'>' {
-            scan.html.push('>');
-            return (at + 1, false);
-        }
-        if bytes[at] == b'/' && bytes.get(at + 1) == Some(&b'>') {
-            scan.html.push_str("/>");
-            return (at + 2, true);
-        }
-
-        // 属性名。遇到奇怪的字符（例如落单的引号）就原样跳过一个字符。
-        let name_start = at;
-        while at < html.len()
-            && !matches!(
-                bytes[at],
-                b' ' | b'\t' | b'\n' | b'\r' | b'\x0c' | b'=' | b'>' | b'/'
-            )
-        {
-            at += 1;
-        }
-        if name_start == at {
-            let ch = html[at..].chars().next().expect("还没到结尾");
-            scan.html.push(ch);
-            at += ch.len_utf8();
-            continue;
-        }
-        let attr = &html[name_start..at];
-        scan.html.push_str(attr);
-
-        let space_start = at;
-        while at < html.len() && bytes[at].is_ascii_whitespace() {
-            at += 1;
-        }
-        scan.html.push_str(&html[space_start..at]);
-
-        if at >= html.len() || bytes[at] != b'=' {
-            continue;
-        }
-        scan.html.push('=');
-        at += 1;
-        let space_start = at;
-        while at < html.len() && bytes[at].is_ascii_whitespace() {
-            at += 1;
-        }
-        scan.html.push_str(&html[space_start..at]);
-
-        if at < html.len() && (bytes[at] == b'"' || bytes[at] == b'\'') {
-            let quote = bytes[at];
-            scan.html.push(quote as char);
-            at += 1;
-            let Some(offset) = html[at..].find(quote as char) else {
-                scan.html.push_str(&html[at..]);
-                return (html.len(), false);
-            };
-            let close = at + offset;
-            let value = &html[at..close];
-            let replacement = if is_raw_text(tag) || !is_asset_attr(attr) {
-                None
-            } else {
-                resolve_asset(value, context, scan)
-            };
-            scan.html.push_str(replacement.as_deref().unwrap_or(value));
-            scan.html.push(quote as char);
-            at = close + 1;
-        } else {
-            // 没引号的属性值也原样复制；不在这里改写，避免替作者决定新的引号形式。
-            let value_start = at;
-            while at < html.len()
-                && !matches!(bytes[at], b' ' | b'\t' | b'\n' | b'\r' | b'\x0c' | b'>')
-            {
-                at += 1;
-            }
-            scan.html.push_str(&html[value_start..at]);
-        }
-    }
-    (html.len(), false)
-}
-
-/// 属性值是不是资源地址；改了值之后把结果记进 `wanted`，失败记进 `missing`。
-fn resolve_asset(value: &str, context: &Context, scan: &mut Scan) -> Option<String> {
+    wanted: &mut Vec<Wanted>,
+    missing: &mut Vec<String>,
+) -> Option<String> {
     match resolve(value, context) {
         Ok((from, to)) => {
             let relative = to
@@ -229,7 +167,7 @@ fn resolve_asset(value: &str, context: &Context, scan: &mut Scan) -> Option<Stri
                 .expect("目标就在 assets 里")
                 .to_string_lossy()
                 .replace('\\', "/");
-            scan.wanted.push(Wanted { from, to });
+            wanted.push(Wanted { from, to });
             Some(format!(
                 "{}/{}",
                 context.assets_prefix,
@@ -241,66 +179,16 @@ fn resolve_asset(value: &str, context: &Context, scan: &mut Scan) -> Option<Stri
             None
         }
         Err(Skip::Missing(value)) => {
-            scan.missing.push(value);
+            missing.push(value);
             None
         }
     }
-}
-
-fn tag_name_end(html: &str, from: usize) -> Option<usize> {
-    let bytes = html.as_bytes();
-    if !bytes.get(from).is_some_and(u8::is_ascii_alphabetic) {
-        return None;
-    }
-    let mut at = from;
-    while at < bytes.len()
-        && (bytes[at].is_ascii_alphanumeric() || matches!(bytes[at], b'-' | b':' | b'_'))
-    {
-        at += 1;
-    }
-    (at > from).then_some(at)
 }
 
 fn is_asset_attr(name: &str) -> bool {
     name.eq_ignore_ascii_case("src")
         || name.eq_ignore_ascii_case("href")
         || name.eq_ignore_ascii_case("poster")
-}
-
-/// 这些标签的内容是原始文本，里面的 `src="…"` 不是属性。
-fn is_raw_text(tag: &str) -> bool {
-    [
-        "script",
-        "style",
-        "textarea",
-        "title",
-        "xmp",
-        "iframe",
-        "noembed",
-        "noframes",
-        "plaintext",
-    ]
-    .iter()
-    .any(|raw| tag.eq_ignore_ascii_case(raw))
-}
-
-/// 找 `</tag` —— 原始文本元素的结束位置；找不到就吃到结尾。
-fn find_close_tag(html: &str, from: usize, tag: &str) -> Option<usize> {
-    let bytes = html.as_bytes();
-    let mut at = from;
-    while at + 2 + tag.len() <= bytes.len() {
-        if bytes[at] == b'<' && bytes[at + 1] == b'/' {
-            let end = at + 2 + tag.len();
-            if html[at + 2..end].eq_ignore_ascii_case(tag)
-                && (end == bytes.len()
-                    || matches!(bytes[end], b' ' | b'\t' | b'\n' | b'\r' | b'\x0c' | b'>'))
-            {
-                return Some(at);
-            }
-        }
-        at += 1;
-    }
-    None
 }
 
 /// 一个本地地址为什么没被拷 —— 前者不进报告，后者要报
@@ -453,6 +341,10 @@ pub fn copy(wanted: &[Wanted], already: &mut Vec<PathBuf>) -> std::io::Result<us
 mod tests {
     use super::*;
 
+    fn scan_ok(html: &str, context: &Context) -> Scan {
+        scan(html, context).expect("扫得动")
+    }
+
     /// 一个「嵌套页」的角度：正文目录下的 `指南/`，前缀是 `../assets`
     fn context<'a>(page_dir: &'a Path, pages_dir: &'a Path, assets_dir: &'a Path) -> Context<'a> {
         Context {
@@ -474,7 +366,7 @@ mod tests {
         std::fs::write(pages.join("其他.png"), "另一张").expect("写得下");
 
         let html = r#"<p><img src="图.png"> 与 <img src="../其他.png"></p>"#;
-        let scan = scan(html, &context(&pages.join("指南"), &pages, &assets));
+        let scan = scan_ok(html, &context(&pages.join("指南"), &pages, &assets));
 
         assert_eq!(
             scan.html,
@@ -509,7 +401,7 @@ mod tests {
         std::fs::write(pages.join("mdpp.js"), "window.__PWNED__ = 1;").expect("写得下");
         std::fs::write(assets.join("mdpp.js"), "/* 站点脚本 */").expect("写得下");
 
-        let scan = scan(r#"<img src="mdpp.js">"#, &context(&pages, &pages, &assets));
+        let scan = scan_ok(r#"<img src="mdpp.js">"#, &context(&pages, &pages, &assets));
         let mut already = Vec::new();
         let error = copy(&scan.wanted, &mut already).expect_err("该拒绝");
         assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
@@ -529,7 +421,7 @@ mod tests {
         std::fs::create_dir_all(&pages).expect("建得出");
         std::fs::write(pages.join("图.png"), "图片").expect("写得下");
 
-        let scan = scan(
+        let scan = scan_ok(
             r#"<img src="图.png"><img src="./图.png">"#,
             &context(&pages, &pages, &assets),
         );
@@ -558,7 +450,7 @@ mod tests {
             r##"<a href="#小节">锚点</a>"##,
             r#"<a class="mdpp-wikilink" href="另一页/">站内</a>"#,
         );
-        let scan = scan(html, &context(&pages, &pages, &assets));
+        let scan = scan_ok(html, &context(&pages, &pages, &assets));
         assert_eq!(scan.html, html, "不该动的动了");
         assert!(scan.wanted.is_empty(), "{:?}", scan.wanted);
         assert!(scan.missing.is_empty(), "{:?}", scan.missing);
@@ -578,7 +470,7 @@ mod tests {
         std::os::unix::fs::symlink(outside.join("secret.png"), pages.join("图.png"))
             .expect("建得出符号链接");
 
-        let scan = scan(r#"<img src="图.png">"#, &context(&pages, &pages, &assets));
+        let scan = scan_ok(r#"<img src="图.png">"#, &context(&pages, &pages, &assets));
         assert!(scan.wanted.is_empty(), "{:?}", scan.wanted);
         assert!(
             scan.missing.iter().any(|one| one.contains("符号链接")),
@@ -595,7 +487,7 @@ mod tests {
         let assets = dir.path().join("assets");
         std::fs::create_dir_all(&pages).expect("建得出");
 
-        let scan = scan(
+        let scan = scan_ok(
             r#"<img src="没有这张.png">"#,
             &context(&pages, &pages, &assets),
         );
@@ -614,7 +506,7 @@ mod tests {
         let secret = dir.path().join("project/口令.txt");
         std::fs::write(&secret, "不该被拷走").expect("写得下");
 
-        let scan = scan(
+        let scan = scan_ok(
             r#"<img src="../../口令.txt">"#,
             &context(&pages, &pages, &assets),
         );
@@ -633,7 +525,7 @@ mod tests {
         std::fs::create_dir_all(&pages).expect("建得出");
         std::fs::write(pages.join("乙.mdpp"), "# 乙").expect("写得下");
 
-        let scan = scan(
+        let scan = scan_ok(
             r#"<a href="乙.mdpp">乙</a>"#,
             &context(&pages, &pages, &assets),
         );
@@ -650,7 +542,7 @@ mod tests {
         std::fs::write(pages.join("图.png"), "图片").expect("写得下");
 
         let html = r#"<div class="图.png" data-x="图.png"><img alt="图.png" src="图.png"></div>"#;
-        let scan = scan(html, &context(&pages, &pages, &assets));
+        let scan = scan_ok(html, &context(&pages, &pages, &assets));
         assert_eq!(
             scan.html,
             r#"<div class="图.png" data-x="图.png"><img alt="图.png" src="../assets/图.png"></div>"#
@@ -672,7 +564,7 @@ mod tests {
             r#"<!-- <img src="图.png"> -->"#,
             r#"<p data-src="图.png">别动</p>"#,
         );
-        let scan = scan(html, &context(&pages, &pages, &assets));
+        let scan = scan_ok(html, &context(&pages, &pages, &assets));
         assert_eq!(scan.html, html, "不该动的动了");
         assert!(scan.wanted.is_empty(), "{:?}", scan.wanted);
         assert!(scan.missing.is_empty(), "{:?}", scan.missing);
@@ -692,7 +584,7 @@ mod tests {
         std::os::unix::fs::symlink(&outside, pages.join("链接")).expect("建得出符号链接");
 
         let html = r#"<img src="链接/secret.png">"#;
-        let scan = scan(html, &context(&pages, &pages, &assets));
+        let scan = scan_ok(html, &context(&pages, &pages, &assets));
         assert!(scan.wanted.is_empty(), "{:?}", scan.wanted);
         assert_eq!(scan.html, html, "不该改地址");
         assert!(
@@ -744,7 +636,7 @@ mod tests {
             r#"<script>document.write('<img src="图.png">')</script>"#,
             r#"<img src="图.png">"#,
         );
-        let scan = scan(html, &context(&pages, &pages, &assets));
+        let scan = scan_ok(html, &context(&pages, &pages, &assets));
         assert_eq!(
             scan.html,
             concat!(
@@ -770,9 +662,52 @@ mod tests {
         std::fs::write(pages.join("图.png"), "图片").expect("写得下");
 
         let html = r#"<style>.a { background: url("图.png") }</style>"#;
-        let scan = scan(html, &context(&pages, &pages, &assets));
+        let scan = scan_ok(html, &context(&pages, &pages, &assets));
         assert_eq!(scan.html, html, "样式里的地址不该动");
         assert!(scan.wanted.is_empty(), "{:?}", scan.wanted);
         assert!(scan.missing.is_empty(), "{:?}", scan.missing);
+    }
+
+    /// `<template data-mdpp-asset=…>` 是延迟资源的占位，整段都要原样留下
+    #[test]
+    fn a_deferred_asset_placeholder_is_preserved() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let pages = dir.path().join("pages");
+        let assets = dir.path().join("assets");
+        std::fs::create_dir_all(&pages).expect("建得出");
+        std::fs::write(pages.join("图.png"), "图片").expect("写得下");
+
+        let html = concat!(
+            r#"<template data-mdpp-asset="css" data-mdpp-key="g:v:css:0123">.a{color:red}</template>"#,
+            r#"<img src="图.png">"#,
+        );
+        let scan = scan_ok(html, &context(&pages, &pages, &assets));
+        assert_eq!(
+            scan.html,
+            concat!(
+                r#"<template data-mdpp-asset="css" data-mdpp-key="g:v:css:0123">.a{color:red}</template>"#,
+                r#"<img src="../assets/图.png">"#,
+            ),
+            "{}",
+            scan.html
+        );
+    }
+
+    /// 没引号的属性值也能解析出来；改写后统一成带引号的形式
+    #[test]
+    fn an_unquoted_attribute_is_rewritten() {
+        let dir = tempfile::tempdir().expect("造得出临时目录");
+        let pages = dir.path().join("pages");
+        let assets = dir.path().join("assets");
+        std::fs::create_dir_all(&pages).expect("建得出");
+        std::fs::write(pages.join("图.png"), "图片").expect("写得下");
+
+        let scan = scan_ok(r#"<img src=图.png>"#, &context(&pages, &pages, &assets));
+        assert_eq!(
+            scan.html, r#"<img src="../assets/图.png">"#,
+            "{}",
+            scan.html
+        );
+        assert_eq!(scan.wanted.len(), 1, "{:?}", scan.wanted);
     }
 }

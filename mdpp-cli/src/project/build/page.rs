@@ -68,7 +68,7 @@ pub(super) fn render_page(
             assets_dir: &site_dir.join(page::ASSET_DIR),
             assets_prefix,
         },
-    );
+    )?;
     Ok(PageBody {
         title: document_title(project, rendered.title(), page.stem()),
         sidebar: toc::sidebar(&scan.html),

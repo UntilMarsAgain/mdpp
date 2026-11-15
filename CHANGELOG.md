@@ -239,6 +239,9 @@
 - 站点侧边目录与 `::html js` 的脚本抽取改用 `html5ever` 解析：删除 TOC 的标签
   扫描器与 embeds 的两段字符串扫描；脚本抽取先摘 `<script>` 再序列化，注释和
   属性值里的 `<script` 不再误判。
+- 资源扫描改用 `lol_html` 流式重写：删除手写的开始标签 / 属性扫描器，没被改写
+  的字节原样透传，`<script>` / `<style>` 里的文本不会进入处理函数；`scan` 改为
+  返回 `Result`，属性值以解析器读到的为准（无引号的 `src=图.png` 现在也会改写）。
 - `::css` 允许 `@import` 与 `url()` 外部资源，只继续剥离 `</style`（此前把
   `@import` 整条删掉，且 CSS 转义还能绕过）。
 - `render_parts` 与 `render_node_parts` 共用 `finish`；`RenderEnv` 三处构造统一
