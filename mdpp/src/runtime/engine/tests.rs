@@ -45,6 +45,17 @@ fn a_parsed_ast_can_be_rendered_with_assets() {
     assert!(rendered.assets.is_empty(), "{:?}", rendered.assets);
 }
 
+/// 嵌套渲染里的标题也要进大纲 —— `::each` 在渲染期把展开结果再解析一遍
+#[test]
+fn outline_includes_headings_from_nested_renders() {
+    let source = "# 页面\n\n::each as=item\n  [__template__]\n    ## {{@item.label}}\n  [__data__]\n    [甲]\n      正文\n";
+    let rendered = Mdpp::new().render_report(source, &crate::context::RenderContext::new());
+    let texts: Vec<&str> = rendered.outline.iter().map(|h| h.text.as_str()).collect();
+    assert_eq!(texts, vec!["页面", "甲"], "{}", rendered.html);
+    assert_eq!(rendered.outline[1].level, 2);
+    assert!(rendered.outline[1].id.is_some(), "{:?}", rendered.outline);
+}
+
 /// 兜底：标题、强调这些最基本的记号还认得 —— 开关加了这么多，先看这里
 #[test]
 fn commonmark_is_there() {

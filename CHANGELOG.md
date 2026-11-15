@@ -239,12 +239,17 @@
 - `::html` 净化的解析、重建与转义交给 `ammonia`，白名单仍由 `html/rules.rs`
   给出；`target="_blank"` 的 `rel` 在净化后用 html5ever 对树补写（ammonia 只能
   给所有链接加，且与已有 `rel` 同设会 panic）。手写的 `walk` / 转义表因此删除。
-- 站点侧边目录与 `::html js` 的脚本抽取改用 `html5ever` 解析：删除 TOC 的标签
-  扫描器与 embeds 的两段字符串扫描；脚本抽取先摘 `<script>` 再序列化，注释和
-  属性值里的 `<script` 不再误判。
+- `::html js` 的脚本抽取改用 `html5ever` 解析：删除 embeds 的两段字符串扫描；
+  脚本抽取先摘 `<script>` 再序列化，注释和属性值里的 `<script` 不再误判。
 - 资源扫描改用 `lol_html` 流式重写：删除手写的开始标签 / 属性扫描器，没被改写
   的字节原样透传，`<script>` / `<style>` 里的文本不会进入处理函数；`scan` 改为
   返回 `Result`，属性值以解析器读到的为准（无引号的 `src=图.png` 现在也会改写）。
+- 模板遍历原语 `::each` 与 `::rows` 共用一个 Rust 侧循环（切片、建变量作用域、
+  拼接后一次嵌套渲染）；文档端仍是两套扫描语法，`each` 的 `x|y|z` 多管道标签
+  不扩散到 `rows` 或 `section`。
+- `Rendered.outline` 改为从最终 HTML 收集：嵌套渲染（`::each` / `::rows` /
+  `<markdown>`）里的标题也在内，顺序与锚点跟产物一致。站点侧边目录直接消费
+  这份大纲，不再二次扫描 HTML；CLI 因此去掉 html5ever / rcdom 依赖。
 - 解析方言集中到 `parse/dialect.rs`：渲染器与原始区扫描共用同一套 markdown-it
   装配与 `::` 块规则，扫描模式只把 Raw 块的字节区间记成节点，不查模板、不展开。
   于是 `::code` / `::css` / `::math` 正文里的 `](a b.png)` 不再被目标编码改写成

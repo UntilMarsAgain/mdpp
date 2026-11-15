@@ -311,8 +311,8 @@ impl Problems {
 /// 站点模式（[`Mdpp::render_with_assets`]）的 HTML 里是链接，内容在这里。
 ///
 /// `outline` / `features` / `problems` 都是渲染时顺手记下来的：调用方不必再拿
-/// HTML 做字符串匹配。嵌套渲染的 features/problems 会合并进来，标题只取这一份
-/// 文档自己的 AST。
+/// HTML 做字符串匹配。嵌套渲染的 features/problems 会合并进来；标题从最终 HTML
+/// 收集，嵌套解析产生的标题也在内。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rendered {
     /// 渲染好的 HTML
@@ -323,7 +323,7 @@ pub struct Rendered {
     pub styles: Vec<String>,
     /// 这一页全局收集的脚本标签，按首次登记顺序
     pub scripts: Vec<String>,
-    /// 文档大纲，按标题出现顺序；不含嵌套模板页自己的标题
+    /// 文档大纲，按最终 HTML 的出现顺序；嵌套解析产生的标题也在内
     pub outline: Vec<Heading>,
     /// 需要外部前端资源的特性
     pub features: Features,

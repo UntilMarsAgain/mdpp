@@ -33,12 +33,9 @@ use std::collections::HashSet;
 use markdown_it::{Node, Renderer};
 
 use super::super::dispatch::render_problem;
-use super::super::fill;
 use super::super::section;
+use super::repeat::{Piece, Repeat};
 use super::{present, valid_name};
-use crate::block::template::TemplateVars;
-use crate::block::typecheck::TemplateType;
-use crate::context;
 use crate::registry::Block;
 
 const PARAMS: &[&str] = &["as", "max"];
@@ -125,19 +122,8 @@ pub(super) fn render_rows(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         return;
     }
 
-    let parent = context::template_vars();
-    let inherited_body = parent
-        .as_ref()
-        .map(|vars| vars.body.clone())
-        .unwrap_or_default();
-    let template_name = parent
-        .as_ref()
-        .map(|vars| vars.name.clone())
-        .unwrap_or_else(|| "rows".to_string());
     let count = rows.len();
-
-    let mut expanded = String::new();
-    for (index, cells) in rows.iter().enumerate() {
+    let pieces = rows.iter().enumerate().map(|(index, cells)| {
         let mut vars = Vec::with_capacity(cells.len() + 5);
         for (cell, value) in cells.iter().enumerate() {
             vars.push((format!("{}.{cell}", params.as_name), value.clone()));
@@ -152,32 +138,12 @@ pub(super) fn render_rows(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
             format!("{}.last", params.as_name),
             if index + 1 == count { "yes" } else { "" }.to_string(),
         ));
-
-        let kind = parent
-            .as_ref()
-            .map_or(TemplateType::Block, |vars| vars.kind);
-        let vars = TemplateVars::new(
-            &template_name,
-            vars,
-            inherited_body.clone(),
-            kind,
-            parent.clone(),
-        );
-        let _scope = context::enter_template_vars(std::sync::Arc::new(vars));
-        match fill::resolve_late_refs(template, Some(params.as_name)) {
-            Ok(fragment) => {
-                expanded.push_str(&fragment);
-                expanded.push('\n');
-            }
-            Err(why) => {
-                render_problem(block, fmt, &why);
-                return;
-            }
-        }
+        Piece { template, vars }
+    });
+    let repeat = Repeat::new(params.as_name, "rows");
+    if let Err(why) = repeat.render(pieces, fmt) {
+        render_problem(block, fmt, &why);
     }
-
-    let html = crate::engine::render_nested(&expanded);
-    fmt.text_raw(&html);
 }
 
 #[cfg(test)]

@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
+use html5ever::tendril::TendrilSink;
+use html5ever::{ParseOpts, QualName, local_name, ns, parse_fragment};
 use markdown_it::plugins::cmark::block::fence::CodeFence;
-use markdown_it::plugins::cmark::block::heading::ATXHeading;
-use markdown_it::plugins::cmark::block::lheading::SetextHeader;
 use markdown_it::{MarkdownIt, Node};
+use markup5ever_rcdom::{Handle, NodeData, RcDom};
 
 use super::{Features, Heading, RenderReport};
 use crate::assets::{self, Asset, AssetMode};
@@ -107,12 +108,18 @@ fn finish(
     root: &Node,
     source: Option<&str>,
 ) -> (String, Vec<Asset>, RenderReport) {
-    let outline = outline_of(root);
     let features = features_of(root);
     // 嵌套渲染里出现的特性也要让最外层看见：`::demo` 里的 mermaid 一样要引脚本
     crate::env::with(|env| env.features.merge(features));
     let started = std::time::Instant::now();
     let html = root.render();
+    // 标题从最终 HTML 里取：嵌套解析（`::each` / `::rows` / `<markdown>`）产生的
+    // 标题不在外层 AST 里，按产物走才能保住文档顺序与净化后的锚点。
+    let outline = if nested {
+        Vec::new()
+    } else {
+        outline_of(&html)
+    };
     if let Some(source) = source {
         let size = Size::measure(source, started.elapsed(), &html);
         debug!(
@@ -156,26 +163,78 @@ fn finish(
     )
 }
 
-/// 从解析树里取标题。模板页在解析期已经展开，所以模板里的标题也会在这里出现。
-fn outline_of(root: &Node) -> Vec<Heading> {
+/// 从渲染后的 HTML 里取标题，按出现顺序。
+///
+/// 不用 AST：`::each` / `::rows` / `<markdown>` 在渲染期还会做嵌套解析，那部分
+/// 标题不在外层 AST 里；按最终 HTML 收集，顺序、锚点与净化结果都和产物一致。
+fn outline_of(html: &str) -> Vec<Heading> {
+    let dom = parse_fragment(
+        RcDom::default(),
+        ParseOpts::default(),
+        QualName::new(None, ns!(html), local_name!("body")),
+        Vec::new(),
+        true,
+    )
+    .from_utf8()
+    .one(html.as_bytes());
+
     let mut outline = Vec::new();
-    root.walk(|node, _| {
-        let level = if let Some(heading) = node.cast::<ATXHeading>() {
-            heading.level
-        } else if let Some(heading) = node.cast::<SetextHeader>() {
-            heading.level
-        } else {
-            return;
-        };
-        let text = node.collect_text().trim().to_string();
-        let id = node
-            .attrs
-            .iter()
-            .find(|(name, _)| *name == "id")
-            .map(|(_, value)| value.clone());
-        outline.push(Heading { level, text, id });
-    });
+    let mut stack = vec![dom.document.clone()];
+    while let Some(node) = stack.pop() {
+        let mut heading = 0;
+        if let NodeData::Element { name, attrs, .. } = &node.data {
+            heading = match name.local.as_ref() {
+                "h1" => 1,
+                "h2" => 2,
+                "h3" => 3,
+                "h4" => 4,
+                "h5" => 5,
+                "h6" => 6,
+                _ => 0,
+            };
+            if heading != 0 {
+                let id = attrs
+                    .borrow()
+                    .iter()
+                    .find(|attr| attr.name.local.as_ref() == "id")
+                    .map(|attr| attr.value.to_string());
+                let text = text_content(&node).trim().to_string();
+                outline.push(Heading {
+                    level: heading,
+                    text,
+                    id,
+                });
+            }
+        }
+        // 标题里不会再套标题；文字已经由 `text_content` 收过了，不必再往下走。
+        if heading == 0 {
+            for child in node.children.borrow().iter().rev() {
+                stack.push(child.clone());
+            }
+        }
+    }
     outline
+}
+
+/// 元素里所有文字节点拼起来（`<code>` 这类行内标签也在内）。
+fn text_content(root: &Handle) -> String {
+    let mut out = String::new();
+    let mut stack = vec![root.clone()];
+    while let Some(node) = stack.pop() {
+        match &node.data {
+            NodeData::Text { contents } => out.push_str(&contents.borrow()),
+            NodeData::Element { name, .. }
+                if matches!(name.local.as_ref(), "script" | "style" | "template") =>
+            {
+                continue;
+            }
+            _ => {}
+        }
+        for child in node.children.borrow().iter().rev() {
+            stack.push(child.clone());
+        }
+    }
+    out
 }
 
 /// 从解析树里取前端特性。这里只认**语义节点**：正文里恰好写着

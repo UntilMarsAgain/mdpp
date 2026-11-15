@@ -72,10 +72,8 @@ use markdown_it::{Node, Renderer};
 use super::super::dispatch::render_problem;
 use super::super::fill;
 use super::super::section;
+use super::repeat::{Piece, Repeat};
 use super::{present, valid_name};
-use crate::block::template::TemplateVars;
-use crate::block::typecheck::TemplateType;
-use crate::context;
 use crate::registry::Block;
 
 /// `::each` 认的全部参数。
@@ -428,77 +426,47 @@ pub(super) fn render_each(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
         return;
     }
 
-    let parent = context::template_vars();
-    let inherited_body = parent
-        .as_ref()
-        .map(|vars| vars.body.clone())
-        .unwrap_or_default();
-    // `@template` 仍然指向模板页，不是 `as=` 的名字
-    let template_name = parent
-        .as_ref()
-        .map(|vars| vars.name.clone())
-        .unwrap_or_else(|| "each".to_string());
     let count = items.len();
-    let kind = parent
-        .as_ref()
-        .map_or(TemplateType::Block, |vars| vars.kind);
-
-    let mut expanded = String::new();
-    for (index, item) in items.iter().enumerate() {
-        let vars = TemplateVars::new(
-            &template_name,
-            vec![
-                (format!("{}.label", params.as_name), item.label.to_string()),
-                (format!("{}.type", params.as_name), item.kind.to_string()),
-                (format!("{}.body", params.as_name), item.raw.body.clone()),
-                (
-                    format!("{}.empty", params.as_name),
-                    if item.label.trim().is_empty() {
-                        "yes"
-                    } else {
-                        ""
-                    }
-                    .to_string(),
-                ),
-                (
-                    format!("{}.body_empty", params.as_name),
-                    if item.raw.body.trim().is_empty() {
-                        "yes"
-                    } else {
-                        ""
-                    }
-                    .to_string(),
-                ),
-                (format!("{}.index", params.as_name), index.to_string()),
-                (format!("{}.count", params.as_name), count.to_string()),
-                (
-                    format!("{}.first", params.as_name),
-                    if index == 0 { "yes" } else { "" }.to_string(),
-                ),
-                (
-                    format!("{}.last", params.as_name),
-                    if index + 1 == count { "yes" } else { "" }.to_string(),
-                ),
-            ],
-            inherited_body.clone(),
-            kind,
-            parent.clone(),
-        );
-        let _scope = context::enter_template_vars(std::sync::Arc::new(vars));
-        match fill::resolve_late_refs(item.template, Some(params.as_name)) {
-            Ok(fragment) => {
-                expanded.push_str(&fragment);
-                expanded.push('\n');
-            }
-            Err(why) => {
-                render_problem(&named(block, params.name), fmt, &why);
-                return;
-            }
-        }
+    let pieces = items.iter().enumerate().map(|(index, item)| Piece {
+        template: item.template,
+        vars: vec![
+            (format!("{}.label", params.as_name), item.label.to_string()),
+            (format!("{}.type", params.as_name), item.kind.to_string()),
+            (format!("{}.body", params.as_name), item.raw.body.clone()),
+            (
+                format!("{}.empty", params.as_name),
+                if item.label.trim().is_empty() {
+                    "yes"
+                } else {
+                    ""
+                }
+                .to_string(),
+            ),
+            (
+                format!("{}.body_empty", params.as_name),
+                if item.raw.body.trim().is_empty() {
+                    "yes"
+                } else {
+                    ""
+                }
+                .to_string(),
+            ),
+            (format!("{}.index", params.as_name), index.to_string()),
+            (format!("{}.count", params.as_name), count.to_string()),
+            (
+                format!("{}.first", params.as_name),
+                if index == 0 { "yes" } else { "" }.to_string(),
+            ),
+            (
+                format!("{}.last", params.as_name),
+                if index + 1 == count { "yes" } else { "" }.to_string(),
+            ),
+        ],
+    });
+    let repeat = Repeat::new(params.as_name, "each");
+    if let Err(why) = repeat.render(pieces, fmt) {
+        render_problem(&named(block, params.name), fmt, &why);
     }
-
-    let html = crate::engine::render_nested(&expanded);
-    fmt.text_raw(&html);
 }
 
 #[cfg(test)]

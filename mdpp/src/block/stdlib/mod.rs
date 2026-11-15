@@ -41,6 +41,7 @@ mod include;
 mod inline;
 mod media;
 mod problem;
+mod repeat;
 mod rows;
 mod text;
 mod variants;

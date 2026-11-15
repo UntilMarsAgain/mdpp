@@ -6,7 +6,6 @@ use crate::project::site::{INDEX_KEY, output_of};
 
 use super::clean::staging_dir;
 use super::nav::{nav_for, resolve_nav, toc_body};
-use super::toc;
 use std::collections::BTreeMap;
 
 /// 临时目录名不跟产物目录名走：`build_dir` 可以是中文，但临时名字只用 ASCII
@@ -160,66 +159,6 @@ fn the_toc_body_lists_every_page() {
     // 链接是相对目录页的：目录页在 `build/目录/`，回首页要退一层
     assert!(body.contains(r#"href="../""#), "{body}");
     assert!(body.contains(r#"href="../指南/入门/""#), "{body}");
-}
-
-/// 侧边目录从**渲染后的正文**里挑 h2/h3：链接直接用标题上那个锚点。
-/// h1 是这一页的标题，不再进目录。
-#[test]
-fn the_sidebar_lists_h2_and_h3_with_their_anchors() {
-    let body = concat!(
-        r#"<h1 id="页面标题">页面标题</h1>"#,
-        r#"<h2 id="安装">安装</h2>"#,
-        r#"<p>正文</p>"#,
-        r#"<h3 id="细节">细节 <code>a&amp;b</code></h3>"#,
-    );
-    let html = toc::sidebar(body);
-    assert!(html.contains(r##"<a href="#安装">安装</a>"##), "{html}");
-    assert!(
-        html.contains(r##"<a href="#细节">细节 a&amp;b</a>"##),
-        "{html}"
-    );
-    assert!(
-        !html.contains("页面标题"),
-        "h1 是页标题，不该再进目录：{html}"
-    );
-    // 宽屏一列 + 窄屏可展开入口，两份结构都在
-    assert!(
-        html.contains(r#"<aside class="mdpp-toc mdpp-toc--wide">"#),
-        "{html}"
-    );
-    assert!(
-        html.contains(r#"<details class="mdpp-toc mdpp-toc--narrow">"#),
-        "{html}"
-    );
-    assert!(
-        html.contains(r#"<summary class="mdpp-toc__summary">本页目录</summary>"#),
-        "{html}"
-    );
-    // 两级各带自己的 class（缩进靠它）
-    assert!(html.contains("mdpp-toc__item--h2"), "{html}");
-    assert!(html.contains("mdpp-toc__item--h3"), "{html}");
-}
-
-/// 没有章节标题就不出目录：只写 h1、或者标题没有 `id` 都不该留下一个空盒子
-#[test]
-fn a_page_without_section_headings_gets_no_sidebar() {
-    assert!(toc::sidebar("<p>只有正文</p>").is_empty());
-    assert!(
-        toc::sidebar(r#"<h1 id="页">页</h1>"#).is_empty(),
-        "h1 是页标题，不是章节"
-    );
-    assert!(
-        toc::sidebar("<h2>没有锚点</h2>").is_empty(),
-        "没有 id 就没有能跳过去的目标"
-    );
-}
-
-/// 属性不按 id 开头、引号里带 `>`、值里带实体，都要照样读出真正的锚点
-#[test]
-fn the_sidebar_reads_the_anchor_through_other_attributes_and_entities() {
-    let html = toc::sidebar(r#"<h2 class="x" data-y="a>b" id='A&amp;B'>标题</h2>"#);
-    assert!(html.contains(r##"href="#A&amp;B""##), "{html}");
-    assert!(html.contains(">标题</a>"), "{html}");
 }
 
 /// 每个项目一个临时站点：`init` 建出来的骨架已经能 build

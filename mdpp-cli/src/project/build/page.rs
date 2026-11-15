@@ -71,7 +71,7 @@ pub(super) fn render_page(
     )?;
     Ok(PageBody {
         title: document_title(project, rendered.title(), page.stem()),
-        sidebar: toc::sidebar(&scan.html),
+        sidebar: toc::sidebar(&rendered.outline),
         html: scan.html,
         assets: rendered.assets,
         styles: rendered.styles,
