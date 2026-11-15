@@ -20,6 +20,18 @@
   `rel="noopener noreferrer"`；媒体 `src` 的协议判定会先去掉空白与控制字符。
 - 单份输入上限 32 MiB；预览服务器改用 `axum` + `tower-http`：请求解析、MIME、
   range、HEAD、目录索引与 `..` 防护交给库，SSE 仍由本库发。
+- `::css` 与内联样式剥离 `</style` 时不再用 Unicode 小写化后的字节偏移：`İ` / `ẞ`
+  这类字符会改变小写长度，偏移错位到真正的闭合标签之前，默认配置下可以在
+  `<style>` 外注入脚本；同一处还会在第二个 `</style` 时越界 panic。现在在原文上
+  逐字节做 ASCII 大小写不敏感匹配，`close_tag` 改为维护绝对游标。
+- 页面资源不能覆盖站点自带文件：`pages/` 里放一个 `mdpp.js` / `mdpp.css` 并用
+  图片或链接引用它，此前会替换每页都加载的外壳脚本；现在目标已存在且不是本页
+  登记的资源时直接报错。favicon / logo 与内置资源同名同样拒绝，两者指向同一
+  文件则允许。
+- 预览服务器的快照不跟随符号链接；页面/模板目录里即使放了链接目录也只按真实
+  条目计算。预览缓存移进权限 0700 的临时目录。
+- `render_nested` 与 `<markdown>` 的嵌套超限诊断现在计入 `Rendered.problems`，
+  `build --strict` 与 `render --stats` 不再出现「页面有框、报告说没有」。
 
 ### 用户模板与条件
 
@@ -121,6 +133,8 @@
 - 嵌套块（`::note` 等）里的链接目标同样会编码空格。
 - 标题 `id` 按整棵树唯一化：同页同名标题得到 `安装` / `安装-1`；删除
   `DropDuplicateHeadingIds` 补丁。
+- 新建页面复用站点键校验：`CON` / `NUL.txt` 这类 Windows 保留名与 `..` 段在
+  创建文件之前就被拒绝，不再等到构建阶段才报。
 
 ### 构建与并发
 
@@ -129,6 +143,8 @@
 - `Mdpp` 改为 `Send + Sync`，一个解析器可被多线程共享。
 - 渲染状态收拢成一份 `RenderEnv`，嵌套渲染的层数与变体作用域会正确继承。
 - 资源去重从线性扫描改成哈希集合。
+- `--clean` 成为兼容开关：`build` 总是先出到同级临时目录再整体换名，删除旧站
+  不再由该标志控制；旧命令行仍能解析。
 
 ### 扩展 API
 
@@ -146,6 +162,8 @@
   CSS / JS 变成惰性资源；`use_asset_with` 与 `use_asset_once` 可以选择
   「每次激活执行」或「只执行一次」。
 - `mdpp/examples/bench.rs`：单线程与多线程渲染的轻量基准。
+- 删除 `count_problem_boxes`：问题计数已由 `Rendered.problems` 给出，HTML 类名
+  匹配不再是公开契约。
 
 ### 前端
 
@@ -203,7 +221,7 @@
   `mdpp-cli` 收进 `cli` / `render` / `project` / `server` / `support`；根上的
   `mdpp::engine`、`mdpp::context`、`mdpp::raw` 等公开路径通过重导出保持不变。
 - 大文件按职责继续拆分：`engine` → `mod/builder/render/rules/tests`，
-  `registry` → `block/spec/table/tokenize`，`html` → `mod/markdown/rules/escape`，
+  `registry` → `block/spec/table/tokenize`，`html` → `mod/markdown/rules`，
   `fill` → `mod/css`，`navbox` → `mod/parse/render`，
   `page` → `mod/assets/chrome/text`，`build` → `mod/clean/files/nav/page/report`，
   `site` → `mod/paths/links`，`serve` → `mod/rebuild/temp/watch`，
@@ -215,3 +233,20 @@
   `toc = "contents"`、`{{title}}` / `{{home}}` 等）；中文内容仍原样支持，
   但不再作为默认路径名或参数键。
 - README 的配置名与块数量修正，补充 `--jobs`、原子构建、AST 与扩展 API 说明。
+- `::html` 净化的解析、重建与转义交给 `ammonia`，白名单仍由 `html/rules.rs`
+  给出；`target="_blank"` 的 `rel` 在净化后用 html5ever 对树补写（ammonia 只能
+  给所有链接加，且与已有 `rel` 同设会 panic）。手写的 `walk` / 转义表因此删除。
+- 站点侧边目录与 `::html js` 的脚本抽取改用 `html5ever` 解析：删除 TOC 的标签
+  扫描器与 embeds 的两段字符串扫描；脚本抽取先摘 `<script>` 再序列化，注释和
+  属性值里的 `<script` 不再误判。
+- `::css` 允许 `@import` 与 `url()` 外部资源，只继续剥离 `</style`（此前把
+  `@import` 整条删掉，且 CSS 转义还能绕过）。
+- `render_parts` 与 `render_node_parts` 共用 `finish`；`RenderEnv` 三处构造统一
+  用 `..RenderEnv::default()`；内部 `Emission` 枚举删除，`emit` 直接返回公开的
+  `AssetUse`；`::variants` 的开关解析与 `fill::flag` 共用 `fill::is_on`。
+- `ammonia` 自带 html5ever 0.40，与类型判定 / `add_noopener` 用的 0.39 并存；
+  两套解析器不共享树，升级其中一套不影响另一套。
+- 文档更正：`lib.rs` 不再声称「不带样式表、trait 无自带实现」；构建与清理之间
+  漂移的注释、`page` / `nav` 上错挂的文档归位；`fill` 里过时的
+  `mdpp-cli/src/page.rs` 路径更新；`control` 重复的报错词与 `rules` 的幽灵
+  `audio-g` 删除。
