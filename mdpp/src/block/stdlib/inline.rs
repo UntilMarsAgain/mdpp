@@ -23,6 +23,7 @@ use crate::registry::Block;
 /// 也不好看，所以剥掉。多段直接拒绝，不再猜作者想保留哪一段。
 fn inline_html(text: &str) -> Result<String, String> {
     let snapshot = crate::env::snapshot();
+    let _inline_scope = crate::env::enter_inline();
     let rendered = crate::engine::render_nested(text);
     match typecheck::check_inline(&rendered) {
         Ok(html) => Ok(html),

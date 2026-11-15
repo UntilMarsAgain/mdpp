@@ -630,17 +630,35 @@ fn contents(block: &Block, node: &Node, fmt: &mut dyn Renderer, inline: bool) {
         return;
     }
 
+    let _inline_scope = crate::env::enter_inline();
     let snapshot = crate::env::snapshot();
+    let outer_detail = crate::env::problem_detail();
+    crate::env::clear_problem_detail();
     let mut capture = Capture::default();
     capture.contents(&node.children);
     let html = capture.into_string();
+    let inner_detail = crate::env::problem_detail();
     match typecheck::check_inline(&html) {
-        Ok(html) => fmt.text_raw(&html),
+        Ok(html) => {
+            crate::env::set_problem_detail(outer_detail.or(inner_detail));
+            fmt.text_raw(&html);
+        }
         Err(why) => {
+            let detail = inner_detail.unwrap_or_else(|| crate::runtime::env::ProblemDetail {
+                badge: "行内内容有问题".to_string(),
+                class: "mdpp-template--problem".to_string(),
+                name: block.name.clone(),
+                why: why.clone(),
+            });
             if let Some(snapshot) = snapshot {
                 crate::env::restore(snapshot);
             }
-            dispatch::render_inline_problem(block, fmt, &why);
+            if detail.class.ends_with("--unknown") {
+                crate::env::unknown_problem();
+            } else {
+                crate::env::misused_problem();
+            }
+            dispatch::write_problem(&detail, block, false, true, fmt);
         }
     }
 }

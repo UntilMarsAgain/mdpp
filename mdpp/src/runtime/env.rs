@@ -46,6 +46,7 @@ pub(crate) struct Snapshot {
     styles: Vec<String>,
     scripts: Vec<String>,
     features: Features,
+    inline: bool,
 }
 
 /// 「在渲染途中再渲染一段 markdown」的能力。
@@ -97,6 +98,8 @@ pub(crate) struct RenderEnv {
     pub(crate) diagnostics: usize,
     /// 第一个问题框的说明。guard 失败时用它保留具体原因。
     pub(crate) problem_detail: Option<ProblemDetail>,
+    /// 当前是否在行内上下文中；guard、problem、类型检查据此选择 span 或框。
+    pub(crate) inline: bool,
 }
 
 impl Default for RenderEnv {
@@ -117,6 +120,7 @@ impl Default for RenderEnv {
             problems: Problems::default(),
             diagnostics: 0,
             problem_detail: None,
+            inline: false,
         }
     }
 }
@@ -195,6 +199,7 @@ pub(crate) fn snapshot() -> Option<Snapshot> {
         styles: env.styles.clone(),
         scripts: env.scripts.clone(),
         features: env.features,
+        inline: env.inline,
     })
 }
 
@@ -208,12 +213,40 @@ pub(crate) fn restore(snapshot: Snapshot) {
         env.styles = snapshot.styles;
         env.scripts = snapshot.scripts;
         env.features = snapshot.features;
+        env.inline = snapshot.inline;
     });
 }
 
 /// 从快照之后新增了多少个问题框。
 pub(crate) fn problems_since(snapshot: &Snapshot) -> usize {
     with(|env| env.diagnostics.saturating_sub(snapshot.diagnostics)).unwrap_or(0)
+}
+
+/// 当前是否在行内上下文。
+pub(crate) fn is_inline() -> bool {
+    with(|env| env.inline).unwrap_or(false)
+}
+
+/// 进入行内上下文的临时守卫；嵌套行内保持最内层的状态。
+pub(crate) struct InlineGuard {
+    previous: bool,
+}
+
+impl Drop for InlineGuard {
+    fn drop(&mut self) {
+        let _ = with(|env| env.inline = self.previous);
+    }
+}
+
+/// 标记接下来的渲染属于行内内容；离开作用域时恢复。
+pub(crate) fn enter_inline() -> InlineGuard {
+    let previous = with(|env| {
+        let previous = env.inline;
+        env.inline = true;
+        previous
+    })
+    .unwrap_or(false);
+    InlineGuard { previous }
 }
 
 /// 当前第一份问题说明。

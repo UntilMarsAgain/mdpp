@@ -18,6 +18,22 @@ use crate::block::{Section, expand, template};
 use crate::parse::dialect::{RawBlock, spec_for};
 use crate::registry::{self as reg, Block, ContentMode};
 
+/// `::名字[参数]…` / `::名字{正文}` 是行内调用，不属于块扫描器。
+///
+/// 名字与 `[` / `{` 之间不能有空白；否则仍是原来的块语法。
+fn is_inline_call(line: &str) -> bool {
+    let Some(rest) = line.strip_prefix("::") else {
+        return false;
+    };
+    let end = rest
+        .find(|ch: char| ch.is_whitespace() || ch == '[' || ch == '{')
+        .unwrap_or(rest.len());
+    if end == 0 {
+        return false;
+    }
+    matches!(rest.as_bytes().get(end), Some(b'[') | Some(b'{'))
+}
+
 /// 块级规则：由 [`crate::block::add`] 挂到解析器上，排在段落规则之前。
 #[doc(hidden)]
 pub struct BlockScanner;
@@ -30,6 +46,9 @@ impl BlockRule for BlockScanner {
             return None;
         }
         let line = state.get_line(start);
+        if is_inline_call(line) {
+            return None;
+        }
 
         // 头解析失败：普通块继续按段落回退。名字不在注册表里时无从判断它是不是
         // 块，也只能当段落；只有名字看起来是模板（或 `::if`）时才把错误摆出来。
@@ -176,6 +195,9 @@ impl BlockRule for ScanBlockScanner {
             return None;
         }
         let line = state.get_line(start);
+        if is_inline_call(line) {
+            return None;
+        }
         let (name, params) = Block::parse_header(line)?;
 
         // 先收正文：动态 mode 函数可能要看正文才能决定这一块是不是 Raw。

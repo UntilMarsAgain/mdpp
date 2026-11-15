@@ -23,16 +23,18 @@ fn enter_render_env(
     context: &RenderContext,
     mode: AssetMode,
 ) -> crate::env::Guard {
-    let (depth, template_vars, render_depth, variant, variant_seq) = crate::env::with(|env| {
-        (
-            env.depth,
-            env.template_vars.clone(),
-            env.render_depth,
-            env.variant.clone(),
-            Arc::clone(&env.variant_seq),
-        )
-    })
-    .unwrap_or_else(|| (0, None, 0, None, crate::env::sequence()));
+    let (depth, template_vars, render_depth, variant, variant_seq, inline) =
+        crate::env::with(|env| {
+            (
+                env.depth,
+                env.template_vars.clone(),
+                env.render_depth,
+                env.variant.clone(),
+                Arc::clone(&env.variant_seq),
+                env.inline,
+            )
+        })
+        .unwrap_or_else(|| (0, None, 0, None, crate::env::sequence(), false));
     let env = crate::env::RenderEnv {
         context: context.clone(),
         registry: Arc::clone(registry),
@@ -52,6 +54,7 @@ fn enter_render_env(
         depth,
         template_vars,
         render_depth,
+        inline,
         ..crate::env::RenderEnv::default()
     };
     crate::env::enter(env)

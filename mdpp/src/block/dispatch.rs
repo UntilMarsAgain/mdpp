@@ -14,6 +14,7 @@ use markdown_it::{Node, NodeValue, Renderer};
 
 use crate::block::Section;
 use crate::registry::{self as reg, Block};
+use crate::runtime::env::ProblemDetail;
 use crate::telemetry::debug;
 
 /// 「没这个名字」的框的 class。`lib.rs`、嵌套渲染与 `<markdown>` 的兜底也用它。
@@ -52,35 +53,26 @@ pub fn render(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
 /// 参数回显成等号写法，于是从输出上就能看出解析成了什么 —— 引号去了哪儿、空格是否
 /// 保住。
 pub fn render_unknown(block: &Block, fmt: &mut dyn Renderer) {
-    crate::env::note_problem("未知块", UNKNOWN_CLASS, &block.name, "");
-    fmt.cr();
-    fmt.open(
-        "div",
-        &[("class", format!("mdpp-template {UNKNOWN_CLASS}"))],
-    );
-    fmt.cr();
-    head(fmt, "未知块", block);
-    fmt.cr();
-    body_as_code(block, fmt);
-    fmt.cr();
-    fmt.close("div");
-    fmt.cr();
+    let detail = ProblemDetail {
+        badge: "未知块".to_string(),
+        class: UNKNOWN_CLASS.to_string(),
+        name: block.name.clone(),
+        why: String::new(),
+    };
+    write_problem(&detail, block, true, false, fmt);
 }
 
 /// 名字认识、但用法不对时的提示。与「未知块」分开，是因为一个是「没这个名字」、
 /// 一个是「名字对、参数不对」。
 pub fn render_problem(block: &Block, fmt: &mut dyn Renderer, why: &str) {
     crate::env::misused_problem();
-    problem_box(
-        block,
-        fmt,
-        "块的用法有问题",
-        MISUSED_CLASS,
-        why,
-        |fmt| {
-            body_as_code(block, fmt);
-        },
-    );
+    let detail = ProblemDetail {
+        badge: "块的用法有问题".to_string(),
+        class: MISUSED_CLASS.to_string(),
+        name: block.name.clone(),
+        why: why.to_string(),
+    };
+    write_problem(&detail, block, true, false, fmt);
 }
 
 /// 行内位置的问题：不能写 `<div>`，只能写一个 `<span>`。
@@ -89,11 +81,111 @@ pub fn render_problem(block: &Block, fmt: &mut dyn Renderer, why: &str) {
 /// 但外壳必须是行内元素，否则会制造新的非法 HTML。
 pub(crate) fn render_inline_problem(block: &Block, fmt: &mut dyn Renderer, why: &str) {
     crate::env::misused_problem();
-    crate::env::note_problem("行内内容有问题", "mdpp-inline-error", &block.name, why);
-    fmt.open("span", &[("class", "mdpp-inline-error".to_string())]);
-    fmt.text("行内内容有问题：");
-    fmt.text(why);
-    fmt.close("span");
+    let detail = ProblemDetail {
+        badge: "行内内容有问题".to_string(),
+        class: "mdpp-inline-error".to_string(),
+        name: block.name.clone(),
+        why: why.to_string(),
+    };
+    write_problem(&detail, block, false, true, fmt);
+}
+
+/// 一个可延迟渲染的问题节点：保留具体徽标/名字/原因，渲染时再决定 span 还是框。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProblemCount {
+    None,
+    Unknown,
+    Misused,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProblemNode {
+    pub(crate) block: Block,
+    pub(crate) detail: ProblemDetail,
+    pub(crate) echo_body: bool,
+    pub(crate) force_inline: bool,
+    pub(crate) count: ProblemCount,
+}
+
+impl ProblemNode {
+    pub(crate) fn new(
+        block: Block,
+        detail: ProblemDetail,
+        echo_body: bool,
+        force_inline: bool,
+        count: ProblemCount,
+    ) -> Self {
+        Self {
+            block,
+            detail,
+            echo_body,
+            force_inline,
+            count,
+        }
+    }
+}
+
+impl NodeValue for ProblemNode {
+    fn render(&self, _node: &Node, fmt: &mut dyn Renderer) {
+        match self.count {
+            ProblemCount::Unknown => crate::env::unknown_problem(),
+            ProblemCount::Misused => crate::env::misused_problem(),
+            ProblemCount::None => {}
+        }
+        write_problem(
+            &self.detail,
+            &self.block,
+            self.echo_body,
+            self.force_inline,
+            fmt,
+        );
+    }
+}
+
+/// 写出一处诊断：行内上下文写 span，块级上下文写原来的框。
+///
+/// 诊断只记一次；块框由 `problem_box` 负责记，行内 span 在这里记。
+pub(crate) fn write_problem(
+    detail: &ProblemDetail,
+    block: &Block,
+    echo_body: bool,
+    force_inline: bool,
+    fmt: &mut dyn Renderer,
+) {
+    if force_inline || crate::env::is_inline() {
+        crate::env::note_problem(&detail.badge, &detail.class, &detail.name, &detail.why);
+        let mut text = detail.badge.clone();
+        if detail.name.is_empty() {
+            if !detail.why.is_empty() {
+                text.push('：');
+                text.push_str(&detail.why);
+            }
+        } else {
+            text.push('：');
+            text.push_str(&detail.name);
+            if !detail.why.is_empty() {
+                text.push('。');
+                text.push_str(&detail.why);
+            }
+        }
+        fmt.open("span", &[("class", "mdpp-inline-error".to_string())]);
+        fmt.text(&text);
+        fmt.close("span");
+        return;
+    }
+
+    problem_box(
+        block,
+        fmt,
+        &detail.badge,
+        &detail.class,
+        &detail.why,
+        |fmt| {
+            if echo_body {
+                body_as_code(block, fmt);
+            }
+        },
+    );
 }
 
 /// 问题框的公共外壳：徽标、块头、原因，再由调用方补最后一段内容。

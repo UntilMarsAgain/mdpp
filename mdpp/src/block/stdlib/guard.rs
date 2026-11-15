@@ -18,6 +18,7 @@ use markdown_it::{Node, Renderer};
 use crate::block::dispatch;
 use crate::registry::Block;
 use crate::runtime::capture::Capture;
+use crate::runtime::env::ProblemDetail;
 
 /// 渲染 `::guard`。
 pub(super) fn render_guard(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
@@ -50,37 +51,25 @@ pub(super) fn render_guard(block: &Block, node: &Node, fmt: &mut dyn Renderer) {
     let detail = crate::env::problem_detail();
     crate::env::restore(snapshot);
 
-    let (badge, class, name, why) = match detail {
-        Some(detail) => (
-            detail.badge,
-            detail.class,
-            detail.name,
-            if detail.why.is_empty() {
-                "guard 里的内容写出了问题框".to_string()
-            } else {
-                detail.why
-            },
-        ),
-        None => (
-            "被 guard 包裹的内容有问题".to_string(),
-            "mdpp-template--problem".to_string(),
-            "guard".to_string(),
-            "guard 里的内容写出了问题框".to_string(),
-        ),
-    };
+    let detail = detail.unwrap_or_else(|| ProblemDetail {
+        badge: "被 guard 包裹的内容有问题".to_string(),
+        class: "mdpp-template--problem".to_string(),
+        name: "guard".to_string(),
+        why: "guard 里的内容写出了问题框".to_string(),
+    });
 
     // 只保留问题框，不保留触发它的半成品内容；统计也只记一个。
-    if class.ends_with("--unknown") {
+    if detail.class.ends_with("--unknown") {
         crate::env::unknown_problem();
     } else {
         crate::env::misused_problem();
     }
     let shown = Block {
-        name,
+        name: detail.name.clone(),
         params: Vec::new(),
         body: String::new(),
     };
-    dispatch::problem_box(&shown, fmt, &badge, &class, &why, |_| {});
+    dispatch::write_problem(&detail, &shown, false, false, fmt);
 }
 
 #[cfg(test)]

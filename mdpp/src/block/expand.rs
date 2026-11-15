@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use markdown_it::parser::block::BlockState;
-use markdown_it::{Node, NodeValue, Renderer};
+use markdown_it::{MarkdownIt, Node, NodeValue, Renderer};
 
 use crate::block::dispatch;
 use crate::block::fill;
@@ -19,6 +19,7 @@ use crate::block::typecheck::{self, TemplateType};
 use crate::context;
 use crate::registry::Block;
 use crate::runtime::capture::Capture;
+use crate::runtime::env::ProblemDetail;
 use crate::syntax::wikilink;
 use crate::telemetry::{debug, trace, warn};
 
@@ -33,6 +34,29 @@ pub(crate) fn expand_user_block(
     page: TemplatePage,
     state: &mut BlockState,
 ) -> Node {
+    expand_with_md(name, params, body, page, state.md, None)
+}
+
+/// 行内调用 `::名字[...]` 的展开：输出类型强制为 inline。
+pub(crate) fn expand_inline_block(
+    name: &str,
+    params: Vec<(String, String)>,
+    body: String,
+    page: TemplatePage,
+    md: &MarkdownIt,
+) -> Node {
+    expand_with_md(name, params, body, page, md, Some(TemplateType::Inline))
+}
+
+fn expand_with_md(
+    name: &str,
+    params: Vec<(String, String)>,
+    body: String,
+    page: TemplatePage,
+    md: &MarkdownIt,
+    forced: Option<TemplateType>,
+) -> Node {
+    let inline = matches!(forced, Some(TemplateType::Inline));
     // 转圈的保护要在**取到正文之后**查：取不到就没有「套」这回事
     let source = match page {
         TemplatePage::Ready(text) => {
@@ -41,6 +65,15 @@ pub(crate) fn expand_user_block(
         }
         TemplatePage::Unreadable { reason } => {
             debug!(name, %reason, "模板页在，但这一刻读不出来");
+            if inline {
+                return inline_problem_node(
+                    name,
+                    "模板页读不出来",
+                    "mdpp-template--unreadable",
+                    &reason,
+                    dispatch::ProblemCount::None,
+                );
+            }
             return unreadable_node(name, &reason);
         }
     };
@@ -49,24 +82,43 @@ pub(crate) fn expand_user_block(
     if context::depth() >= limit {
         // warn 而不是 debug：作者多半不知道自己写了个转圈的块
         warn!(name, limit, "块嵌套超过上限，多半是自嵌");
-        return reported_node(
-            "块嵌套太深",
-            dispatch::MISUSED_CLASS,
-            name,
-            &format!("块嵌套超过 {limit} 层（是不是自己嵌自己？）"),
-        );
+        let why = format!("块嵌套超过 {limit} 层（是不是自己嵌自己？）");
+        if inline {
+            return inline_problem_node(
+                name,
+                "块嵌套太深",
+                dispatch::MISUSED_CLASS,
+                &why,
+                dispatch::ProblemCount::Misused,
+            );
+        }
+        return reported_node("块嵌套太深", dispatch::MISUSED_CLASS, name, &why);
     }
 
-    let kind = match params
-        .iter()
-        .find(|(key, _)| key == "type")
-        .map(|(_, value)| value.as_str())
-    {
-        Some(value) => match TemplateType::parse(value) {
-            Ok(kind) => kind,
-            Err(why) => return header_problem(name, params, body, &why),
+    let kind = match forced {
+        Some(kind) => {
+            if params.iter().any(|(key, _)| key == "type") {
+                return inline_problem_node(
+                    name,
+                    "行内调用写错了",
+                    dispatch::MISUSED_CLASS,
+                    "行内调用已经固定为 inline，不要再写 type=",
+                    dispatch::ProblemCount::Misused,
+                );
+            }
+            kind
+        }
+        None => match params
+            .iter()
+            .find(|(key, _)| key == "type")
+            .map(|(_, value)| value.as_str())
+        {
+            Some(value) => match TemplateType::parse(value) {
+                Ok(kind) => kind,
+                Err(why) => return header_problem(name, params, body, &why),
+            },
+            None => TemplateType::Block,
         },
-        None => TemplateType::Block,
     };
     // 把类型也作为普通参数递给模板：`{{type}}` 是早绑定文本，`{{@type}}` 由
     // `TemplateVars` 的 kind 提供。调用处写的大小写不保留，统一成规范值。
@@ -94,15 +146,49 @@ pub(crate) fn expand_user_block(
     let filled = match fill::substitute_checked(&source, &block, &body) {
         Ok(filled) => filled,
         Err(why) => {
+            if inline {
+                return inline_problem_node(
+                    name,
+                    "模板参数缺失",
+                    dispatch::MISUSED_CLASS,
+                    &why,
+                    dispatch::ProblemCount::Misused,
+                );
+            }
             return reported_node("模板参数缺失", dispatch::MISUSED_CLASS, name, &why);
         }
     };
 
-    let md = state.md;
     let mut parsed = context::deeper(|| crate::parse::markdown::parse_markdown(md, &filled));
     let mut node = Node::new(ScopedBlock { block, vars, kind });
     node.children = std::mem::take(&mut parsed.children);
     node
+}
+
+/// 造一个必须按行内形态输出的问题节点。
+fn inline_problem_node(
+    name: &str,
+    badge: &str,
+    class: &str,
+    why: &str,
+    count: dispatch::ProblemCount,
+) -> Node {
+    Node::new(dispatch::ProblemNode::new(
+        Block {
+            name: name.to_string(),
+            params: Vec::new(),
+            body: String::new(),
+        },
+        ProblemDetail {
+            badge: badge.to_string(),
+            class: class.to_string(),
+            name: name.to_string(),
+            why: why.to_string(),
+        },
+        false,
+        true,
+        count,
+    ))
 }
 
 /// 用户块展开后的节点：它自己没有固定 HTML，而是缓冲解析出来的子节点。
@@ -120,23 +206,38 @@ struct ScopedBlock {
 impl NodeValue for ScopedBlock {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         let _scope = context::enter_template_vars(Arc::clone(&self.vars));
+        let inline = self.kind == TemplateType::Inline;
+        let _inline_scope = inline.then(crate::env::enter_inline);
 
         // 模板不声明自己输出什么，调用处只说这次需要什么。先把产物完整收进
         // 缓冲区，再识别实际形态；失败时整段回滚，不能把半截 HTML 写出去。
         let snapshot = crate::env::snapshot();
+        let outer_detail = if inline {
+            crate::env::problem_detail()
+        } else {
+            None
+        };
+        if inline {
+            crate::env::clear_problem_detail();
+        }
         let mut capture = Capture::default();
         capture.contents(&node.children);
         let html = capture.into_string();
+        let inner_detail = if inline {
+            crate::env::problem_detail()
+        } else {
+            None
+        };
 
         let classified = match typecheck::classify(&html) {
             Ok(classified) => classified,
             Err(why) => {
-                if let Some(snapshot) = snapshot {
-                    crate::env::restore(snapshot);
-                }
-                if self.kind == TemplateType::Inline {
-                    dispatch::render_inline_problem(&self.block, fmt, &why);
+                if inline {
+                    fail_inline(&self.block, inner_detail, &why, snapshot, fmt);
                 } else {
+                    if let Some(snapshot) = snapshot {
+                        crate::env::restore(snapshot);
+                    }
                     fmt.cr();
                     dispatch::render_problem(&self.block, fmt, &why);
                     fmt.cr();
@@ -147,16 +248,16 @@ impl NodeValue for ScopedBlock {
 
         match self.kind {
             TemplateType::Inline => {
-                if let Some(inline) = classified.inline {
-                    fmt.text_raw(&inline);
+                if let Some(inline_html) = classified.inline {
+                    crate::env::set_problem_detail(outer_detail.or(inner_detail));
+                    fmt.text_raw(&inline_html);
                 } else {
-                    if let Some(snapshot) = snapshot {
-                        crate::env::restore(snapshot);
-                    }
-                    dispatch::render_inline_problem(
+                    fail_inline(
                         &self.block,
-                        fmt,
+                        inner_detail,
                         "行内调用收到块级输出，不能写进行内位置",
+                        snapshot,
+                        fmt,
                     );
                 }
             }
@@ -179,6 +280,31 @@ impl NodeValue for ScopedBlock {
             }
         }
     }
+}
+
+/// 行内模板失败：恢复半成品，只留下一个保留原始诊断的 span。
+fn fail_inline(
+    block: &Block,
+    inner: Option<ProblemDetail>,
+    fallback: &str,
+    snapshot: Option<crate::env::Snapshot>,
+    fmt: &mut dyn Renderer,
+) {
+    if let Some(snapshot) = snapshot {
+        crate::env::restore(snapshot);
+    }
+    let detail = inner.unwrap_or_else(|| ProblemDetail {
+        badge: "行内内容有问题".to_string(),
+        class: "mdpp-template--problem".to_string(),
+        name: block.name.clone(),
+        why: fallback.to_string(),
+    });
+    if detail.class.ends_with("--unknown") {
+        crate::env::unknown_problem();
+    } else {
+        crate::env::misused_problem();
+    }
+    dispatch::write_problem(&detail, block, false, true, fmt);
 }
 
 /// 模板调用头写错了：按「用法有问题」的框渲染，而不是退回普通段落。
@@ -230,6 +356,16 @@ impl NodeValue for Reported {
     fn render(&self, node: &Node, fmt: &mut dyn Renderer) {
         if self.class == dispatch::MISUSED_CLASS {
             crate::env::misused_problem();
+        }
+        let detail = ProblemDetail {
+            badge: self.badge.to_string(),
+            class: self.class.to_string(),
+            name: self.block.name.clone(),
+            why: self.block.body.clone(),
+        };
+        if crate::env::is_inline() {
+            dispatch::write_problem(&detail, &self.block, false, true, fmt);
+            return;
         }
         // 外壳、徽标与「为什么」都交给分发那边写：几个框的 class 名与结构在一处
         // 定死，改一处就一起改；这里只补「下一步去改哪一页」。

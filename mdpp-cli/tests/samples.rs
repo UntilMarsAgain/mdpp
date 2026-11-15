@@ -182,7 +182,7 @@ fn the_tour_shows_intentional_problem_examples() {
 
     let html = render(&tour);
     assert_eq!(html.matches("mdpp-template--unknown").count(), 1, "{html}");
-    assert_eq!(html.matches("mdpp-inline-error").count(), 3, "{html}");
+    assert_eq!(html.matches("mdpp-inline-error").count(), 4, "{html}");
     assert_eq!(
         html.matches(r#"class="mdpp-template mdpp-template--problem""#)
             .count(),

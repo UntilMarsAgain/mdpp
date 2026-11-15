@@ -112,6 +112,7 @@ pub(crate) fn build(mode: Mode, options: &SyntaxOptions) -> MarkdownIt {
             if options.wikilink {
                 syntax::wikilink::add(&mut md);
             }
+            syntax::inline_call::add(&mut md);
             syntax::mark::add(&mut md);
 
             // `__` / `_` 整体退役为下划线/下标，见 `syntax::baseline` 的模块头

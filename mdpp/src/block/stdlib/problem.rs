@@ -16,6 +16,7 @@ use markdown_it::{Node, Renderer};
 
 use crate::block::dispatch;
 use crate::registry::Block;
+use crate::runtime::env::ProblemDetail;
 
 /// 写出一个 `::problem` 框，并记一次「误用」。
 ///
@@ -47,17 +48,14 @@ pub(super) fn render_problem(block: &Block, _node: &Node, fmt: &mut dyn Renderer
         body: String::new(),
     };
     crate::env::misused_problem();
-    dispatch::problem_box(
-        &shown,
-        fmt,
-        "块的用法有问题",
-        "mdpp-template--problem",
-        why.unwrap_or_default(),
-        ignore_extra,
-    );
+    let detail = ProblemDetail {
+        badge: "块的用法有问题".to_string(),
+        class: "mdpp-template--problem".to_string(),
+        name: shown.name.clone(),
+        why: why.unwrap_or_default().to_string(),
+    };
+    dispatch::write_problem(&detail, &shown, false, false, fmt);
 }
-
-fn ignore_extra(_: &mut dyn Renderer) {}
 
 #[cfg(test)]
 mod tests {
