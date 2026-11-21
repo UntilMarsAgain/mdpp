@@ -8,6 +8,7 @@
 //! |---|---|
 //! | `template.html` | 页面**模板**：带 `{{placeholder}}`；站点根可放一份覆盖 |
 //! | `mdpp.css` | **可选的基础主题**：配色变量、通用排版、问题框与打印 |
+//! | `page.css` | **只在 `render --full` 里内联**的整页层：浏览器 reset 与 1080px 正文列 |
 //! | `mdpp.js` | **最简**的默认行为：点一下就切选项卡 |
 //! | `site.css` | **只在站点里**的那一层外壳：顶栏、那一列的限宽与卡片、页首页尾 |
 //!
@@ -74,7 +75,7 @@ pub use assets::copy_assets;
 use assets::template;
 pub use assets::{
     ASSET_DIR, CORE_CSS, SCRIPT_FILE, SITE_CSS, SiteFiles, TEMPLATE_FILE, copy_assets_with,
-    default_css, default_js,
+    default_css, default_js, default_page_css,
 };
 
 use assets::{
@@ -89,7 +90,7 @@ use text::fill;
 #[derive(Debug, Clone)]
 pub enum Assets {
     /// **全内联**：一个文件就是整个页面，拷走、发别人、丢进网盘都还是那样。
-    /// `render --full` 走这条
+    /// `render --full` 走这条；`mdpp.css` 与 `page.css` 都进同一个 `<style>`
     Inline,
     /// **外链**：页面指到 `<前缀>/<文件名>`，文件由 [`copy_assets`] 拷到那儿。
     /// 站点走这条 —— 几十个页面共用一份资源
@@ -115,9 +116,10 @@ pub enum ExternalScript {
 }
 
 impl Assets {
-    /// 这一路要引哪几个样式表
+    /// 外链这一路要引哪几个样式表
     ///
     /// 只有站点那一路多出 [`SITE_CSS`]：单文件页面里没有「整站」这一层外壳。
+    /// [`Assets::Inline`] 的 `page.css` 由 [`document`] 直接内联，不在这里列。
     fn css_files(&self) -> Vec<&'static str> {
         match self {
             Assets::Inline => vec![CORE_CSS],
@@ -245,8 +247,12 @@ pub fn document(page: &Page) -> String {
 /// `document` 保留给单文件渲染和不关心站点定制的测试。
 pub fn document_with_template(page: &Page, template: &str) -> String {
     let styles = match &page.assets {
-        // 内联的那一份**不含**站点外壳：单文件页面里没有顶栏、没有那一列
-        Assets::Inline => format!("<style>\n{}\n</style>", close_tag(&default_css(), "style")),
+        // 内联的那一份**不含**站点外壳：单文件页面里没有顶栏、没有那一列。
+        // `page.css` 只在这条路进来，负责浏览器 reset 与 1080px 正文列。
+        Assets::Inline => {
+            let css = format!("{}\n{}", default_css(), default_page_css());
+            format!("<style>\n{}\n</style>", close_tag(&css, "style"))
+        }
         Assets::Linked(prefix) => page
             .assets
             .css_files()

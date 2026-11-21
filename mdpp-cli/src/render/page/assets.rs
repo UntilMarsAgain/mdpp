@@ -26,6 +26,12 @@ static ASSETS: Dir = include_dir!("$CARGO_MANIFEST_DIR/assets");
 /// 静默故障。
 pub const CORE_CSS: &str = "mdpp.css";
 
+/// **只在 `render --full` 里内联**的整页层：浏览器 reset 与 1080px 正文列。
+///
+/// 站点模式不引它 —— 那一层由 [`SITE_CSS`] 负责，页与站的外壳不同，硬塞进
+/// 同一份会让单文件页面带上顶栏/卡片，或者让整站多一套重复的 reset。
+pub const PAGE_CSS: &str = "page.css";
+
 /// **站点模式额外**的那一份：顶栏、那一列的限宽与卡片、页首页尾。
 ///
 /// 与正文分开放 —— `render --full` 要的是一个自足的单文件页面，而这一份是给
@@ -140,9 +146,14 @@ fn read_site_file(project: &Project, path: &Path, what: &str) -> Result<Option<S
     read_text(&path).map(Some)
 }
 
-/// 默认样式表：正文那唯一的一份
+/// 默认正文样式表：`mdpp.css` 那一份
 pub fn default_css() -> String {
     asset(CORE_CSS).to_string()
+}
+
+/// 单文件 `--full` 的整页样式：`page.css` 的 reset 与 1080px 限宽
+pub fn default_page_css() -> &'static str {
+    asset(PAGE_CSS)
 }
 
 /// 默认脚本（`assets/mdpp.js` 的内容）
@@ -166,7 +177,8 @@ pub fn copy_assets(dest: &Path) -> Result<usize, String> {
 
 /// 把站点实际使用的那三份样式/脚本写进 `<dest>/assets/`。
 ///
-/// `template.html` 不拷：它是模板，不是浏览器要请求的资源。
+/// `template.html` 不拷：它是模板，不是浏览器要请求的资源。`page.css` 也不拷：
+/// 它只给 `render --full` 内联，站点那份 reset 与限宽在 `site.css` 里。
 pub fn copy_assets_with(files: &SiteFiles, dest: &Path) -> Result<usize, String> {
     let dir = dest.join(ASSET_DIR);
     std::fs::create_dir_all(&dir).map_err(|error| format!("建不了 {}：{error}", dir.display()))?;

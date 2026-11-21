@@ -79,7 +79,8 @@ cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 ```
 
 `--help` 有全部选项。加 `--full` 得到的页面可以直接双击打开，选项卡可点、打印时
-折叠的内容会展开。
+折叠的内容会展开。整页默认内联 `mdpp.css` 与 `page.css`：后者做浏览器默认 CSS 重置，
+并把正文列限制在 1080px。
 
 `-C, --dir <目录>` 先切到那个目录再干活（`make -C` / `git -C` 那个 `-C`）：往上找
 `mdpp.toml` 的起点、`render` 的输入文件与 `--css` / `--js`、`init` 不给目录时的默认

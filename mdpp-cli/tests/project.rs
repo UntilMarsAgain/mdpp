@@ -327,11 +327,13 @@ fn render_writes_html_to_stdout_and_the_rest_to_stderr() {
     assert!(stderr_of(&out).contains("1 份输入"), "{}", stderr_of(&out));
 
     let out = mdpp(dir.path(), &["render", "--full", "--title", "某篇"]);
+    let html = stdout_of(&out);
+    assert!(html.starts_with("<!DOCTYPE html>"), "{html}");
     assert!(
-        stdout_of(&out).starts_with("<!DOCTYPE html>"),
-        "{}",
-        stdout_of(&out)
+        html.contains("box-sizing: border-box"),
+        "浏览器 reset 没进页面"
     );
+    assert!(html.contains("max-width: 1080px"), "1080px 限宽没进页面");
     assert_eq!(stderr_of(&out), "", "没有该报的东西就不该有输出");
 }
 

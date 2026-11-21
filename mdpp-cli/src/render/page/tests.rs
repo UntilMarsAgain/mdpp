@@ -37,6 +37,11 @@ fn a_full_document_carries_the_stylesheet_the_script_and_the_body() {
     let html = document(&page("<p>正文</p>", Assets::Inline));
     assert!(html.starts_with("<!DOCTYPE html>"), "{html}");
     assert!(html.contains(".mdpp-content"), "样式没进页面");
+    assert!(
+        html.contains("box-sizing: border-box"),
+        "浏览器 reset 没进页面"
+    );
+    assert!(html.contains("max-width: 1080px"), "1080px 限宽没进页面");
     assert!(html.contains("tabs__tab--on"), "脚本没进页面");
     assert!(html.contains("<p>正文</p>"), "{html}");
 }
@@ -279,6 +284,10 @@ fn the_assets_are_copied_out_but_the_template_stays() {
     assert!(dir.path().join("assets/site.css").is_file());
     assert!(dir.path().join("assets/mdpp.js").is_file());
     assert!(
+        !dir.path().join("assets/page.css").exists(),
+        "page.css 只给 --full 内联，不该拷进站点"
+    );
+    assert!(
         !dir.path().join("assets/template.html").exists(),
         "模板不该进产物"
     );
@@ -306,7 +315,10 @@ fn the_site_shell_only_shows_up_in_a_built_site() {
         !standalone.contains(r#"href="assets/site.css""#),
         "{standalone}"
     );
-    assert!(!standalone.contains("1080px"), "单文件页面不该带限宽");
+    assert!(
+        standalone.contains("max-width: 1080px"),
+        "单文件页面该由 page.css 限宽"
+    );
     // 判据是**类选择器**（那个点得带着）：调色板里有两条 `--mdpp-bar-*` 变量
     // 跟着 `mdpp.css` 进了每一页，可单文件页面里没有顶栏这回事
     assert!(!standalone.contains(".mdpp-bar"), "单文件页面不该带顶栏");
@@ -827,12 +839,15 @@ fn a_plain_markdown_table_gets_real_borders_from_the_stylesheet() {
     );
 }
 
-/// `body` 的默认 8px 外边距得抹掉：顶栏要**贴着窗口边**，缩一圈就露出底色 ——
-/// 而 `render --full` 那条路故意留着它（那儿没有顶栏，8px 正好当页边距）
+/// `body` 的默认 8px 外边距得抹掉：站点里顶栏要**贴着窗口边**，
+/// 单文件整页则由 `page.css` 做同一件事，8px 不该留在正文外圈。
 #[test]
 fn the_page_has_no_body_margin_in_a_built_site() {
     let css = asset(SITE_CSS);
     assert!(css.contains("body {\n  margin: 0;\n}"), "{css}");
+    let page_css = default_page_css();
+    assert!(page_css.contains("body {\n  margin: 0;"), "{page_css}");
+    assert!(page_css.contains("max-width: 1080px"), "{page_css}");
     // 同一块底上不该再切一刀：站点名那一行与导航之间没有那条线。
     // 导航现在为了给下拉菜单建层叠上下文而单独成块，但块里只许有定位，不许有颜色/线。
     let nav_at = css.find(".mdpp-nav {").expect("导航那块还在");
@@ -998,10 +1013,12 @@ fn the_extra_files_come_after_the_defaults() {
         ..page("x", Assets::Inline)
     });
     let default_css = html.find(".mdpp-content").expect("默认样式");
+    let page_css = html.find("max-width: 1080px").expect("整页样式");
     let extra_css = html.find("/* 我自己的 */").expect("附带的样式");
     let default_js = html.find("tabs__tab--on").expect("默认脚本");
     let extra_js = html.find("// 我自己的").expect("附带的脚本");
-    assert!(default_css < extra_css, "附带的样式该在默认之后：{html}");
+    assert!(default_css < page_css, "整页样式该在正文样式之后：{html}");
+    assert!(page_css < extra_css, "附带的样式该在默认之后：{html}");
     assert!(default_js < extra_js, "附带的脚本该在默认之后：{html}");
 }
 
