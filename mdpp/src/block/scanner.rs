@@ -34,15 +34,58 @@ fn is_inline_call(line: &str) -> bool {
     matches!(rest.as_bytes().get(end), Some(b'[') | Some(b'{'))
 }
 
+/// 这一行能不能起一个块。
+///
+/// 列表项里的内容缩进由列表记号宽度决定：`1. ` 要 3 格，`- ` 要 2 格。作者常把
+/// 内容只缩进 2 格或 1 格，CommonMark 把这种行当“lazy continuation”（段落续行），
+/// `line_indent` 因此是负的。只要这一行确实缩进了，`::` 仍应按块处理；否则列表
+/// 里的 `::code` 会整段变成字面量。顶格的续行不动，避免把列表外的一段吞进来。
+fn block_can_start(state: &BlockState, line: usize) -> bool {
+    let marker_indent = state.line_indent(line);
+    marker_indent >= 0
+        || (state.list_indent.is_some() && state.line_offsets[line].indent_nonspace > 0)
+}
+
+/// 把列表项里缩进不足的块行“抬”到容器基线。
+///
+/// 只改 `indent_nonspace` 的记账值，不碰正文：`get_line` 仍从 `first_nonspace`
+/// 取字，源映射也不受影响。这样 `BlockParser::tokenize` 不会在看到负缩进时提前
+/// 收手，`::` 块才能落进当前列表项，而不是被弹到列表外的顶层。
+fn lift_lazy_list_block(state: &mut BlockState) -> bool {
+    let line = state.line;
+    if state.line_indent(line) >= 0 || !block_can_start(state, line) {
+        return false;
+    }
+    if !block_header_at(state, line) {
+        return false;
+    }
+    state.line_offsets[line].indent_nonspace = state.blk_indent as i32;
+    true
+}
+
+/// 这一行是不是一个 `::` 块头（行内调用不算）。
+fn block_header_at(state: &BlockState, line: usize) -> bool {
+    let text = state.get_line(line);
+    !is_inline_call(text) && Block::parse_header(text).is_some()
+}
+
 /// 块级规则：由 [`crate::block::add`] 挂到解析器上，排在段落规则之前。
 #[doc(hidden)]
 pub struct BlockScanner;
 
 impl BlockRule for BlockScanner {
+    fn check(state: &mut BlockState) -> Option<()> {
+        if lift_lazy_list_block(state) {
+            return Some(());
+        }
+        let line = state.line;
+        (state.line_indent(line) >= 0 && block_header_at(state, line)).then_some(())
+    }
+
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
         let start = state.line;
         let marker_indent = state.line_indent(start);
-        if marker_indent < 0 {
+        if !block_can_start(state, start) {
             return None;
         }
         let line = state.get_line(start);
@@ -188,10 +231,18 @@ impl BlockRule for BlockScanner {
 pub(crate) struct ScanBlockScanner;
 
 impl BlockRule for ScanBlockScanner {
+    fn check(state: &mut BlockState) -> Option<()> {
+        if lift_lazy_list_block(state) {
+            return Some(());
+        }
+        let line = state.line;
+        (state.line_indent(line) >= 0 && block_header_at(state, line)).then_some(())
+    }
+
     fn run(state: &mut BlockState) -> Option<(Node, usize)> {
         let start = state.line;
         let marker_indent = state.line_indent(start);
-        if marker_indent < 0 {
+        if !block_can_start(state, start) {
             return None;
         }
         let line = state.get_line(start);
@@ -232,8 +283,7 @@ fn collect_body(state: &BlockState, start: usize, marker_indent: i32) -> (String
     let mut line = start + 1;
     while line < state.line_max {
         // 空行的 `line_indent` 是 0 而不是 -1，必须用 `is_empty` 单独判
-        let blank = state.is_empty(line) || state.line_indent(line) < 0;
-        if blank {
+        if state.is_empty(line) {
             // 空行：只有后面还有更深的内容时才算块内，否则它属于块外
             let next = (line + 1..state.line_max).find(|candidate| {
                 !state.is_empty(*candidate) && state.line_indent(*candidate) >= 0
@@ -247,6 +297,7 @@ fn collect_body(state: &BlockState, start: usize, marker_indent: i32) -> (String
                 _ => break,
             }
         }
+        // 非空且缩进为负：兄弟列表项、外层的顶格行，直接结束；交给上一级解析器。
         if state.line_indent(line) <= marker_indent {
             break;
         }
@@ -501,6 +552,42 @@ mod tests {
             1,
             "只有一节：{html}"
         );
+    }
+
+    /// 列表项里缩进不足的 `::` 块：`1. ` 的基线是 3 格，作者只缩 2 格时
+    /// markdown-it 会当成 lazy continuation；按块头抬进列表项，而不是留给段落。
+    #[test]
+    fn a_lazy_list_block_is_lifted_into_the_item() {
+        let html = render("1. 第一项\n  ::code lang=shell\n    mdpp init\n2. 第二项\n3. 第三项\n");
+        assert_eq!(
+            html.matches("mdpp-template-code").count(),
+            1,
+            "只该有一个代码块：{html}"
+        );
+        assert!(html.contains("mdpp init"), "{html}");
+        assert!(html.contains("第二项"), "{html}");
+        assert!(html.contains("第三项"), "{html}");
+        assert!(
+            !html.contains("::code lang=shell"),
+            "块头不该变成字面量：{html}"
+        );
+    }
+
+    /// Raw 块预扫描也要认出列表项里的块，不能把代码例子里的空格编码掉
+    #[test]
+    fn a_lazy_list_raw_block_keeps_its_example_text() {
+        let html = render("1. 步骤\n  ::code lang=md\n    [x](a b.png)\n2. 下一步\n");
+        assert!(html.contains("[x](a b.png)"), "{html}");
+        assert!(!html.contains("%20"), "{html}");
+        assert!(html.contains("下一步"), "{html}");
+    }
+
+    /// 顶格的 `::` 行仍是列表外的普通文字，不能被 lazy 逻辑吞进列表项
+    #[test]
+    fn an_unindented_block_header_stays_literal() {
+        let html = render("1. 第一项\n::code lang=shell\n  mdpp init\n2. 第二项\n");
+        assert!(html.contains("::code lang=shell"), "{html}");
+        assert!(!html.contains("mdpp-template-code"), "{html}");
     }
 
     /// 列表项里**紧跟在列表记号后面**开的围栏：`- ```text` 这一行不是以围栏

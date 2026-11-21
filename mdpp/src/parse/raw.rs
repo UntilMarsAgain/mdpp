@@ -95,6 +95,19 @@ mod tests {
         );
     }
 
+    /// 列表项里缩进不足的 Raw 块也要圈进去 —— 否则代码例子里的空格会被编码
+    #[test]
+    fn a_raw_block_inside_a_list_is_a_zone() {
+        let src = "1. 步骤\n  ::code lang=md\n    [x](a b.png)\n2. 下一步\n";
+        let zones = raw_zones(src);
+        assert!(
+            zones
+                .iter()
+                .any(|zone| src[zone.clone()].contains("[x](a b.png)")),
+            "{zones:?}"
+        );
+    }
+
     /// 普通段落不是原始区
     #[test]
     fn ordinary_text_is_not_a_zone() {
