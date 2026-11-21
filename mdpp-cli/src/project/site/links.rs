@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use mdpp::link::{LinkResolver, LinkTarget, ResolvedLink};
 use tracing::debug;
 
-use super::paths::{check_key, href, is_template_target, normalize};
+use super::paths::{check_key, is_template_target, normalize};
 use super::{Missing, Page, Site};
 
 /// 站内的链接解析器：**每一页一份**（相对地址要看当前页在哪），
@@ -98,7 +98,8 @@ impl Links {
     /// `[[入门]]` 这种只写文件名的写法，光看正文看不出它指的是哪个目录下的那一页
     fn link_to(&self, page: &Page) -> ResolvedLink {
         ResolvedLink::Link(
-            LinkTarget::new(href(&self.from, &page.key)).attr("data-mdpp-page", page.key.clone()),
+            LinkTarget::new(self.site.href(&self.from, &page.key))
+                .attr("data-mdpp-page", page.key.clone()),
         )
     }
 }

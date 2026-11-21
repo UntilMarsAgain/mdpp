@@ -43,6 +43,10 @@ templates_dir = "templates"
 # 构建静态站点时，会输出到此文件夹
 build_dir = "build"
 
+# 首页的页键（必填）
+# 这一页会落在站点根的 index.html
+index = "index"
+
 # 覆盖目录
 # 此目录能在完成构建后，覆盖构建目录中的对应文件，并创建尚不存在的文件
 # override_dir = "override"

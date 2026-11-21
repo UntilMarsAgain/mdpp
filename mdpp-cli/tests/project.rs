@@ -81,6 +81,63 @@ fn init_new_build_is_a_whole_ride() {
     assert!(stderr_of(&out).contains("build"), "{}", stderr_of(&out));
 }
 
+/// `mdpp.toml` 的 `index` 决定哪一页是首页：首页可以叫任何名字、可以在子目录里，
+/// 它仍落在站点根的 `index.html`；`mdpp new` 的回首页链接也跟着它走。
+#[test]
+fn a_configured_index_is_the_site_home() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+
+    std::fs::create_dir_all(root.join("pages/指南")).expect("建得出目录");
+    std::fs::rename(
+        root.join("pages/index.mdpp"),
+        root.join("pages/指南/首页.mdpp"),
+    )
+    .expect("移动得动");
+    let config = std::fs::read_to_string(root.join("mdpp.toml")).expect("读得动");
+    std::fs::write(
+        root.join("mdpp.toml"),
+        config.replace("index = \"index\"", "index = \"指南/首页\""),
+    )
+    .expect("写得下");
+
+    let out = mdpp(&root, &["new", "乙"]);
+    assert!(out.status.success(), "new 失败：{}", stderr_of(&out));
+    let new_page = std::fs::read_to_string(root.join("pages/乙.mdpp")).expect("读得动");
+    assert!(new_page.contains("[[指南/首页|回首页]]"), "{new_page}");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(out.status.success(), "build 失败：{}", stderr_of(&out));
+    assert!(root.join("build/index.html").is_file(), "首页没出");
+    assert!(
+        !root.join("build/指南/首页/index.html").exists(),
+        "首页不该再出一层目录"
+    );
+    let home = std::fs::read_to_string(root.join("build/index.html")).expect("读得动");
+    assert!(home.contains("欢迎"), "首页内容不对：{home}");
+    let other = std::fs::read_to_string(root.join("build/乙/index.html")).expect("读得动");
+    assert!(other.contains(r#"href="../""#), "回首页链接不对：{other}");
+}
+
+/// `index` 指到不存在的页：build 该在扫页阶段报错，而不是悄悄退回旧的 `index`。
+#[test]
+fn a_configured_index_must_exist() {
+    let dir = empty_dir();
+    let root = init(dir.path());
+    let config = std::fs::read_to_string(root.join("mdpp.toml")).expect("读得动");
+    std::fs::write(
+        root.join("mdpp.toml"),
+        config.replace("index = \"index\"", "index = \"没有这一页\""),
+    )
+    .expect("写得下");
+
+    let out = mdpp(&root, &["build"]);
+    assert!(!out.status.success(), "指错的首页该让 build 失败");
+    let error = stderr_of(&out);
+    assert!(error.contains("index"), "{error}");
+    assert!(error.contains("没有这一页"), "{error}");
+}
+
 /// 站内链接**认得出**（出真 `href`），指不到的那条**保持红链**（不编一个地址出来）。
 ///
 /// 这是库那套红链语义在**真实站点**上的落点：命令行手上有 `pages/`，「有没有这一页」

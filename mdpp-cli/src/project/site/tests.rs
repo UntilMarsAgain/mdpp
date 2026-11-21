@@ -18,8 +18,12 @@ fn temp_pages(files: &[&str]) -> tempfile::TempDir {
 }
 
 fn site_of(files: &[&str]) -> (tempfile::TempDir, Site) {
+    site_with_home(files, "index")
+}
+
+fn site_with_home(files: &[&str], home: &str) -> (tempfile::TempDir, Site) {
     let dir = temp_pages(files);
-    let site = Site::collect(dir.path()).expect("扫得动");
+    let site = Site::collect(dir.path(), home).expect("扫得动");
     (dir, site)
 }
 
@@ -49,9 +53,15 @@ fn page_keys_refuse_path_segments_that_can_escape() {
 /// 即使上游漏了校验，拼输出路径这一步也不能留下 `..`
 #[test]
 fn output_of_never_keeps_parent_segments() {
-    assert_eq!(output_of("../pwn"), PathBuf::from("pwn/index.html"));
-    assert_eq!(output_of("a/../../b"), PathBuf::from("a/b/index.html"));
-    assert_eq!(output_of("index"), PathBuf::from("index.html"));
+    assert_eq!(
+        output_of("../pwn", "index"),
+        PathBuf::from("pwn/index.html")
+    );
+    assert_eq!(
+        output_of("a/../../b", "index"),
+        PathBuf::from("a/b/index.html")
+    );
+    assert_eq!(output_of("index", "index"), PathBuf::from("index.html"));
 }
 
 /// 生成页（目录页）的键也来自配置，同样不能逃出站点目录
@@ -61,7 +71,7 @@ fn a_generated_page_key_cannot_escape() {
     let page = Page {
         source: PathBuf::new(),
         key: "../pwn".to_string(),
-        output: output_of("../pwn"),
+        output: output_of("../pwn", "index"),
     };
     let error = site.insert(page).expect_err("该拒绝");
     assert!(error.contains("不是页名"), "{error}");
@@ -71,8 +81,8 @@ fn a_generated_page_key_cannot_escape() {
 #[cfg(unix)]
 #[test]
 fn a_backslash_in_a_page_name_cannot_escape_the_site_dir() {
-    let dir = temp_pages(&["a\\..\\..\\pwn.mdpp"]);
-    let error = Site::collect(dir.path()).expect_err("该拒绝");
+    let dir = temp_pages(&["index.mdpp", "a\\..\\..\\pwn.mdpp"]);
+    let error = Site::collect(dir.path(), "index").expect_err("该拒绝");
     assert!(
         error.contains("不是页名") || error.contains("反斜杠"),
         "{error}"
@@ -83,12 +93,12 @@ fn a_backslash_in_a_page_name_cannot_escape_the_site_dir() {
 #[cfg(unix)]
 #[test]
 fn a_symlinked_page_is_not_followed() {
-    let dir = temp_pages(&["real.mdpp"]);
+    let dir = temp_pages(&["index.mdpp", "real.mdpp"]);
     std::os::unix::fs::symlink(dir.path().join("real.mdpp"), dir.path().join("link.mdpp"))
         .expect("建得出符号链接");
-    let site = Site::collect(dir.path()).expect("扫得动");
+    let site = Site::collect(dir.path(), "index").expect("扫得动");
     let keys: Vec<&str> = site.pages().iter().map(|page| page.key.as_str()).collect();
-    assert_eq!(keys, vec!["real"]);
+    assert_eq!(keys, vec!["index", "real"]);
     assert!(
         site.others().iter().any(|one| one == "link.mdpp"),
         "{:?}",
@@ -117,35 +127,73 @@ fn pages_become_keys_and_index_files() {
 #[test]
 fn a_pages_url_is_the_directory_it_was_written_to() {
     let (_dir, site) = site_of(&["index.mdpp", "指南/入门.mdpp", "我的 页.mdpp"]);
-    assert_eq!(site.by_key("index").expect("有首页").url_path(), "");
+    assert_eq!(site.by_key("index").expect("有首页").url_path("index"), "");
     assert_eq!(
-        site.by_key("指南/入门").expect("有那一页").url_path(),
+        site.by_key("指南/入门")
+            .expect("有那一页")
+            .url_path("index"),
         "指南/入门/"
     );
     // 键里那点碍事的字符要编码，中文原样留着
     assert_eq!(
-        site.by_key("我的 页").expect("有那一页").url_path(),
+        site.by_key("我的 页").expect("有那一页").url_path("index"),
         "我的%20页/"
     );
+}
+
+/// 首页由 `mdpp.toml` 的 `index` 指：它可以叫任何名字，可以嵌套，
+/// 但它落在站点根，别的页按它的键算相对地址。
+#[test]
+fn a_configured_home_can_be_any_page() {
+    let (_dir, site) = site_with_home(&["指南/首页.mdpp", "指南/入门.mdpp"], "指南/首页");
+    assert_eq!(site.home(), "指南/首页");
+    assert_eq!(
+        site.by_key("指南/首页").map(|page| page.output.clone()),
+        Some(PathBuf::from("index.html"))
+    );
+    assert_eq!(
+        site.by_key("指南/入门").map(|page| page.output.clone()),
+        Some(PathBuf::from("指南/入门/index.html"))
+    );
+    assert_eq!(
+        site.by_key("指南/首页")
+            .expect("有首页")
+            .url_path("指南/首页"),
+        ""
+    );
+    assert_eq!(site.href("指南/入门", "指南/首页"), "../../");
+    assert_eq!(site.assets_href("指南/首页"), "assets");
+}
+
+/// `index` 指了一页不存在的页时，扫描阶段就要说清楚是哪一页没找到。
+#[test]
+fn a_missing_home_page_is_reported() {
+    let dir = temp_pages(&["index.mdpp", "指南/入门.mdpp"]);
+    let error = Site::collect(dir.path(), "指南/首页").expect_err("该拒绝");
+    assert!(error.contains("index"), "{error}");
+    assert!(error.contains("指南/首页"), "{error}");
 }
 
 /// 普通 markdown 也是页面 —— `.mdpp` 是本方言的写法，不是唯一被认的
 #[test]
 fn plain_markdown_counts_as_a_page_too() {
-    let (_dir, site) = site_of(&["甲.md"]);
+    let (_dir, site) = site_with_home(&["甲.md"], "甲");
     assert_eq!(site.pages().len(), 1);
 }
 
 /// 后缀不对的不是页面，隐藏的目录也不收
 #[test]
 fn other_files_and_hidden_directories_are_skipped() {
-    let (_dir, site) = site_of(&[
-        "甲.mdpp",
-        "笔记.txt",
-        "没有后缀",
-        ".git/config",
-        ".草稿/被藏起来.mdpp",
-    ]);
+    let (_dir, site) = site_with_home(
+        &[
+            "甲.mdpp",
+            "笔记.txt",
+            "没有后缀",
+            ".git/config",
+            ".草稿/被藏起来.mdpp",
+        ],
+        "甲",
+    );
     let keys: Vec<&str> = site.pages().iter().map(|page| page.key.as_str()).collect();
     assert_eq!(keys, vec!["甲"]);
 }
@@ -153,7 +201,7 @@ fn other_files_and_hidden_directories_are_skipped() {
 /// 同一个键出现两次时 `.mdpp` 胜出，并记一笔 —— 默默挑一个会让人以为另一份还在用
 #[test]
 fn the_same_key_twice_keeps_the_dialect_file() {
-    let (_dir, site) = site_of(&["甲.md", "甲.mdpp"]);
+    let (_dir, site) = site_with_home(&["甲.md", "甲.mdpp"], "甲");
     assert_eq!(site.pages().len(), 1);
     assert_eq!(site.pages()[0].source.extension().unwrap(), "mdpp");
     assert_eq!(site.duplicates(), ["甲"]);
@@ -187,42 +235,48 @@ fn template_targets_are_not_site_pages() {
 /// 页面于是光着身子出来，而且**不报错**
 #[test]
 fn the_asset_prefix_counts_the_depth_of_the_page() {
-    assert_eq!(assets_href("index"), "assets");
-    assert_eq!(assets_href("示例"), "../assets");
-    assert_eq!(assets_href("指南/安装"), "../../assets");
-    assert_eq!(assets_href("指南/深入/安装"), "../../../assets");
+    assert_eq!(assets_href("index", "index"), "assets");
+    assert_eq!(assets_href("示例", "index"), "../assets");
+    assert_eq!(assets_href("指南/安装", "index"), "../../assets");
+    assert_eq!(assets_href("指南/深入/安装", "index"), "../../../assets");
 }
 
 /// 页与页之间是相对的，每退一层加一个 `../`，目标总是以 `/` 结尾
 #[test]
 fn hrefs_are_relative_and_end_with_a_slash() {
-    assert_eq!(href("index", "指南/入门"), "指南/入门/");
-    assert_eq!(href("指南/入门", "手册"), "../../手册/");
-    assert_eq!(href("指南/深入/安装", "手册/入门"), "../../../手册/入门/");
+    assert_eq!(href("index", "指南/入门", "index"), "指南/入门/");
+    assert_eq!(href("指南/入门", "手册", "index"), "../../手册/");
+    assert_eq!(
+        href("指南/深入/安装", "手册/入门", "index"),
+        "../../../手册/入门/"
+    );
 }
 
 /// 回首页要退**几层**：页在 `/指南/深入/安装/` 就退三层，与键的段数一样
 #[test]
 fn the_home_link_walks_up_the_right_number_of_levels() {
-    assert_eq!(href("index", "index"), "./");
-    assert_eq!(href("示例", "index"), "../");
-    assert_eq!(href("指南/入门", "index"), "../../");
-    assert_eq!(href("指南/深入/安装", "index"), "../../../");
+    assert_eq!(href("index", "index", "index"), "./");
+    assert_eq!(href("示例", "index", "index"), "../");
+    assert_eq!(href("指南/入门", "index", "index"), "../../");
+    assert_eq!(href("指南/深入/安装", "index", "index"), "../../../");
 }
 
 /// 深层页里的链接必须真的指到那一页 —— 少退一层落到 `/指南/手册/` 而不是 `/手册/`
 #[test]
 fn a_link_from_a_deep_page_lands_on_the_right_page() {
-    assert_eq!(href("指南/入门", "手册"), "../../手册/");
-    assert_eq!(href("指南/深入/安装", "指南/入门"), "../../../指南/入门/");
-    assert_eq!(href("指南/深入/安装", "index"), "../../../");
+    assert_eq!(href("指南/入门", "手册", "index"), "../../手册/");
+    assert_eq!(
+        href("指南/深入/安装", "指南/入门", "index"),
+        "../../../指南/入门/"
+    );
+    assert_eq!(href("指南/深入/安装", "index", "index"), "../../../");
 }
 
 /// 键里的空格与 `#` 要编码；中文原样留着
 #[test]
 fn hrefs_are_percent_encoded() {
-    assert_eq!(href("index", "我的 页"), "我的%20页/");
-    assert_eq!(href("index", "a#b"), "a%23b/");
+    assert_eq!(href("index", "我的 页", "index"), "我的%20页/");
+    assert_eq!(href("index", "a#b", "index"), "a%23b/");
 }
 
 /// 解析器：认得出的给地址，认不出的记一笔红链
@@ -253,14 +307,14 @@ fn the_resolver_links_inside_the_site_and_reports_the_rest() {
 /// `[[入门]]` 这种只写文件名的：全站只有一个时认，多个时**不猜**
 #[test]
 fn a_bare_file_name_works_only_when_it_is_unambiguous() {
-    let (_dir, site) = site_of(&["指南/入门.mdpp", "手册/入门.mdpp"]);
+    let (_dir, site) = site_of(&["index.mdpp", "指南/入门.mdpp", "手册/入门.mdpp"]);
     let site = Arc::new(site);
     let missing = Arc::new(Mutex::new(Vec::new()));
 
     let home = Page {
         source: PathBuf::from("index.mdpp"),
         key: "index".to_string(),
-        output: output_of("index"),
+        output: output_of("index", "index"),
     };
     let links = Links::for_page(site, &home, missing.clone());
     assert!(links.resolve("入门").is_none(), "重名时不该替作者挑一个");

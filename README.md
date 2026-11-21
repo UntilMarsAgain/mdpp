@@ -113,7 +113,9 @@ cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 不用碰 mdpp 的二进制。旧项目没有这几份文件时会回退到内建版本。
 
 `mdpp build` 递归扫 `pages/`（`.md` 与 `.mdpp` 都算页面），每一页渲染成一个整页，
-落在 `build/<路径>/index.html`。页面从 `assets/` 外链样式与脚本，`build` 把项目里的
+落在 `build/<路径>/index.html`。首页由 `mdpp.toml` 的必填字段 `index` 指定 ——
+它可以是任意页键（包括 `指南/首页` 这样的嵌套页），该页落在站点根的 `build/index.html`，
+不再假定有一页叫 `index`。页面从 `assets/` 外链样式与脚本，`build` 把项目里的
 那三份拷过去 —— 几十个页面共用一份，不必每页里都塞一遍。站内链接是**相对**的，
 所以整个 `build/` 拷到任何地方、挂在子路径下，链接都还对。
 
@@ -163,6 +165,7 @@ cargo install --path mdpp-cli   # 装进 PATH（程序名仍是 mdpp）
 
 ```toml
 site_name = "桥梁笔记"                        # 顶栏左边
+index = "index"                              # 首页的页键（必填）；这一页落在站点根
 theme_color = "#2f6fd0"                      # 顶栏那块底的颜色；不写就是默认的蓝
 site_description = "十四座桥，与它们的记述"    # 顶栏右边，也进 <meta name="description">
 base_url = "https://x.github.io/repo/"        # 站点在网上的地址；配了才有 canonical

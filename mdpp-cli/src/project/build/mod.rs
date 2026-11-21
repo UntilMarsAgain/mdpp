@@ -35,7 +35,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::cli::options::Build;
 use crate::project::assets;
-use crate::project::site::{Missing, Page, Site, assets_href, output_of};
+use crate::project::site::{Missing, Page, Site};
 use crate::project::{self, Project, ensure_dir, shown};
 use crate::render::context::template_pages;
 use crate::render::page as shell;
@@ -112,7 +112,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
         ));
     }
 
-    let site = Site::collect(&pages_dir)?;
+    let site = Site::collect(&pages_dir, &project.config.index)?;
     let templates = templates_of(project)?;
     let site_files = shell::SiteFiles::load(project, options.builtin)?;
     // 内建模式只认内建的站点模板、CSS、JS 与页面外壳；配置里附加的样式/脚本
@@ -156,7 +156,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
         Arc::make_mut(&mut site).insert(Page {
             source: PathBuf::new(),
             key: toc_key.clone(),
-            output: output_of(&toc_key),
+            output: PathBuf::new(),
         })?;
     }
 
@@ -206,7 +206,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
                     &templates,
                     &missing,
                     page,
-                    &assets_href(&page.key),
+                    &site.assets_href(&page.key),
                 )
             };
             bodies[index] = Some(body);
@@ -234,7 +234,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
                                 &templates,
                                 &missing,
                                 page,
-                                &assets_href(&page.key),
+                                &site.assets_href(&page.key),
                             )
                         };
                         slots.lock().expect("工作线程的锁不该中毒")[index] = Some(body);
@@ -281,7 +281,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
         absent.extend(body.absent);
         broken.add(page, body.problems);
 
-        let assets_prefix = assets_href(&page.key);
+        let assets_prefix = site.assets_href(&page.key);
         let title = body.title;
         let mut body_html = body.html;
         for script in &body.scripts {
@@ -291,7 +291,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
         let mut page_css = Vec::with_capacity(body.styles.len() + extra_css.len());
         page_css.extend(body.styles);
         page_css.extend(extra_css.iter().cloned());
-        let nav = nav_for(&nav, &page.key);
+        let nav = nav_for(&nav, &page.key, site.home());
         // 顶栏那个图标也是同一套地址：按这一页的深度加前缀（`../../assets/…`）
         let logo = logo
             .as_deref()
@@ -306,7 +306,7 @@ pub fn build_into(project: &Project, options: &Build, site_dir: &Path) -> Result
                 chrome: chrome(project, &parser, &nav, &logo, &context)?,
                 canonical: shell::Canonical {
                     root: project.config.base_url.clone(),
-                    path: page.url_path(),
+                    path: page.url_path(site.home()),
                 },
                 // 嵌套页里的图标地址也要数对层数（`../../assets/favicon.svg`）——
                 // `favicon` 存的是相对站点根的那一份

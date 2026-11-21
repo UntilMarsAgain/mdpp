@@ -2,7 +2,7 @@ use super::*;
 
 use crate::cli::options::{Build, Init};
 use crate::project::config::{NavEntry, NavNode};
-use crate::project::site::{INDEX_KEY, output_of};
+use crate::project::site::{Site, output_of};
 
 use super::clean::staging_dir;
 use super::nav::{ResolvedNav, nav_for, resolve_nav, toc_body};
@@ -42,7 +42,7 @@ fn site_of(files: &[&str]) -> (tempfile::TempDir, Site) {
         }
         std::fs::write(&path, "# 页").expect("写得下");
     }
-    let site = Site::collect(dir.path()).expect("扫得动");
+    let site = Site::collect(dir.path(), "index").expect("扫得动");
     (dir, site)
 }
 
@@ -53,7 +53,7 @@ fn an_inserted_page_lands_in_the_site() {
     site.insert(Page {
         source: PathBuf::new(),
         key: "目录".to_string(),
-        output: output_of("目录"),
+        output: output_of("目录", "index"),
     })
     .expect("插得进");
     assert!(site.by_key("目录").is_some(), "{:?}", site.pages());
@@ -65,7 +65,7 @@ fn an_inserted_page_lands_in_the_site() {
         .insert(Page {
             source: PathBuf::new(),
             key: "目录".to_string(),
-            output: output_of("目录"),
+            output: output_of("目录", "index"),
         })
         .expect_err("重复键该报错");
     assert!(error.contains("目录"), "{error}");
@@ -102,7 +102,7 @@ fn nav_resolves_against_the_site_and_appends_the_toc_button() {
     site.insert(Page {
         source: PathBuf::new(),
         key: "目录".to_string(),
-        output: output_of("目录"),
+        output: output_of("目录", "index"),
     })
     .expect("插得进");
     let resolved = resolve_nav(
@@ -135,8 +135,8 @@ fn nav_resolves_against_the_site_and_appends_the_toc_button() {
 /// 一页的导航：地址是相对那一页的，当前页只多一个 `aria-current`
 #[test]
 fn nav_for_marks_the_current_page_and_uses_relative_hrefs() {
-    let list = vec![leaf("首页", INDEX_KEY), leaf("手册", "手册")];
-    let on_manual = nav_for(&list, "手册");
+    let list = vec![leaf("首页", "index"), leaf("手册", "手册")];
+    let on_manual = nav_for(&list, "手册", "index");
     assert_eq!(on_manual.len(), 2);
     // 手册 → 首页：退一层到根
     assert_eq!(on_manual[0].href, "../");
@@ -145,7 +145,7 @@ fn nav_for_marks_the_current_page_and_uses_relative_hrefs() {
     assert_eq!(on_manual[1].href, "../手册/");
     assert!(on_manual[1].active);
 
-    let on_index = nav_for(&list, INDEX_KEY);
+    let on_index = nav_for(&list, "index", "index");
     // 首页 → 首页：地址是当前目录自己
     assert_eq!(on_index[0].href, "./");
     assert!(on_index[0].active);
@@ -201,7 +201,7 @@ fn nav_resolves_nested_menus_and_supplies_the_overview() {
     // 目录没在配置里出现，自动补在顶层末尾
     assert_eq!(resolved.last().unwrap().label, "目录");
 
-    let on_intro = nav_for(&resolved, "指南/入门");
+    let on_intro = nav_for(&resolved, "指南/入门", "index");
     let guide = &on_intro[0];
     assert_eq!(guide.href, "", "父项是菜单标题，不落链接");
     assert!(!guide.active);

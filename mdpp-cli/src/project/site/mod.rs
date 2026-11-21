@@ -30,9 +30,6 @@ pub use paths::{assets_href, check_key, href, normalize, output_of};
 #[cfg(test)]
 mod tests;
 
-/// 首页的键。输出上它是 `build/index.html`，而别的页靠 `[[index]]` 指回来
-pub const INDEX_KEY: &str = "index";
-
 /// 算成页的后缀。`.mdpp` 是本方言的写法，`.md` 是普通 markdown —— 两者都算页面
 pub const PAGE_SUFFIXES: [&str; 2] = ["mdpp", "md"];
 
@@ -57,8 +54,8 @@ impl Page {
     ///
     /// 与 [`href`] 一样是目录式的：产物是 `<键>/index.html`，于是地址是 `<键>/`。
     /// 首页落在站点根上，没有自己那一层，所以是空串。
-    pub fn url_path(&self) -> String {
-        if self.key == INDEX_KEY {
+    pub fn url_path(&self, home: &str) -> String {
+        if self.key == home {
             return String::new();
         }
         format!("{}/", encode_href(&self.key))
@@ -79,6 +76,8 @@ pub struct Missing {
 /// 站点：页表 + 查表
 #[derive(Debug, Default, Clone)]
 pub struct Site {
+    /// 首页的键（`mdpp.toml` 的 `index` 落到这里）
+    home: String,
     pages: Vec<Page>,
     /// 归一后的键 → 页下标
     by_key: HashMap<String, usize>,
@@ -96,7 +95,7 @@ impl Site {
     ///
     /// 次序是排过的（先按键，再按后缀）—— 目录里的顺序是不定的，而输出与
     /// 「哪一页胜出」都得稳定，否则同一个项目两次 build 会不一样。
-    pub fn collect(pages_dir: &Path) -> Result<Site, String> {
+    pub fn collect(pages_dir: &Path, home: &str) -> Result<Site, String> {
         let mut found: Vec<Page> = Vec::new();
         let mut others: Vec<String> = Vec::new();
         walk(pages_dir, pages_dir, &mut found, &mut others)
@@ -109,15 +108,18 @@ impl Site {
                 .then_with(|| suffix_rank(&left.source).cmp(&suffix_rank(&right.source)))
         });
 
+        let requested =
+            normalize(home).ok_or_else(|| "index 不能为空：它是首页的页键".to_string())?;
+        check_key(&requested)?;
+
         let mut site = Site {
             others,
             ..Site::default()
         };
-        for mut page in found {
+        for page in found {
             // 键最终会变成产物里的路径。先校验再算 `output` —— 文件名里带
             // `a\..\..\x` 这种写法时，拼出来的路径能跑到站点目录外面去。
             check_key(&page.key).map_err(|why| format!("{}：{why}", page.source.display()))?;
-            page.output = output_of(&page.key);
             let key = normalize(&page.key).unwrap_or_default();
             let at = site.pages.len();
             if site.by_key.contains_key(&key) {
@@ -130,7 +132,16 @@ impl Site {
             site.pages.push(page);
         }
 
-        debug!(pages = site.pages.len(), "扫到的页面");
+        let home_key = site
+            .by_key(&requested)
+            .map(|page| page.key.clone())
+            .ok_or_else(|| format!("mdpp.toml 的 index 指向「{home}」，但 pages 里没有这一页"))?;
+        site.home = home_key.clone();
+        for page in &mut site.pages {
+            page.output = output_of(&page.key, &site.home);
+        }
+
+        debug!(pages = site.pages.len(), home = %site.home, "扫到的页面");
         for duplicate in &site.duplicates {
             // warn 而不是 debug：两份同名页时后者永远不会被渲染，作者得知道
             tracing::debug!(page = %duplicate, "两页撞了同一个键，只渲染了先排到的那一页");
@@ -143,15 +154,33 @@ impl Site {
         &self.pages
     }
 
+    /// 首页的键（`mdpp.toml` 的 `index` 解析到的那一页）
+    pub fn home(&self) -> &str {
+        &self.home
+    }
+
+    /// 从 `from` 到 `to` 的站内相对地址（首页由 `self.home` 决定）
+    pub fn href(&self, from: &str, to: &str) -> String {
+        href(from, to, &self.home)
+    }
+
+    /// 从 `key` 这一页回站点资源的相对前缀
+    pub fn assets_href(&self, key: &str) -> String {
+        assets_href(key, &self.home)
+    }
+
     /// 往站点里加一页**不是从 `pages/` 扫出来的**页（目录页之类）。
     ///
     /// 键撞了现有的（或者撞了之前加进来的）就报错 —— 生成页不该默默
     /// 盖住作者自己写的那一页。
     pub fn insert(&mut self, mut page: Page) -> Result<(), String> {
+        if self.home.is_empty() {
+            return Err("站点还没有首页 —— 先用 index 指一页".to_string());
+        }
         // 生成页的键来自 `mdpp.toml` 的 `toc`，同样是配置里的一行字，
         // 同样不能让它把产物写到站点目录外面。
         check_key(&page.key)?;
-        page.output = output_of(&page.key);
+        page.output = output_of(&page.key, &self.home);
         let key = normalize(&page.key).unwrap_or_default();
         if self.by_key.contains_key(&key) {
             return Err(format!(
@@ -238,7 +267,7 @@ fn walk(
         }
         match key_of(root, &path) {
             Some(key) => into.push(Page {
-                output: output_of(&key),
+                output: PathBuf::new(),
                 source: path,
                 key,
             }),

@@ -7,7 +7,7 @@
 //! 时就该说，而默默用默认值的后果是「目录是空的」这种很难查的现象。
 //!
 //! 字段分三类：
-//! - **必填**：`site_name`、`pages_dir`、`templates_dir`、`build_dir`，都不允许空串；
+//! - **必填**：`site_name`、`pages_dir`、`templates_dir`、`build_dir`、`index`，都不允许空串；
 //! - **可选**：`site_description`、`lang`、`base_url`、`repo_url`、`favicon`、`logo`、`footer`、`override_dir`，
 //!   不填写或写空串都等于不提供，各自的功能也就没有；
 //! - **有默认值**：`theme` 默认 `system`，`theme_color` 默认 `#2f6fd0`，
@@ -82,6 +82,10 @@ pub struct Config {
 
     /// 站点输出文件夹（必填）：`mdpp build` 写在这里。
     pub build_dir: PathBuf,
+
+    /// 首页的页键（必填）：这一页会落在站点根的 `index.html`，
+    /// 别的页靠 `[[键]]` 指回来。它必须是 `pages_dir` 里真实存在的一页。
+    pub index: String,
 
     /// **覆盖层目录**：build 完成后，把这个目录里的东西原样拷到产物里。
     /// 重复就覆盖 —— 可以往里放 `CNAME`、自定义 `robots.txt`、把某页换成手写的 HTML……
@@ -199,6 +203,7 @@ impl Default for Config {
             templates_dir: default_templates_dir(),
             max_template_depth: default_max_template_depth(),
             build_dir: default_site_dir(),
+            index: default_index(),
             override_dir: None,
             theme: default_theme(),
             theme_color: default_theme_color(),
@@ -224,6 +229,10 @@ fn default_templates_dir() -> PathBuf {
 
 fn default_site_dir() -> PathBuf {
     PathBuf::from("build")
+}
+
+fn default_index() -> String {
+    "index".to_string()
 }
 
 fn default_max_template_depth() -> usize {
@@ -344,6 +353,11 @@ impl Config {
         if self.build_dir.as_os_str().is_empty() {
             return Err("build_dir 不能为空".to_string());
         }
+        if self.index.trim().is_empty() {
+            return Err("index 不能为空：它是首页的页键".to_string());
+        }
+        crate::project::site::check_key(self.index.trim())
+            .map_err(|why| format!("index：{why}"))?;
         if self.max_template_depth == 0 {
             return Err("max_template_depth 至少是 1".to_string());
         }
@@ -474,6 +488,7 @@ mod tests {
         assert_eq!(config.pages_dir, PathBuf::from("pages"));
         assert_eq!(config.templates_dir, PathBuf::from("templates"));
         assert_eq!(config.build_dir, PathBuf::from("build"));
+        assert_eq!(config.index, "index");
         assert_eq!(config.max_template_depth, 64);
         assert_eq!(config.theme, "system");
         assert_eq!(config.theme_color, "#2f6fd0");
@@ -486,8 +501,7 @@ mod tests {
     /// 模板嵌套上限默认 64；写 0 是配置错误，不是「不限制」
     #[test]
     fn max_template_depth_defaults_to_64_and_refuses_zero() {
-        let base =
-            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n";
+        let base = "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"index\"\n";
         let mut config: Config = toml::from_str(base).expect("能解析");
         config.normalize();
         config.check().expect("默认值该是好配置");
@@ -500,7 +514,33 @@ mod tests {
         assert!(error.contains("max_template_depth"), "{error}");
     }
 
-    /// 空文件不再是合法配置：四个必填项缺失，解析时就该说
+    /// 首页的键是必填项，也得是个能落到产物里的页面键
+    #[test]
+    fn index_is_required_and_checked() {
+        let base =
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n";
+        let error = toml::from_str::<Config>(base).expect_err("缺 index 该报错");
+        assert!(error.to_string().contains("index"), "{error}");
+
+        for bad in ["", "../x", "a/../b"] {
+            let mut config: Config =
+                toml::from_str(&format!("{base}index = \"{bad}\"\n")).expect("结构上能解析");
+            config.normalize();
+            let error = config.check().expect_err("坏 index 该被拒绝");
+            assert!(
+                error.contains("index") || error.contains("页面键"),
+                "{error}"
+            );
+        }
+
+        let mut good: Config =
+            toml::from_str(&format!("{base}index = \"指南/首页\"\n")).expect("结构上能解析");
+        good.normalize();
+        good.check().expect("嵌套键该被接受");
+        assert_eq!(good.index, "指南/首页");
+    }
+
+    /// 空文件不再是合法配置：必填项缺失，解析时就该说
     #[test]
     fn an_empty_file_is_missing_required_fields() {
         let error = toml::from_str::<Config>("").expect_err("空的该报缺必填项");
@@ -515,25 +555,29 @@ mod tests {
         assert!(error.to_string().contains("page_dir"), "{error}");
     }
 
-    /// 四个必填项不能是空串 —— 空串等于不填写，而必填必须给
+    /// 五个必填项不能是空串 —— 空串等于不填写，而必填必须给
     #[test]
     fn required_fields_refuse_empty_strings() {
         for (field, text) in [
             (
                 "site_name",
-                "site_name = \"\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n",
+                "site_name = \"\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"index\"\n",
             ),
             (
                 "pages_dir",
-                "site_name = \"甲\"\npages_dir = \"\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n",
+                "site_name = \"甲\"\npages_dir = \"\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"index\"\n",
             ),
             (
                 "templates_dir",
-                "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"\"\nbuild_dir = \"b\"\n",
+                "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"\"\nbuild_dir = \"b\"\nindex = \"index\"\n",
             ),
             (
                 "build_dir",
-                "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"\"\n",
+                "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"\"\nindex = \"index\"\n",
+            ),
+            (
+                "index",
+                "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"\"\n",
             ),
         ] {
             let mut config: Config = toml::from_str(text).expect("结构上能解析");
@@ -547,7 +591,7 @@ mod tests {
     #[test]
     fn empty_optional_strings_become_none() {
         let mut config: Config = toml::from_str(
-            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nsite_description = \"\"\nlang = \"\"\nbase_url = \"\"\nrepo_url = \"\"\nfooter = \"\"\ntoc = \"\"\nfavicon = \"\"\nlogo = \"\"\noverride_dir = \"\"\n",
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"index\"\nsite_description = \"\"\nlang = \"\"\nbase_url = \"\"\nrepo_url = \"\"\nfooter = \"\"\ntoc = \"\"\nfavicon = \"\"\nlogo = \"\"\noverride_dir = \"\"\n",
         )
         .expect("能解析");
         config.normalize();
@@ -566,7 +610,7 @@ mod tests {
     #[test]
     fn theme_only_takes_system_light_or_dark() {
         let mut config: Config = toml::from_str(
-            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n",
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"index\"\n",
         )
         .expect("能解析");
         config.normalize();
@@ -587,7 +631,7 @@ mod tests {
     #[test]
     fn theme_color_defaults_and_only_takes_hex() {
         let mut config: Config = toml::from_str(
-            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n",
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"index\"\n",
         )
         .expect("能解析");
         config.normalize();
@@ -608,7 +652,7 @@ mod tests {
     #[test]
     fn base_url_takes_http_or_https() {
         let mut config: Config = toml::from_str(
-            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n",
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"index\"\n",
         )
         .expect("能解析");
         config.normalize();
@@ -635,6 +679,7 @@ site_name = "甲"
 pages_dir = "p"
 templates_dir = "t"
 build_dir = "b"
+index = "index"
 nav = ["首页", { "指南" = "指南/入门" }]
 "#,
         )
@@ -651,7 +696,7 @@ nav = ["首页", { "指南" = "指南/入门" }]
 
         // 单项表里写了两项 —— 解析得过（毕竟是个表），check 时该说
         let mut config: Config = toml::from_str(
-            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nnav = [{ \"甲\" = \"a\", \"乙\" = \"b\" }]\n",
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"index\"\nnav = [{ \"甲\" = \"a\", \"乙\" = \"b\" }]\n",
         )
         .expect("表里多少项都能解析");
         config.normalize();
@@ -659,7 +704,7 @@ nav = ["首页", { "指南" = "指南/入门" }]
 
         // 空显示文字也是配置错误
         let mut config: Config = toml::from_str(
-            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nnav = [\"   \"]\n",
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"index\"\nnav = [\"   \"]\n",
         )
         .expect("能解析");
         config.normalize();
@@ -675,6 +720,7 @@ site_name = "甲"
 pages_dir = "p"
 templates_dir = "t"
 build_dir = "b"
+index = "index"
 nav = [
   { label = "首页", page = "index" },
   { label = "指南", page = "指南/入门", overview = "总览", children = [
@@ -706,7 +752,7 @@ nav = [
 
         // 只有 label、既没有 page 也没有 children：它不会出现在任何地方
         let mut bad: Config = toml::from_str(
-            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nnav = [{ label = \"空\" }]\n",
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"index\"\nnav = [{ label = \"空\" }]\n",
         )
         .expect("能解析");
         bad.normalize();
@@ -714,7 +760,7 @@ nav = [
 
         // overview 只有 page + children 一起用时才成立
         let mut bad: Config = toml::from_str(
-            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nnav = [{ label = \"甲\", page = \"a\", overview = \"总览\" }]\n",
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"index\"\nnav = [{ label = \"甲\", page = \"a\", overview = \"总览\" }]\n",
         )
         .expect("能解析");
         bad.normalize();
@@ -722,7 +768,7 @@ nav = [
 
         // 空 page 也是错
         let mut bad: Config = toml::from_str(
-            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nnav = [{ label = \"甲\", page = \"   \" }]\n",
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"index\"\nnav = [{ label = \"甲\", page = \"   \" }]\n",
         )
         .expect("能解析");
         bad.normalize();
@@ -733,7 +779,7 @@ nav = [
     #[test]
     fn toc_defaults_to_none() {
         let mut config: Config = toml::from_str(
-            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\n",
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nindex = \"index\"\n",
         )
         .expect("能解析");
         config.normalize();

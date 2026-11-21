@@ -1,5 +1,5 @@
 use crate::project::config::NavEntry;
-use crate::project::site::{INDEX_KEY, Site, href, normalize};
+use crate::project::site::{Site, href, normalize};
 use crate::render::page;
 use crate::render::page::NavLink;
 
@@ -140,15 +140,15 @@ fn contains_target(list: &[ResolvedNav], key: &str) -> bool {
 ///
 /// 有子项的父项渲染成下拉菜单的标题，本身不落链接；如果它同时有 `target`，
 /// 就在子项开头补一个「概述」（可用 `overview` 改名），否则父页会从导航里消失。
-pub(super) fn nav_for(list: &[ResolvedNav], from: &str) -> Vec<NavLink> {
-    list.iter().map(|item| nav_link(item, from)).collect()
+pub(super) fn nav_for(list: &[ResolvedNav], from: &str, home: &str) -> Vec<NavLink> {
+    list.iter().map(|item| nav_link(item, from, home)).collect()
 }
 
-fn nav_link(item: &ResolvedNav, from: &str) -> NavLink {
+fn nav_link(item: &ResolvedNav, from: &str, home: &str) -> NavLink {
     let children: Vec<NavLink> = item
         .children
         .iter()
-        .map(|child| nav_link(child, from))
+        .map(|child| nav_link(child, from, home))
         .collect();
     let active = item.target.as_deref() == Some(from);
 
@@ -158,7 +158,7 @@ fn nav_link(item: &ResolvedNav, from: &str) -> NavLink {
             href: item
                 .target
                 .as_ref()
-                .map(|target| href(from, target))
+                .map(|target| href(from, target, home))
                 .unwrap_or_default(),
             active,
             children,
@@ -167,7 +167,7 @@ fn nav_link(item: &ResolvedNav, from: &str) -> NavLink {
 
     let mut children = children;
     if let Some(target) = &item.target {
-        let target_href = href(from, target);
+        let target_href = href(from, target, home);
         if !contains_href(&children, &target_href) {
             let label = item
                 .overview
@@ -206,7 +206,7 @@ fn contains_href(list: &[NavLink], href: &str) -> bool {
 pub(super) fn toc_body(site: &Site, site_name: &str, toc_key: &str) -> String {
     let mut items = String::new();
     for page in site.pages() {
-        let label = if page.key == INDEX_KEY {
+        let label = if page.key == site.home() {
             let name = site_name.trim();
             if name.is_empty() {
                 "首页".to_string()
@@ -218,7 +218,7 @@ pub(super) fn toc_body(site: &Site, site_name: &str, toc_key: &str) -> String {
         };
         items.push_str(&format!(
             "<li><a href=\"{}\">{}</a> <span class=\"mdpp-toc-page__path\">{}</span></li>\n",
-            page::escape(&href(toc_key, &page.key)),
+            page::escape(&href(toc_key, &page.key, site.home())),
             page::escape(&label),
             page::escape(&page.key),
         ));

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::support::url::encode_href;
 
-use super::{INDEX_KEY, PAGE_SUFFIXES};
+use super::PAGE_SUFFIXES;
 
 /// 砍掉末尾的页面后缀（带点，比大小写不敏感 —— 归一本来就要转小写）。
 /// 不是那两个之一就原样留着：`2.0.说明` 里的 `.说明` 不该被当成后缀砍掉
@@ -78,14 +78,14 @@ fn windows_reserved(segment: &str) -> bool {
 
 /// 输出文件：`<键>/index.html`。
 ///
-/// **首页是个例外**：`index` 落在 `build/index.html`，而不是
-/// `build/index/index.html` —— 后者会让站点根上多出一层没人访问得到的目录。
+/// **首页是个例外**：`mdpp.toml` 的 `index` 指的那一页落在 `build/index.html`，
+/// 而不是 `<键>/index.html` —— 后者会让站点根上多出一层没人访问得到的目录。
 ///
 /// 这里再挡一次 `.` / `..`：调用方应当先走 [`check_key`]，但拼路径这一步
 /// 是最后一道闸，不能只靠上游记得查。
-pub fn output_of(key: &str) -> PathBuf {
+pub fn output_of(key: &str, home: &str) -> PathBuf {
     let mut out = PathBuf::new();
-    if key != INDEX_KEY {
+    if key != home {
         for segment in key.split('/') {
             if segment.is_empty() || segment == "." || segment == ".." {
                 continue;
@@ -123,10 +123,10 @@ pub fn is_template_target(target: &str) -> bool {
 /// 与 [`href`] 同样要数层数：产物是目录式地址，`示例/` 里写 `assets/mdpp.css` 会解析到
 /// `/示例/assets/mdpp.css` —— 那里没有东西，于是**样式与脚本全丢，而且不报错**
 /// （页面照出得来，只是光着身子）。
-pub fn assets_href(key: &str) -> String {
+pub fn assets_href(key: &str, home: &str) -> String {
     format!(
         "{}{}",
-        "../".repeat(segments(key)),
+        "../".repeat(segments(key, home)),
         crate::render::page::ASSET_DIR
     )
 }
@@ -141,21 +141,21 @@ pub fn assets_href(key: &str) -> String {
 /// 从那儿回站点根要退三层。而首页落在站点根上（`build/index.html`，段数 0），退 0 层。
 ///
 /// 首页**不是**特例：`../` × 0 就是空串，空串在地址里指的是当前目录，正是首页自己。
-pub fn href(from: &str, to: &str) -> String {
-    // 首页不能走下面那条：它没有 `<根>/index/` 那个目录，退回去也只是回到它自己
-    if to == INDEX_KEY {
-        return root_href(from);
+pub fn href(from: &str, to: &str, home: &str) -> String {
+    // 首页不能走下面那条：它没有 `<根>/<键>/` 那个目录，退回去也只是回到它自己
+    if to == home {
+        return root_href(from, home);
     }
-    let mut out = "../".repeat(segments(from));
+    let mut out = "../".repeat(segments(from, home));
     out.push_str(&encode_href(to));
     out.push('/');
     out
 }
 
-/// 一个键有几段。首页（`index`）落在站点根上，**算 0 段** ——
-/// 它不是 `<根>/index/` 那个目录，而是 `<根>/index.html` 那个文件
-fn segments(key: &str) -> usize {
-    if key == INDEX_KEY {
+/// 一个键有几段。首页落在站点根上，**算 0 段** ——
+/// 它不是 `<根>/<键>/` 那个目录，而是 `<根>/index.html` 那个文件
+fn segments(key: &str, home: &str) -> usize {
+    if key == home {
         return 0;
     }
     key.split('/').filter(|one| !one.is_empty()).count()
@@ -165,8 +165,8 @@ fn segments(key: &str) -> usize {
 ///
 /// 首页给的是 `./` 而不是空串：空串在地址里指的是「当前目录」，可从 `/示例/` 出发
 /// 那指的是 `/示例/` 自己 —— 首页链接到自己，看着像坏了
-fn root_href(from: &str) -> String {
-    let depth = segments(from);
+fn root_href(from: &str, home: &str) -> String {
+    let depth = segments(from, home);
     if depth == 0 {
         return String::from("./");
     }

@@ -256,7 +256,7 @@ fn the_watched_paths_cover_everything_a_build_reads() {
     std::fs::write(project.root.join("assets/icon.svg"), "<svg/>").expect("写得下");
     std::fs::write(
             project.root.join("mdpp.toml"),
-            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\nextra_css = [\"我的.css\"]\nfavicon = \"assets/icon.svg\"\n",
+            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\nindex = \"index\"\nextra_css = [\"我的.css\"]\nfavicon = \"assets/icon.svg\"\n",
         )
         .expect("改得下");
 

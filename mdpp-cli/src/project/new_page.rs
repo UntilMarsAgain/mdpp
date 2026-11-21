@@ -53,17 +53,20 @@ fn create(project: &Project, options: &New) -> Result<(), String> {
         return Err(format!("{} 已经在了", shown(&path)));
     }
 
-    // 回首页那条只在**真有首页**时加 —— 指一个不存在的页就是一条红链
-    let home = if has_home_page(&pages) {
-        "\n\n[[index|回首页]]"
+    // 回首页那条只在**真有首页**时加 —— 指一个不存在的页就是一条红链。
+    // 首页的键来自 mdpp.toml 的 `index`，不再写死叫 `index` 的那一页。
+    let home_key = crate::project::site::normalize(&project.config.index)
+        .ok_or_else(|| "index 不能为空：它是首页的页键".to_string())?;
+    let home = if has_home_page(&pages, &home_key) {
+        format!("\n\n[[{home_key}|回首页]]")
     } else {
-        ""
+        String::new()
     };
     write_file(
         &path,
         &SKELETON
             .replace("{{title}}", &title)
-            .replace("{{home}}", home),
+            .replace("{{home}}", &home),
     )?;
 
     info!("建了 {}", shown(&path));
@@ -83,23 +86,25 @@ fn check(name: &str) -> Result<String, String> {
 
 /// 键 → 源文件路径：`<页名>.mdpp`
 fn source_of(key: &str) -> PathBuf {
+    source_with(key, ".mdpp")
+}
+
+/// 键 → 带指定后缀的源文件路径。后缀是**追加**的，不是 `set_extension`：
+/// 页名最后一段自己带点时（`2.0`），`set_extension` 会把 `.0` 顶掉。
+fn source_with(key: &str, suffix: &str) -> PathBuf {
     let mut path = PathBuf::new();
     for segment in key.split('/') {
         path.push(segment);
     }
-    // **追加**后缀，而不是 `set_extension` —— 页名最后一段自己带点时（`2.0`），
-    // `set_extension("mdpp")` 会把 `.0` 顶掉：文件成了 `2.mdpp`，键跟着从 `2.0` 变成
-    // `2`，还会盖掉已经有的那一页。站点那边（`site::strip_suffix`）是认 `.mdpp`
-    // 这个后缀才砍，`2.0` 里的 `.0` 它原样留着 —— 两侧得对得上
-    path.as_mut_os_string().push(".mdpp");
+    path.as_mut_os_string().push(suffix);
     path
 }
 
-/// 首页在不在（`.md` 或 `.mdpp` 都算）
-fn has_home_page(pages: &Path) -> bool {
-    ["index.mdpp", "index.md"]
+/// 指定的首页在不在（`.md` 或 `.mdpp` 都算）
+fn has_home_page(pages: &Path, key: &str) -> bool {
+    [".mdpp", ".md"]
         .iter()
-        .any(|name| pages.join(name).is_file())
+        .any(|suffix| pages.join(source_with(key, suffix)).is_file())
 }
 
 #[cfg(test)]
@@ -143,7 +148,7 @@ mod tests {
         let text = std::fs::read_to_string(&path).expect("读得动");
         assert!(text.starts_with("# 入门"), "{text}");
 
-        let site = Site::collect(&project.pages_dir()).expect("扫得动");
+        let site = Site::collect(&project.pages_dir(), &project.config.index).expect("扫得动");
         assert!(site.by_key("指南/入门").is_some(), "{:?}", site.pages());
     }
 
@@ -159,7 +164,7 @@ mod tests {
         assert!(path.is_file(), "没建出 {}", path.display());
 
         // 键也还是 `2.0` —— 与站点扫描那边（`strip_suffix` 只认 `.mdpp`）对得上
-        let site = Site::collect(&project.pages_dir()).expect("扫得动");
+        let site = Site::collect(&project.pages_dir(), &project.config.index).expect("扫得动");
         assert!(site.by_key("2.0").is_some(), "{:?}", site.pages());
     }
 
@@ -247,7 +252,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         std::fs::write(
             dir.path().join("mdpp.toml"),
-            "site_name = \"甲\"\npages_dir = \"根本没有这个\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
+            "site_name = \"甲\"\npages_dir = \"根本没有这个\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\nindex = \"index\"\n",
         )
         .expect("写得下");
         let project = Project::load(dir.path()).expect("读得动");

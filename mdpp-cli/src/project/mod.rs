@@ -281,7 +281,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         std::fs::write(
             dir.path().join("mdpp.toml"),
-            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
+            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\nindex = \"index\"\n",
         )
         .expect("写得下");
         let deep = dir.path().join("pages").join("指南");
@@ -312,7 +312,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         std::fs::write(
             dir.path().join("mdpp.toml"),
-            "site_name = \"甲\"\npages_dir = \"正文\"\ntemplates_dir = \"模板\"\nbuild_dir = \"产物\"\n",
+            "site_name = \"甲\"\npages_dir = \"正文\"\ntemplates_dir = \"模板\"\nbuild_dir = \"产物\"\nindex = \"index\"\n",
         )
         .expect("写得下");
         let project = Project::load(dir.path()).expect("读得动");
@@ -328,7 +328,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         std::fs::write(
             dir.path().join("mdpp.toml"),
-            "site_name = \"\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
+            "site_name = \"\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\nindex = \"index\"\n",
         )
         .expect("写得下");
         let error = Project::load(dir.path()).expect_err("空站点名该被拒绝");
@@ -336,7 +336,7 @@ mod tests {
 
         std::fs::write(
             dir.path().join("mdpp.toml"),
-            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
+            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\nindex = \"index\"\n",
         )
         .expect("写得下");
         assert_eq!(
@@ -379,7 +379,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         std::fs::write(
             dir.path().join("mdpp.toml"),
-            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
+            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\nindex = \"index\"\n",
         )
         .expect("写得下");
         let project = Project::load(dir.path()).expect("读得动");
@@ -402,7 +402,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         std::fs::write(
             dir.path().join("mdpp.toml"),
-            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
+            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\nindex = \"index\"\n",
         )
         .expect("写得下");
         std::fs::create_dir(dir.path().join("real")).expect("建得出");
@@ -422,7 +422,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         std::fs::write(
             dir.path().join("mdpp.toml"),
-            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\n",
+            "site_name = \"甲\"\npages_dir = \"pages\"\ntemplates_dir = \"templates\"\nbuild_dir = \"build\"\nindex = \"index\"\n",
         )
         .expect("写得下");
         let project = Project::load(dir.path()).expect("读得动");

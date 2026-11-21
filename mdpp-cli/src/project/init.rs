@@ -142,7 +142,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("造得出临时目录");
         init_at(dir.path(), None).expect("建得出");
         let project = crate::project::Project::load(dir.path()).expect("这是个项目");
-        let pages = Site::collect(&project.pages_dir()).expect("扫得动");
+        let pages = Site::collect(&project.pages_dir(), &project.config.index).expect("扫得动");
         assert!(!pages.pages().is_empty(), "骨架里至少该有一页");
 
         let templates =
