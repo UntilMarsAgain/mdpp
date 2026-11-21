@@ -28,10 +28,15 @@
 
 /* ---- 那一列 ---------------------------------------------------------- */
 
-/* 正文、顶栏内容、导航栏、页首页尾共用一列的宽度。窄屏上那一列就是整屏。 */
+/* 正文、顶栏内容、导航栏、页首页尾共用一列的宽度。
+ *
+ * `width: 100%` 让这一列跟着窗口收缩，`max-width` 只负责在宽屏上封顶；
+ * `box-sizing` 把左右内边距算进 100%，否则窄屏上 padding 会把页面撑出横向滚动。 */
 .mdpp-main,
 .mdpp-bar__inner,
 .mdpp-nav__inner {
+  box-sizing: border-box;
+  width: 100%;
   max-width: 1080px;
   margin-inline: auto;
 }
@@ -48,6 +53,8 @@
 .mdpp-main > .mdpp-content {
   width: 100%;
   min-width: 0;
+  /* 卡片自带左右 padding；width:100% 必须把 padding 算进盒子里，否则卡片右缘会顶出正文列，整页横向滚动 */
+  box-sizing: border-box;
 }
 
 /* 宽屏：侧边目录放到 1080px 正文框**外面**，正文不再为它让宽。
@@ -529,10 +536,12 @@ body {
 }
 
 .mdpp-foot__inner {
+  box-sizing: border-box;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.3rem 1rem;
+  width: 100%;
   max-width: 1080px;
   margin-inline: auto;
   padding: 1rem 1.5rem;

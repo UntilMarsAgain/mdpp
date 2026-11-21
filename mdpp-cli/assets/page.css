@@ -1,4 +1,4 @@
-/* 单文件整页的默认排版：浏览器 reset + 1080px 正文列。
+/* 单文件整页的默认排版：浏览器 reset + 上限 1080px、随窗口收缩的正文列。
  *
  * 只在 `render --full` 时与 `mdpp.css` 一起内联；站点模式由 `site.css`
  * 负责同样两件事。这里不写组件样式，配色仍来自 `mdpp.css` 的变量。
@@ -21,6 +21,7 @@ body {
 }
 
 .mdpp-main {
+  width: 100%;
   max-width: 1080px;
   margin-inline: auto;
   padding: 1.5rem 1.5rem 3rem;

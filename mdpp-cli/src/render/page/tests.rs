@@ -358,6 +358,22 @@ fn a_site_page_without_a_sidebar_renders_no_toc_container() {
     assert!(!html.contains(r#"class="mdpp-toc"#), "{html}");
 }
 
+/// 卡片自己有左右内边距；`width: 100%` 必须把内边距算进盒子，
+/// 否则卡片右缘会顶出正文列，整页出现横向滚动条。
+#[test]
+fn the_content_card_counts_its_own_padding() {
+    let css = asset(SITE_CSS);
+    let start = css
+        .find(".mdpp-main > .mdpp-content {")
+        .expect("正文卡片的规则还在");
+    let end = start + css[start..].find('}').expect("正文卡片的规则没有结束");
+    let block = &css[start..end];
+    assert!(
+        block.contains("box-sizing: border-box"),
+        "正文卡片没有把 padding 算进 100% 宽度，窄屏会横向溢出：\n{block}"
+    );
+}
+
 /// 版面那一半：宽屏时目录与正文并排，窄屏时改成一列
 #[test]
 fn the_site_shell_lays_the_sidebar_beside_the_article() {
@@ -847,7 +863,10 @@ fn the_page_has_no_body_margin_in_a_built_site() {
     assert!(css.contains("body {\n  margin: 0;\n}"), "{css}");
     let page_css = default_page_css();
     assert!(page_css.contains("body {\n  margin: 0;"), "{page_css}");
-    assert!(page_css.contains("max-width: 1080px"), "{page_css}");
+    assert!(
+        page_css.contains("width: 100%") && page_css.contains("max-width: 1080px"),
+        "整页正文列应当随窗口收缩，而不是写死宽度：{page_css}"
+    );
     // 同一块底上不该再切一刀：站点名那一行与导航之间没有那条线。
     // 导航现在为了给下拉菜单建层叠上下文而单独成块，但块里只许有定位，不许有颜色/线。
     let nav_at = css.find(".mdpp-nav {").expect("导航那块还在");

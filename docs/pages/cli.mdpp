@@ -1,0 +1,60 @@
+# CLI 参考
+
+::tip title=提示
+  * 如需了解CLI子命令，请查看[子命令](#子命令)章节。
+  * 如需了解站点配置文件，请查阅[[cli/mdpp.toml]]页面。
+
+**Markdown++** 提供完整了`mdpp`CLI命令以快速使用其功能。
+
+## 快速开始
+
+### 编译一份文档
+
+可以通过以下命令，将`example.mdpp`编译为`example.html`，其中带有完整的样式和功能。
+
+::code lang=shell
+  mdpp render example.mdpp -o example.html --full
+
+### 使用静态站点生成器
+
+1. 在切换到一个**空目录**后，使用以下命令可在当前目录创建一个站点模板：
+  ::code lang=shell
+    mdpp init
+2. 随后可使用`mdpp new`，或通过直接在`pages/`目录下创建文件，来添加一个新页面。
+   在站点根目录的`mdpp.toml`中，可对站点进行配置，方式参见[[cli/mdpp.toml]]。
+3. 在编辑过程中，可同时运行以下命令进行预览，它将在本地文件变化时自动刷新（但如果变化的文件是`mdpp.toml`则需手动重启）：
+  ::code lang=shell
+    mdpp serve
+4. 站点编辑完成后，可通过如下命令编译为可托管的静态站点，默认输出到`build/`。
+  ::code lang=shell
+    mdpp build
+
+## 全局说明
+
+这些说明对于所有子命令通用。
+
+### 全局选项
+
+| 选项 | 说明 |
+|---|---|
+| `-C, --dir <目录>` | 指定工作目录 |
+| `-d, --debug` | 启用DEBUG级别日志输出 |
+| `-h, --help` | 打印帮助 |
+| `-V, --version` | 打印版本 |
+
+### 返回值
+
+| 值 | 含义 |
+|---|---|
+| `0` | 成功 |
+| `1` | 运行期失败 |
+| `2` | 命令行用法错误 |
+
+## 子命令
+
+* [[cli/render|render]]：渲染单份文件
+* [[cli/init|init]]：新建站点
+* [[cli/new|new]]：在站点中新建页面
+* [[cli/serve|serve]]：预览站点
+* [[cli/build|build]]：编译站点
+* [[cli/repair|repair]]：修复站点页面模板

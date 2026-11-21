@@ -313,6 +313,14 @@ mod tests {
     #[test]
     fn the_script_listens_for_message() {
         assert!(
+            LIVE_RELOAD.starts_with(r#"new EventSource("#),
+            "脚本必须以 new EventSource( 开头：{LIVE_RELOAD}"
+        );
+        assert!(
+            !LIVE_RELOAD.contains("new.mdpp"),
+            "脚本里混进了别的文本：{LIVE_RELOAD}"
+        );
+        assert!(
             LIVE_RELOAD.contains(&format!("\"{EVENTS_PATH}\"")),
             "{LIVE_RELOAD}"
         );

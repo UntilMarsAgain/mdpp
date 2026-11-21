@@ -1,0 +1,62 @@
+# mdpp.toml
+
+::tip title=提示
+  关于TOML文件的语法，见[此处](https://toml.io/cn/)。
+
+站点模式配置，位置为站点根目录`mdpp.toml`中，
+其默认内容，可在[此处](https://github.com/UntilMarsAgain/mdpp/blob/main/mdpp-cli/site/mdpp.toml)查看。
+
+mdpp.toml的字段检查是严格的，未知字段将引起报错。
+
+## 字段
+
+对于mdpp.toml而言，不填写字段和填写空字符串均被认为没有提供相应字段。
+
+### 必填字段
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `site_name` | （CLI传入或目录名称） | 站点名，参见[[cli/init]] |
+| `pages_dir`| `pages` | 正文目录 |
+| `templates_dir`| `templates` | 模板目录 |
+| `build_dir` | `build` | 产物目录，参见[[cli/build]] |
+| `index` | `index` | 指定首页 |
+
+### 选填字段
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `site_description` | 无 | 将出现在`<meta name="description">`和站点顶部 |
+| `lang` | 无 | 将出现在`<html lang>`，如 `zh-Hans` |
+| `base_url` | 无 | 线上访问的基地址 |
+| `repo_url` | 无 | 仓库地址 |
+| `favicon` | 无 | 标签页图标，路径相对于根目录 |
+| `logo` | 无 | 顶栏站点名旁的图标，路径相对项目根 |
+| `footer` | 无 | 底栏文字；支持 Markdown，但要求渲染为行内内容 |
+| `override_dir` | 无 | 构建完成后原样覆盖进产物的目录 |
+| `theme` | `system` | `system` / `light` / `dark` |
+| `theme_color` | `#2f6fd0` | 顶栏主题色，格式为`#rgb` / `#rrggbb` |
+| `max_template_depth` | `64` | 模板嵌套上限，至少 1。 |
+| `extra_css` | `[]` | 额外 CSS 文件，按顺序接在默认样式后 |
+| `extra_js` | `[]` | 额外 JS 文件，按顺序接在默认脚本后 |
+| `nav` | `[]` | 顶栏导航 |
+| `toc` | 无 | 额外生成“页面清单”的页键；不填写则不生成 |
+
+## nav的格式
+
+格式如下：
+::code lang=toml
+  nav = [
+      { label = "首页", page = "index" },
+      { label = "指南", page = "指南/入门", overview = "总览", children = [
+          { label = "安装", page = "指南/安装" },
+          { label = "进阶", children = [
+              { label = "插件", page = "指南/插件" },
+          ] },
+      ] },
+  ]
+
+在不使用下拉菜单时可使用以下简化写法：
+
+::code lang=toml
+  nav=[{ "显示名" = "页的键" }]

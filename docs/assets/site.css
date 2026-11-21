@@ -28,10 +28,15 @@
 
 /* ---- 那一列 ---------------------------------------------------------- */
 
-/* 正文、顶栏内容、导航栏、页首页尾共用一列的宽度。窄屏上那一列就是整屏。 */
+/* 正文、顶栏内容、导航栏、页首页尾共用一列的宽度。
+ *
+ * `width: 100%` 让这一列跟着窗口收缩，`max-width` 只负责在宽屏上封顶；
+ * `box-sizing` 把左右内边距算进 100%，否则窄屏上 padding 会把页面撑出横向滚动。 */
 .mdpp-main,
 .mdpp-bar__inner,
 .mdpp-nav__inner {
+  box-sizing: border-box;
+  width: 100%;
   max-width: 1080px;
   margin-inline: auto;
 }
@@ -48,6 +53,8 @@
 .mdpp-main > .mdpp-content {
   width: 100%;
   min-width: 0;
+  /* 卡片自带左右 padding；width:100% 必须把 padding 算进盒子里，否则卡片右缘会顶出正文列，整页横向滚动 */
+  box-sizing: border-box;
 }
 
 /* 宽屏：侧边目录放到 1080px 正文框**外面**，正文不再为它让宽。
@@ -88,8 +95,8 @@
 /* ---- 顶栏 ------------------------------------------------------------- */
 
 /* 浏览器给 `body` 的默认 8px 外边距得抹掉：顶栏是**贴着窗口边**的那一条，缩一圈就
- * 在两边露出底色 —— 窗口越宽那圈越显眼。单文件页面那边故意不留这个 reset：
- * 那儿没有顶栏，这 8px 正好当页边距 */
+ * 在两边露出底色 —— 窗口越宽那圈越显眼。单文件整页同样抹掉，那一份由 page.css 管，
+ * 站点与单文件各自带自己的 reset，不互相借 */
 body {
   margin: 0;
 }
@@ -529,10 +536,12 @@ body {
 }
 
 .mdpp-foot__inner {
+  box-sizing: border-box;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.3rem 1rem;
+  width: 100%;
   max-width: 1080px;
   margin-inline: auto;
   padding: 1rem 1.5rem;

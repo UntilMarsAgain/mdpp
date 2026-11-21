@@ -10,6 +10,7 @@ pages_dir = "pages"
 templates_dir = "templates"
 max_template_depth = 64
 build_dir = "build"
+index = "index"
 # override_dir = "override"
 theme = "system"
 theme_color = "#2f6fd0"
@@ -19,6 +20,7 @@ theme_color = "#2f6fd0"
 nav = [
     { label = "首页", page = "index" },
     { label = "语法", page = "grammar" },
+    { label = "CLI", page = "cli" },
     { label = "更多", children = [
         { label = "站点", children = [
             { label = "所有页面", page = "所有页面" },
