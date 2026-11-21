@@ -59,8 +59,10 @@ theme_color = "#2f6fd0"
 # extra_css = []
 # extra_js = []
 
-# 导航栏
-# nav = ["首页", { "指南" = "指南/入门" }]
+# 导航栏：字符串 / 旧写法单项表 / 带 children 的下拉菜单
+# nav = ["首页", { label = "指南", page = "指南/入门", children = [
+#   { label = "安装", page = "指南/安装" },
+# ] }]
 
 # 目录页在导航栏的显示名
 # 不提供则不生成

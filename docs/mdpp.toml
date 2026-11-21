@@ -17,8 +17,13 @@ theme_color = "#2f6fd0"
 # extra_js = []
 
 nav = [
-    { "首页" = "index" },
-    { "语法" = "grammar" }
+    { label = "首页", page = "index" },
+    { label = "语法", page = "grammar" },
+    { label = "更多", children = [
+        { label = "站点", children = [
+            { label = "所有页面", page = "所有页面" },
+        ] },
+    ] },
 ]
 
 toc = "所有页面"

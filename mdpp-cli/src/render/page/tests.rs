@@ -62,6 +62,22 @@ fn the_script_binds_the_navbox_toggle_too() {
     assert!(js.contains("data-mdpp-label-hide"), "{js}");
 }
 
+/// 主题开关的选择要跨刷新记住：脚本里得有 localStorage 的读写与按钮绑定。
+#[test]
+fn the_script_persists_the_theme_choice() {
+    let js = default_js();
+    for needle in [
+        "THEME_KEY",
+        "mdpp-theme",
+        "localStorage",
+        "data-mdpp-theme-toggle",
+        "applyStoredTheme",
+        "bindThemeToggles",
+    ] {
+        assert!(js.contains(needle), "脚本里少了 {needle}");
+    }
+}
+
 /// 公开的变体运行时：页面脚本可以读环境、跑/标记资源、监听切换
 #[test]
 fn the_script_exposes_the_variant_runtime() {
@@ -148,7 +164,7 @@ fn the_title_is_escaped_into_the_attribute() {
         html.contains("<title>a&quot;b&amp;c&lt;d</title>"),
         "{html}"
     );
-    assert!(!html.contains("<d"), "{html}");
+    assert!(!html.contains("b&c<d"), "{html}");
 }
 
 /// 不在白名单里的字符串**进不了属性** —— 引号挂 `onload` 那种写法现在连机会都没有：
@@ -184,6 +200,41 @@ fn system_theme_leaves_the_html_element_without_an_attribute() {
         html_tag(&pinned),
         r#"<html lang="zh-Hans" data-mdpp-theme="light">"#,
         "钉死的那个该照旧"
+    );
+}
+
+/// 只有把主题交给 `system` 的站点才生成开关；钉死 light/dark 的站点没有可切的东西。
+/// 按钮本身不改变 `<html>` 上的属性 —— 那是 `mdpp.js` 在点击/恢复存储时做的。
+#[test]
+fn only_the_system_theme_gets_a_toggle() {
+    let system = document(&Page {
+        theme: Some("system"),
+        ..site_page("x")
+    });
+    assert!(system.contains("class=\"mdpp-theme-toggle\""), "{system}");
+    assert!(system.contains("data-mdpp-theme-toggle"), "{system}");
+    assert!(system.contains("aria-label=\"切换深浅色主题\""), "{system}");
+    assert!(!html_tag(&system).contains("data-mdpp-theme="), "{system}");
+
+    for theme in [None, Some("light"), Some("dark")] {
+        let html = document(&Page {
+            theme,
+            ..site_page("x")
+        });
+        assert!(
+            !html.contains("data-mdpp-theme-toggle"),
+            "只有 system 该有开关：{theme:?}"
+        );
+    }
+
+    // 单文件 `--full` 不带 `site.css`，按钮的样式不在那儿；站点外壳才生成开关。
+    let inline = document(&Page {
+        theme: Some("system"),
+        ..page("x", Assets::Inline)
+    });
+    assert!(
+        !inline.contains("<button class=\"mdpp-theme-toggle\""),
+        "单文件页面没有站点外壳，不该生成开关"
     );
 }
 
@@ -399,11 +450,13 @@ fn the_nav_bar_gives_every_item_the_same_class_and_only_marks_the_current_one() 
                     label: "首页".to_string(),
                     href: "./".to_string(),
                     active: true,
+                    children: Vec::new(),
                 },
                 NavLink {
                     label: "指南".to_string(),
                     href: "指南/".to_string(),
                     active: false,
+                    children: Vec::new(),
                 },
             ],
             ..Chrome::default()
@@ -438,6 +491,74 @@ fn the_nav_bar_gives_every_item_the_same_class_and_only_marks_the_current_one() 
     assert!(!plain.contains("mdpp-nav__link"), "{plain}");
 }
 
+/// 有子项的导航渲染成 `<details>` 下拉；父项不落链接，多级菜单递归套 `<ul>`
+#[test]
+fn the_nav_bar_renders_dropdowns_and_nested_menus() {
+    let html = document(&Page {
+        chrome: Chrome {
+            name: "某站点".to_string(),
+            nav: vec![NavLink {
+                label: "指南".to_string(),
+                href: String::new(),
+                active: false,
+                children: vec![
+                    NavLink {
+                        label: "总览".to_string(),
+                        href: "./".to_string(),
+                        active: true,
+                        children: Vec::new(),
+                    },
+                    NavLink {
+                        label: "进阶".to_string(),
+                        href: String::new(),
+                        active: false,
+                        children: vec![NavLink {
+                            label: "插件".to_string(),
+                            href: "进阶/插件/".to_string(),
+                            active: false,
+                            children: Vec::new(),
+                        }],
+                    },
+                ],
+            }],
+            ..Chrome::default()
+        },
+        ..site_page("x")
+    });
+    assert!(
+        html.contains("<nav class=\"mdpp-nav\" aria-label=\"主导航\">"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<div class=\"mdpp-nav__inner\">\n<ul class=\"mdpp-nav__list\">"),
+        "{html}"
+    );
+    assert!(
+        html.contains("<details class=\"mdpp-nav__details\">"),
+        "{html}"
+    );
+    assert!(
+        html.contains("mdpp-nav__link mdpp-nav__summary\">指南<span class=\"mdpp-nav__chevron\""),
+        "{html}"
+    );
+    // 父项没有自己的链接；当前页落在子项「总览」上
+    assert!(!html.contains("href=\"\">指南"), "{html}");
+    assert!(html.contains("aria-current=\"page\">总览"), "{html}");
+    assert!(html.contains("<ul class=\"mdpp-nav__menu\">"), "{html}");
+    // 两级菜单：两个 details，第二个在第一个的 menu 里
+    assert_eq!(
+        html.matches("<details class=\"mdpp-nav__details\">")
+            .count(),
+        2,
+        "{html}"
+    );
+    assert!(
+        html.contains("进阶<span class=\"mdpp-nav__chevron\""),
+        "{html}"
+    );
+    assert!(html.contains("href=\"进阶/插件/\""), "{html}");
+}
+
 /// 导航链接里的文字与地址都要转义 —— 配置是人写的，带引号/尖括号不该跑出来
 #[test]
 fn the_nav_bar_escapes_labels_and_hrefs() {
@@ -448,6 +569,7 @@ fn the_nav_bar_escapes_labels_and_hrefs() {
                 label: "a\"b<c".to_string(),
                 href: "x\"y>z/".to_string(),
                 active: false,
+                children: Vec::new(),
             }],
             ..Chrome::default()
         },
@@ -711,8 +833,14 @@ fn a_plain_markdown_table_gets_real_borders_from_the_stylesheet() {
 fn the_page_has_no_body_margin_in_a_built_site() {
     let css = asset(SITE_CSS);
     assert!(css.contains("body {\n  margin: 0;\n}"), "{css}");
-    // 同一块底上不该再切一刀：站点名那一行与导航之间没有那条线
-    assert!(!css.contains(".mdpp-nav {"), "导航那条不该再单独上色或画线");
+    // 同一块底上不该再切一刀：站点名那一行与导航之间没有那条线。
+    // 导航现在为了给下拉菜单建层叠上下文而单独成块，但块里只许有定位，不许有颜色/线。
+    let nav_at = css.find(".mdpp-nav {").expect("导航那块还在");
+    let nav_block: String = css[nav_at..].chars().take(100).collect();
+    assert!(
+        !nav_block.contains("background") && !nav_block.contains("border"),
+        "导航那条不该再单独上色或画线：\n{nav_block}"
+    );
     // 纸上要有留白：正文不能顶到纸边
     let print_at = css.find("@media print").expect("打印那一段");
     let print_css: String = css[print_at..].chars().take(900).collect();
@@ -821,9 +949,11 @@ fn the_script_is_embedded_and_does_the_minimum() {
     // 默认脚本多带一样（方向键、动画、记忆…）就有人得自己去拆，
     // 而拆一段别人的行为比不写要费劲
     assert!(!js.contains("ArrowRight"), "方向键不该由官方工具来定");
+    // 主题开关是站点配置明确要求的（`theme = "system"`）：记住选择属于官方行为，
+    // 不再算“多带”。钉死 light/dark 的站点没有开关，也就不会碰存储。
     assert!(
-        !js.contains("localStorage"),
-        "记住上次那栏不该由官方工具来定"
+        js.contains("localStorage"),
+        "system 主题开关要记住上次的选择"
     );
 }
 

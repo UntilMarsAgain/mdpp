@@ -113,11 +113,17 @@ pub struct Config {
 
     /// 导航栏：顶栏下面那一行链接，mkdocs 的 `nav` 那套写法。
     ///
-    /// 每一项要么是一个字符串（显示文字，指「全站唯一叫这个名字的页」），
-    /// 要么是一个单项表（显示文字 → 站内页的键）。例如：
+    /// 每一项可以是字符串（显示文字，指「全站唯一叫这个名字的页」）、
+    /// 旧写法单项表（显示文字 → 站内页的键），或带 `label`/`page`/`children`
+    /// 的表（下拉/多级菜单）。例如：
     ///
     /// ```toml
-    /// nav = ["首页", { "指南" = "指南/入门" }]
+    /// nav = [
+    ///   "首页",
+    ///   { label = "指南", page = "指南/入门", children = [
+    ///     { label = "安装", page = "指南/安装" },
+    ///   ] },
+    /// ]
     /// ```
     ///
     /// 站内页的键就是 `pages/` 下的路径（不带后缀）；`index` 是首页。
@@ -131,18 +137,48 @@ pub struct Config {
     pub toc: Option<String>,
 }
 
-/// 导航栏里的一项。两种写法：
+/// 导航栏里的一项。三种写法：
 ///
 /// - 纯字符串：`"首页"` —— 显示文字是「首页」，指全站**唯一**叫这个名字的页
 ///   （按 `[[名字]]` 那套规则找：键名、或全站唯一的文件名）；
-/// - 单项表：`{ "指南" = "指南/入门" }` —— 显示文字是「指南」，指 `pages/指南/入门`。
+/// - 表（可带子项）：
+///   ```toml
+///   { label = "指南", page = "指南/入门", children = [
+///     { label = "安装", page = "指南/安装" },
+///   ] }
+///   ```
+///   `page` 可省略，省略时只当下拉分组；`children` 可省略，省略时就是普通链接。
+///   `overview` 可覆盖父项自动补的「概述」子项文字；
+/// - 旧写法单项表：`{ "指南" = "指南/入门" }` —— 显示文字是「指南」，
+///   指 `pages/指南/入门`。仍然支持，但新配置建议用上面的 `label`/`page`。
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum NavEntry {
     /// 字符串：显示文字 = 站内页的名字（全站唯一）
     SameName(String),
-    /// 单项表：显示文字 → 站内页的键
+    /// 带 label/page/children 的表：下拉菜单与多级菜单
+    Node(NavNode),
+    /// 旧写法单项表：显示文字 → 站内页的键
     Named(BTreeMap<String, String>),
+}
+
+/// 一项带结构的导航。`label` 是必须的；`page` 是这一项自己指向的页；
+/// `children` 是下拉/多级子项。父项有 `page` 又有 `children` 时，渲染层会自动
+/// 在菜单顶部补一个「概述」链到父页，避免父页从导航里消失。
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct NavNode {
+    /// 显示文字
+    pub label: String,
+    /// 这一项指向的站内页键；省略表示它只是分组
+    #[serde(default)]
+    pub page: Option<String>,
+    /// 自动补的「概述」子项的文字；只在同时有 page 与 children 时有意义
+    #[serde(default)]
+    pub overview: Option<String>,
+    /// 下拉/多级子项
+    #[serde(default)]
+    pub children: Vec<NavEntry>,
 }
 
 /// `Default` 与 serde 的那些 `default = …` 是**同一批**函数 ——
@@ -343,29 +379,9 @@ impl Config {
                 ));
             }
         }
-        // 导航里每一项都得「看得懂」：单项表只能有一项，显示文字与键都不能是空的
-        for entry in &self.nav {
-            match entry {
-                NavEntry::SameName(label) => {
-                    if label.trim().is_empty() {
-                        return Err(
-                            "nav 里有一项是空的 —— 写 `{ \"首页\" = \"index\" }` 那样".to_string()
-                        );
-                    }
-                }
-                NavEntry::Named(map) => {
-                    if map.len() != 1 {
-                        return Err(format!(
-                            "nav 里的单项表只能写一项（显示文字 → 站内页的键），写成了 {map:?}"
-                        ));
-                    }
-                    let (label, key) = map.iter().next().expect("上面刚验过只有一项");
-                    if label.trim().is_empty() || key.trim().is_empty() {
-                        return Err(format!("nav 里的 {label:?} → {key:?} 有一头是空的"));
-                    }
-                }
-            }
-        }
+        // 导航里每一项都得「看得懂」：空文字、空 page、既无 page 又无 children
+        // 都会被导航渲染吞掉，报错该在这里而不是等到站点少一项
+        check_nav(&self.nav)?;
         // 目录页的键也会变成产物路径；在这里先说，不要等到 build 到一半
         if let Some(toc) = self
             .toc
@@ -377,6 +393,61 @@ impl Config {
         }
         Ok(())
     }
+}
+
+/// 递归校验 `nav`：旧写法只验「一项、两头非空」，新写法还要验菜单结构。
+fn check_nav(entries: &[NavEntry]) -> Result<(), String> {
+    for entry in entries {
+        match entry {
+            NavEntry::SameName(label) => {
+                if label.trim().is_empty() {
+                    return Err(
+                        "nav 里有一项是空的 —— 写 `{ \"首页\" = \"index\" }` 那样".to_string()
+                    );
+                }
+            }
+            NavEntry::Named(map) => {
+                if map.len() != 1 {
+                    return Err(format!(
+                        "nav 里的单项表只能写一项（显示文字 → 站内页的键），写成了 {map:?}"
+                    ));
+                }
+                let (label, key) = map.iter().next().expect("上面刚验过只有一项");
+                if label.trim().is_empty() || key.trim().is_empty() {
+                    return Err(format!("nav 里的 {label:?} → {key:?} 有一头是空的"));
+                }
+            }
+            NavEntry::Node(node) => {
+                if node.label.trim().is_empty() {
+                    return Err("nav 里有一个菜单项没写 label".to_string());
+                }
+                if let Some(page) = &node.page
+                    && page.trim().is_empty()
+                {
+                    return Err(format!("nav 里的 {:?} 的 page 是空的", node.label));
+                }
+                if node.page.is_none() && node.children.is_empty() {
+                    return Err(format!(
+                        "nav 里的 {:?} 既没有 page 也没有 children —— 它不会指向任何页",
+                        node.label
+                    ));
+                }
+                if let Some(overview) = &node.overview {
+                    if node.page.is_none() || node.children.is_empty() {
+                        return Err(format!(
+                            "nav 里的 {:?} 的 overview 只能和 page 与 children 一起用",
+                            node.label
+                        ));
+                    }
+                    if overview.trim().is_empty() {
+                        return Err(format!("nav 里的 {:?} 的 overview 是空的", node.label));
+                    }
+                }
+                check_nav(&node.children)?;
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -593,6 +664,69 @@ nav = ["首页", { "指南" = "指南/入门" }]
         .expect("能解析");
         config.normalize();
         assert!(config.check().is_err());
+    }
+
+    /// 新写法：下拉/多级菜单；结构错误在 check 时就该说
+    #[test]
+    fn nav_accepts_nested_menus_and_checks_their_shape() {
+        let config: Config = toml::from_str(
+            r#"
+site_name = "甲"
+pages_dir = "p"
+templates_dir = "t"
+build_dir = "b"
+nav = [
+  { label = "首页", page = "index" },
+  { label = "指南", page = "指南/入门", overview = "总览", children = [
+    { label = "安装", page = "指南/安装" },
+    { label = "进阶", children = [
+      { label = "插件", page = "指南/插件" },
+    ] },
+  ] },
+]
+"#,
+        )
+        .expect("该解析得动");
+        assert!(config.check().is_ok(), "嵌套菜单该通过");
+        assert_eq!(config.nav.len(), 2);
+        let NavEntry::Node(guide) = &config.nav[1] else {
+            panic!("第二项该是菜单节点");
+        };
+        assert_eq!(guide.label, "指南");
+        assert_eq!(guide.page.as_deref(), Some("指南/入门"));
+        assert_eq!(guide.overview.as_deref(), Some("总览"));
+        assert_eq!(guide.children.len(), 2);
+        let NavEntry::Node(advanced) = &guide.children[1] else {
+            panic!("进阶该是子菜单节点");
+        };
+        let NavEntry::Node(plugin) = &advanced.children[0] else {
+            panic!("插件该是叶子节点");
+        };
+        assert_eq!(plugin.label, "插件");
+
+        // 只有 label、既没有 page 也没有 children：它不会出现在任何地方
+        let mut bad: Config = toml::from_str(
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nnav = [{ label = \"空\" }]\n",
+        )
+        .expect("能解析");
+        bad.normalize();
+        assert!(bad.check().is_err());
+
+        // overview 只有 page + children 一起用时才成立
+        let mut bad: Config = toml::from_str(
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nnav = [{ label = \"甲\", page = \"a\", overview = \"总览\" }]\n",
+        )
+        .expect("能解析");
+        bad.normalize();
+        assert!(bad.check().is_err());
+
+        // 空 page 也是错
+        let mut bad: Config = toml::from_str(
+            "site_name = \"甲\"\npages_dir = \"p\"\ntemplates_dir = \"t\"\nbuild_dir = \"b\"\nnav = [{ label = \"甲\", page = \"   \" }]\n",
+        )
+        .expect("能解析");
+        bad.normalize();
+        assert!(bad.check().is_err());
     }
 
     /// `toc` 不提供就不生成：默认 None

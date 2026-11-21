@@ -9,10 +9,11 @@
  *   2. 组状态与选项切换
  *   3. 延迟资源挂载
  *   4. 主题跟随
- *   5. navbox
- *   6. mermaid / KaTeX / highlight.js
- *   7. 公共 API
- *   8. 启动
+ *   5. 导航菜单
+ *   6. navbox
+ *   7. mermaid / KaTeX / highlight.js
+ *   8. 公共 API
+ *   9. 启动
  *
  * 两条不能省：
  * - **能重复跑**：同一段脚本可能被内联不止一次，所以每个容器先看有没有被打过标记；
@@ -24,6 +25,10 @@
 
   var PAGE_MARK = "data-mdpp-page-bound";
   var THEME_ATTR = "data-mdpp-theme";
+  var THEME_KEY = "mdpp-theme";
+  var THEME_TOGGLE_BOUND = "data-mdpp-theme-toggle-bound";
+  var NAV_MENU_BOUND = "data-mdpp-nav-menu-bound";
+  var NAV_DOC_BOUND = "data-mdpp-nav-doc-bound";
   var MOUNTED = "data-mdpp-mounted";
   var BOUND = "data-mdpp-group-bound";
 
@@ -353,6 +358,51 @@
     refreshAssets();
   }
 
+  /** localStorage 里记住的选择；没记住、没权限或值坏了都返回 null。 */
+  function storedTheme() {
+    try {
+      var value = window.localStorage.getItem(THEME_KEY);
+      return value === "light" || value === "dark" ? value : null;
+    } catch (err) {
+      // 隐私模式或站点被禁写时 localStorage 会抛异常：开关仍能用，只是记不住。
+      return null;
+    }
+  }
+
+  /** 站点把主题交给系统时（顶栏有开关），启动先恢复上次的选择。
+   * 钉死 light/dark 的站点没有开关，也就不该被这里的旧值改掉。 */
+  function applyStoredTheme() {
+    if (!document.querySelector("[data-mdpp-theme-toggle]")) {
+      return;
+    }
+    var value = storedTheme();
+    if (value) {
+      document.documentElement.setAttribute(THEME_ATTR, value);
+    }
+  }
+
+  /** 开关点击：在当前明暗的对面落一个显式属性，并写回 localStorage。
+   * 写属性会触发 MutationObserver，`refreshTheme()` 仍在这里先调一次，
+   * 免得观察器晚一拍时页面闪一下。 */
+  function bindThemeToggles() {
+    document.querySelectorAll("[data-mdpp-theme-toggle]").forEach(function (button) {
+      if (button.hasAttribute(THEME_TOGGLE_BOUND)) {
+        return;
+      }
+      button.setAttribute(THEME_TOGGLE_BOUND, "");
+      button.addEventListener("click", function () {
+        var next = currentTheme() === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute(THEME_ATTR, next);
+        try {
+          window.localStorage.setItem(THEME_KEY, next);
+        } catch (err) {
+          // 同上：记不住也不影响这一次切换。
+        }
+        refreshTheme();
+      });
+    });
+  }
+
   function bindThemeWatchers() {
     var html = document.documentElement;
     var observer = new MutationObserver(function (mutations) {
@@ -370,6 +420,77 @@
       var pinned = html.getAttribute(THEME_ATTR);
       if (pinned !== "light" && pinned !== "dark") {
         refreshTheme();
+      }
+    });
+  }
+
+  // ===== 5. 导航菜单 ==================================================
+
+  /** 关闭所有已展开的导航下拉；`except` 留给「刚打开的那个」自己。 */
+  function closeNavMenus(except) {
+    document.querySelectorAll(".mdpp-nav__details[open]").forEach(function (details) {
+      if (details !== except) {
+        details.open = false;
+      }
+    });
+  }
+
+  /** 原生 `<details>` 已经管开合与键盘；这里只补两件原生没有的事：
+   * 同一层只留一个展开项，以及点空白处 / Escape 收起。 */
+  function bindNavMenus(root) {
+    root.querySelectorAll(".mdpp-nav__details").forEach(function (details) {
+      if (details.hasAttribute(NAV_MENU_BOUND)) {
+        return;
+      }
+      details.setAttribute(NAV_MENU_BOUND, "");
+      details.addEventListener("toggle", function () {
+        if (!details.open) {
+          return;
+        }
+        var item = details.closest(".mdpp-nav__item--menu");
+        if (!item || !item.parentElement) {
+          return;
+        }
+        Array.prototype.forEach.call(item.parentElement.children, function (sibling) {
+          if (sibling === item) {
+            return;
+          }
+          Array.prototype.forEach.call(sibling.children, function (child) {
+            if (child.classList && child.classList.contains("mdpp-nav__details")) {
+              child.open = false;
+            }
+          });
+        });
+      });
+    });
+
+    if (document.documentElement.hasAttribute(NAV_DOC_BOUND)) {
+      return;
+    }
+    document.documentElement.setAttribute(NAV_DOC_BOUND, "");
+
+    document.addEventListener("click", function (event) {
+      var target = event.target;
+      if (target && target.closest && target.closest(".mdpp-nav")) {
+        return;
+      }
+      closeNavMenus(null);
+    });
+
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape") {
+        return;
+      }
+      var open = document.querySelectorAll(".mdpp-nav__details[open]");
+      if (!open.length) {
+        return;
+      }
+      var summary = open[0].querySelector(":scope > .mdpp-nav__summary");
+      open.forEach(function (details) {
+        details.open = false;
+      });
+      if (summary) {
+        summary.focus();
       }
     });
   }
@@ -605,8 +726,13 @@
   // ===== 8. 启动 ======================================================
 
   function bindAll(root) {
+    // 先恢复 localStorage 的选择，再扫描主题组：组初始化时读到的 currentTheme
+    // 已经是用户上次选的那一档，不会先按系统画一遍再跳。
+    applyStoredTheme();
+    bindNavMenus(root);
     root.querySelectorAll(".mdpp-navbox").forEach(bindNavbox);
     scanGroups(root);
+    bindThemeToggles();
     if (!document.documentElement.hasAttribute(PAGE_MARK)) {
       document.documentElement.setAttribute(PAGE_MARK, "");
       bindThemeWatchers();

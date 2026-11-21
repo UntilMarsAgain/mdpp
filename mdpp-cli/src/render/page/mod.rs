@@ -161,15 +161,18 @@ pub struct Chrome {
     pub nav: Vec<NavLink>,
 }
 
-/// 导航栏里的一个链接。
+/// 导航栏里的一项。没有 `children` 时是普通链接；有 `children` 时渲染成
+/// 下拉/多级菜单的标题（`href` 为空），子项递归。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NavLink {
     /// 显示文字
     pub label: String,
-    /// 相对**这一页**的地址（`../手册/` 那样）
+    /// 相对**这一页**的地址（`../手册/` 那样）；菜单标题为空
     pub href: String,
     /// 这一项是不是当前页 —— 只落 `aria-current="page"`，**不改样式**
     pub active: bool,
+    /// 下拉/多级子项；空表示这一项是叶子链接
+    pub children: Vec<NavLink>,
 }
 
 /// 这一页的绝对地址（`<link rel="canonical">`）。没配 `site_url` 就是 `None`
@@ -360,7 +363,13 @@ pub fn document_with_template(page: &Page, template: &str) -> String {
             ("icons", &icons(page.favicon)),
             ("meta", &meta(&page.chrome, &page.canonical)),
             ("scripts", &scripts),
-            ("bar", &top_bar(&page.chrome)),
+            (
+                "bar",
+                &top_bar(
+                    &page.chrome,
+                    page.theme == Some("system") && matches!(page.assets, Assets::Linked(_)),
+                ),
+            ),
             ("toc", toc),
             ("foot", &bottom_bar(&page.chrome)),
             // 正文排最后：它是 HTML，不该被当成还能填占位符的模板

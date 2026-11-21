@@ -37,6 +37,7 @@ mod disclose;
 mod each;
 mod embeds;
 mod guard;
+mod ignore_heading;
 mod include;
 mod inline;
 mod media;
@@ -55,6 +56,7 @@ use disclose::render_disclose;
 use each::render_each;
 use embeds::{render_code, render_css, render_html, render_js, render_math, render_mermaid};
 use guard::render_guard;
+use ignore_heading::render_ignore_heading;
 use include::{render_includeonly, render_noinclude};
 use inline::render_inline;
 use media::{render_audio, render_image, render_video};
@@ -94,6 +96,7 @@ pub const NAMES: &[&str] = &[
     "element",
     "guard",
     "if",
+    "ignore-heading",
     "includeonly",
     "inline",
     "noinclude",
@@ -121,6 +124,11 @@ pub fn register(registry: &mut BlockRegistry) {
         .register(spec("each", ContentMode::Sections, render_each))
         .register(spec("element", ContentMode::Markdown, render_element))
         .register(spec("guard", ContentMode::Markdown, render_guard))
+        .register(spec(
+            "ignore-heading",
+            ContentMode::Markdown,
+            render_ignore_heading,
+        ))
         .register(spec("if", ContentMode::Sections, render_if))
         .register(spec(
             "includeonly",

@@ -1,7 +1,7 @@
 use crate::support::color::Color;
 
 use super::text::escape;
-use super::{Canonical, Chrome};
+use super::{Canonical, Chrome, NavLink};
 
 /// 标签页上那个小图标。没有就一整行都没有 —— 浏览器自己会画一个
 pub(super) fn icons(favicon: Option<&str>) -> String {
@@ -72,15 +72,19 @@ pub(super) fn bar_color_style(color: Option<Color>) -> String {
     )
 }
 
-/// 顶上那一条。**站点名空且没有导航就没有顶栏** —— 判据是内容而不是「用哪种资源」，
-/// 于是 `render --full` 那条路不必额外知道自己「不是站点」。
-pub(super) fn top_bar(chrome: &Chrome) -> String {
+/// 顶上那一条。**站点名空且没有导航也没有主题开关就没有顶栏** —— 判据是内容而不是
+/// 「用哪种资源」，于是 `render --full` 那条路不必额外知道自己「不是站点」。
+///
+/// `theme_system` 为真时顶栏右端多一个主题开关。只有站点把主题交给系统时它才出现：
+/// 钉死 `light` / `dark` 的站点没有可切的东西，按钮摆在那儿只会让人以为坏了。
+pub(super) fn top_bar(chrome: &Chrome, theme_system: bool) -> String {
     let name = chrome.name.trim();
     let has_nav = !chrome.nav.is_empty();
-    if name.is_empty() && !has_nav {
+    if name.is_empty() && !has_nav && !theme_system {
         return String::new();
     }
     let mut inner = String::new();
+    let mut actions = String::new();
     if !name.is_empty() {
         // 图标与站点名**合成一组**（`.mdpp-bar__brand`）：flex 按基线对齐时，一张图
         // 与一行字坐在同一条基线上才对得齐 —— 摊成两个 flex 项的话，图得单独调
@@ -109,11 +113,21 @@ pub(super) fn top_bar(chrome: &Chrome) -> String {
         }
         // 仓库链接：协议只认 http/https —— 配置里写个 `javascript:` 就点一下执行一段
         if let Some(url) = web_url(chrome.repo_url.trim()) {
-            inner.push_str(&format!(
-                "\n<a class=\"mdpp-bar__repo\" href=\"{}\" rel=\"noopener\">仓库</a>",
+            actions.push_str(&format!(
+                "<a class=\"mdpp-bar__repo\" href=\"{}\" rel=\"noopener\">仓库</a>",
                 escape(url)
             ));
         }
+    }
+    if theme_system {
+        // 顶栏右端是**一组**动作：给主题开关留位置，也让仓库链接与它共用一条
+        // 右对齐的槽。没有仓库链接时，开关自己也能被推到右边。
+        actions.push_str(theme_toggle());
+    }
+    if !actions.is_empty() {
+        inner.push_str(&format!(
+            "\n<span class=\"mdpp-bar__actions\">{actions}</span>"
+        ));
     }
     let top = if inner.is_empty() {
         String::new()
@@ -128,18 +142,43 @@ pub(super) fn top_bar(chrome: &Chrome) -> String {
     format!("<div class=\"mdpp-bar\">\n{top}{nav}</div>")
 }
 
-/// 导航栏：一行**同款的链接按钮**。没有链接就整行没有
+/// 顶栏右端的主题开关。**只在站点主题为 `system` 时生成**（调用方判）。
 ///
+/// 两个图标都不带文字：太阳/月亮用 CSS 的 `mask` 画，颜色跟着 `currentColor`
+/// 走；读屏软件读的是 `aria-label`。按钮本身不带行为，点击逻辑在 `mdpp.js` 里，
+/// 这样没有脚本时它至少不会假装能切。
+fn theme_toggle() -> &'static str {
+    "<button class=\"mdpp-theme-toggle\" type=\"button\" data-mdpp-theme-toggle \
+     aria-label=\"切换深浅色主题\" title=\"切换深浅色主题\">\
+     <span class=\"mdpp-theme-toggle__sun\" aria-hidden=\"true\"></span>\
+     <span class=\"mdpp-theme-toggle__moon\" aria-hidden=\"true\"></span>\
+     </button>"
+}
+
+/// 导航栏：顶层是 `ul`，叶子是链接，带子项的用原生 `<details>` 做下拉菜单。
+///
+/// 不用自定义 `div` + JS：`<details>` 自带开合、键盘与读屏语义，禁用 JS 也能用。
 /// 当前页那一个只多一个 `aria-current="page"` —— 那是回答读屏软件的「你在这儿」，
-/// **不带任何样式**，于是 `site.css` 里也就没有 `.mdpp-nav__link--active` 那条规则
+/// **不带任何样式**，于是 `site.css` 里也就没有 `.mdpp-nav__link--active` 那条规则。
+///
+/// 父项不落链接：它同时有页面和子项时，`nav_for` 已经在子项开头补了「概述」。
 pub(super) fn nav_bar(chrome: &Chrome) -> String {
     if chrome.nav.is_empty() {
         return String::new();
     }
-    let mut links = String::new();
+    let mut items = String::new();
     for item in &chrome.nav {
-        links.push_str(&format!(
-            "<a class=\"mdpp-nav__link\" href=\"{}\"{}>{}</a>",
+        nav_item(item, &mut items);
+    }
+    format!(
+        "<nav class=\"mdpp-nav\" aria-label=\"主导航\">\n<div class=\"mdpp-nav__inner\">\n<ul class=\"mdpp-nav__list\">\n{items}</ul>\n</div>\n</nav>"
+    )
+}
+
+fn nav_item(item: &NavLink, out: &mut String) {
+    if item.children.is_empty() {
+        out.push_str(&format!(
+            "<li class=\"mdpp-nav__item\"><a class=\"mdpp-nav__link\" href=\"{}\"{}>{}</a></li>\n",
             escape(&item.href),
             if item.active {
                 " aria-current=\"page\""
@@ -148,8 +187,22 @@ pub(super) fn nav_bar(chrome: &Chrome) -> String {
             },
             escape(&item.label),
         ));
+        return;
     }
-    format!("<nav class=\"mdpp-nav\">\n<div class=\"mdpp-nav__inner\">\n{links}\n</div>\n</nav>")
+
+    let mut children = String::new();
+    for child in &item.children {
+        nav_item(child, &mut children);
+    }
+    out.push_str(&format!(
+        "<li class=\"mdpp-nav__item mdpp-nav__item--menu\">\
+         <details class=\"mdpp-nav__details\">\
+         <summary class=\"mdpp-nav__link mdpp-nav__summary\">{}<span class=\"mdpp-nav__chevron\" aria-hidden=\"true\"></span></summary>\
+         <ul class=\"mdpp-nav__menu\">\n{children}</ul>\
+         </details>\
+         </li>\n",
+        escape(&item.label),
+    ));
 }
 
 /// 底下那一条。**没写 copyright 就没有底栏** —— 与 mkdocs 一个规矩：

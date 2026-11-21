@@ -1,12 +1,22 @@
 use super::*;
 
 use crate::cli::options::{Build, Init};
-use crate::project::config::NavEntry;
+use crate::project::config::{NavEntry, NavNode};
 use crate::project::site::{INDEX_KEY, output_of};
 
 use super::clean::staging_dir;
-use super::nav::{nav_for, resolve_nav, toc_body};
+use super::nav::{ResolvedNav, nav_for, resolve_nav, toc_body};
 use std::collections::BTreeMap;
+
+/// 测试里最常造的叶子项。
+fn leaf(label: &str, target: &str) -> ResolvedNav {
+    ResolvedNav {
+        label: label.to_string(),
+        target: Some(target.to_string()),
+        overview: None,
+        children: Vec::new(),
+    }
+}
 
 /// 临时目录名不跟产物目录名走：`build_dir` 可以是中文，但临时名字只用 ASCII
 #[test]
@@ -80,10 +90,10 @@ fn nav_resolves_against_the_site_and_appends_the_toc_button() {
     assert_eq!(
         resolved,
         vec![
-            ("手册".to_string(), "手册".to_string()),
-            ("指南".to_string(), "指南/入门".to_string()),
+            leaf("手册", "手册"),
+            leaf("指南", "指南/入门"),
             // 自动补上的目录按钮
-            ("目录".to_string(), "目录".to_string()),
+            leaf("目录", "目录"),
         ]
     );
 
@@ -125,10 +135,7 @@ fn nav_resolves_against_the_site_and_appends_the_toc_button() {
 /// 一页的导航：地址是相对那一页的，当前页只多一个 `aria-current`
 #[test]
 fn nav_for_marks_the_current_page_and_uses_relative_hrefs() {
-    let list = vec![
-        ("首页".to_string(), INDEX_KEY.to_string()),
-        ("手册".to_string(), "手册".to_string()),
-    ];
+    let list = vec![leaf("首页", INDEX_KEY), leaf("手册", "手册")];
     let on_manual = nav_for(&list, "手册");
     assert_eq!(on_manual.len(), 2);
     // 手册 → 首页：退一层到根
@@ -145,6 +152,92 @@ fn nav_for_marks_the_current_page_and_uses_relative_hrefs() {
     // 首页 → 手册：直接进目录
     assert_eq!(on_index[1].href, "手册/");
     assert!(!on_index[1].active);
+}
+
+/// 嵌套导航：父项有 page + children 时自动补「概述」，多级菜单也按树走
+#[test]
+fn nav_resolves_nested_menus_and_supplies_the_overview() {
+    let (_dir, site) = site_of(&[
+        "index.mdpp",
+        "指南/入门.mdpp",
+        "指南/安装.mdpp",
+        "指南/插件.mdpp",
+        "目录.mdpp",
+    ]);
+    let resolved = resolve_nav(
+        &[NavEntry::Node(NavNode {
+            label: "指南".to_string(),
+            page: Some("指南/入门".to_string()),
+            overview: Some("总览".to_string()),
+            children: vec![
+                NavEntry::Node(NavNode {
+                    label: "安装".to_string(),
+                    page: Some("指南/安装".to_string()),
+                    overview: None,
+                    children: Vec::new(),
+                }),
+                NavEntry::Node(NavNode {
+                    label: "进阶".to_string(),
+                    page: None,
+                    overview: None,
+                    children: vec![NavEntry::Node(NavNode {
+                        label: "插件".to_string(),
+                        page: Some("指南/插件".to_string()),
+                        overview: None,
+                        children: Vec::new(),
+                    })],
+                }),
+            ],
+        })],
+        "目录",
+        &site,
+    )
+    .expect("都指得到");
+    assert_eq!(resolved[0].label, "指南");
+    assert_eq!(resolved[0].target.as_deref(), Some("指南/入门"));
+    assert_eq!(resolved[0].overview.as_deref(), Some("总览"));
+    assert_eq!(resolved[0].children.len(), 2);
+    assert_eq!(resolved[0].children[1].children[0].label, "插件");
+    // 目录没在配置里出现，自动补在顶层末尾
+    assert_eq!(resolved.last().unwrap().label, "目录");
+
+    let on_intro = nav_for(&resolved, "指南/入门");
+    let guide = &on_intro[0];
+    assert_eq!(guide.href, "", "父项是菜单标题，不落链接");
+    assert!(!guide.active);
+    assert_eq!(guide.children[0].label, "总览");
+    assert!(guide.children[0].active, "当前页在「概述」子项上");
+    assert_eq!(guide.children[0].href, "../../指南/入门/");
+    assert_eq!(guide.children[1].href, "../../指南/安装/");
+    assert_eq!(guide.children[2].children[0].href, "../../指南/插件/");
+}
+
+/// 目录页已经藏在子菜单里时，不再在顶层补一个重复入口
+#[test]
+fn nav_finds_the_toc_page_at_any_depth() {
+    let (_dir, site) = site_of(&["index.mdpp", "目录.mdpp"]);
+    let resolved = resolve_nav(
+        &[NavEntry::Node(NavNode {
+            label: "更多".to_string(),
+            page: None,
+            overview: None,
+            children: vec![leaf_entry("全部页面", "目录")],
+        })],
+        "目录",
+        &site,
+    )
+    .expect("指得到");
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(resolved[0].children[0].target.as_deref(), Some("目录"));
+}
+
+fn leaf_entry(label: &str, target: &str) -> NavEntry {
+    NavEntry::Node(NavNode {
+        label: label.to_string(),
+        page: Some(target.to_string()),
+        overview: None,
+        children: Vec::new(),
+    })
 }
 
 /// 目录页的正文：每一页一个链接，首页显示站点名

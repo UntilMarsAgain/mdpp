@@ -186,6 +186,15 @@ fn outline_of(html: &str) -> Vec<Heading> {
     while let Some(node) = stack.pop() {
         let mut heading = 0;
         if let NodeData::Element { name, attrs, .. } = &node.data {
+            // `::ignore-heading` 给外层落的标记：整棵子树都不进大纲。目录是给
+            // 正文导航用的，提示框/卡片里的标题跟着正文走，但不该占目录条目。
+            if attrs
+                .borrow()
+                .iter()
+                .any(|attr| &*attr.name.local == "data-mdpp-no-outline")
+            {
+                continue;
+            }
             heading = match &*name.local {
                 "h1" => 1,
                 "h2" => 2,

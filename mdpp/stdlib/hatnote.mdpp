@@ -1,0 +1,81 @@
+::css
+  /* 页首/文中的提示条。默认外观是一条带边框的浅色横条：左侧圆形图标，
+   * 右侧标题与正文。颜色通过 `--mdpp-hatnote-accent` / `--mdpp-hatnote-bg`
+   * 两个变量进来；没给颜色时用主题的强调色与浅表面，深色主题下也跟着
+   * 变量走，不必为两套主题各写一份。 */
+  .mdpp-hatnote {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    margin: var(--mdpp-gap, 1em) 0;
+    padding: 0.85rem 1.05rem;
+    border: 1px solid color-mix(
+      in srgb,
+      var(--mdpp-hatnote-accent, var(--mdpp-accent, #2f6fed)) 42%,
+      var(--mdpp-border, #d8dce1)
+    );
+    border-radius: var(--mdpp-radius, 10px);
+    background: var(--mdpp-hatnote-bg, color-mix(
+      in srgb,
+      var(--mdpp-hatnote-accent, var(--mdpp-accent, #2f6fed)) 9%,
+      var(--mdpp-surface, #f6f7f9)
+    ));
+    color: var(--mdpp-hatnote-fg, var(--mdpp-text, #1f2328));
+    line-height: 1.65;
+  }
+
+  .mdpp-hatnote__icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    color: var(--mdpp-hatnote-accent, var(--mdpp-accent, #2f6fed));
+    font-size: 1.05rem;
+    line-height: 1;
+  }
+
+  .mdpp-hatnote__body {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .mdpp-hatnote__title {
+    margin: 0 0 0.15rem;
+    font-weight: 600;
+  }
+
+  .mdpp-hatnote__body > :first-child {
+    margin-top: 0;
+  }
+
+  .mdpp-hatnote__body > :last-child {
+    margin-bottom: 0;
+  }
+
+  @media print {
+    .mdpp-hatnote {
+      page-break-inside: avoid;
+    }
+  }
+
+::style-vars tag=div class="mdpp-hatnote {{?@class}}" --mdpp-hatnote-accent={{?@color}} --mdpp-hatnote-bg={{?@bg}}
+  ::element tag=span class=mdpp-hatnote__icon inline=on aria-hidden=true
+    ::if condition-exist={{@icon}}
+      [then]
+        {{?icon}}
+      [else]
+        ℹ
+  ::element tag=div class=mdpp-hatnote__body
+    ::if condition-exist={{@title}}
+      [then]
+        ::element tag=p class=mdpp-hatnote__title inline=on
+          {{?title}}
+    ::if condition-exist={{@body}}
+      [then]
+        {{body}}
+      [else]
+        ::problem name=hatnote why="正文是空的：::hatnote 要写点东西"

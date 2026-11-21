@@ -56,6 +56,41 @@ fn outline_includes_headings_from_nested_renders() {
     assert!(rendered.outline[1].id.is_some(), "{:?}", rendered.outline);
 }
 
+/// `::ignore-heading` 只把标题从大纲里摘掉，正文与标题节点都还在。
+#[test]
+fn ignored_headings_leave_the_outline_but_stay_in_the_html() {
+    let source = "# 页面\n\n::ignore-heading\n  ## 卡片标题\n\n## 正常小节\n";
+    let rendered = Mdpp::new().render_report(source, &crate::context::RenderContext::new());
+    let texts: Vec<&str> = rendered.outline.iter().map(|h| h.text.as_str()).collect();
+    assert_eq!(texts, vec!["页面", "正常小节"], "{}", rendered.html);
+    assert!(rendered.html.contains("卡片标题"), "{}", rendered.html);
+    assert!(
+        rendered.html.contains("data-mdpp-no-outline"),
+        "{}",
+        rendered.html
+    );
+    assert_eq!(rendered.title(), Some("页面"));
+}
+
+/// `hatnote` 是 mdpp 写的标准库模板：图标、标题、强调色与正文都要落到 HTML。
+#[test]
+fn hatnote_renders_icon_title_and_accent_color() {
+    let source = "::hatnote title=\"**近期动态**\" icon=🕒 color=#2563eb class=demo\n  内容可能会**快速更新**。\n";
+    let rendered = Mdpp::new().render_report(source, &crate::context::RenderContext::new());
+    let html = &rendered.html;
+    assert!(html.contains("mdpp-hatnote"), "{html}");
+    assert!(html.contains("class=\"mdpp-hatnote demo\""), "{html}");
+    assert!(html.contains("--mdpp-hatnote-accent: #2563eb"), "{html}");
+    assert!(html.contains("🕒"), "{html}");
+    assert!(html.contains("<strong>近期动态</strong>"), "{html}");
+    assert!(html.contains("快速更新"), "{html}");
+    assert_eq!(
+        rendered.problems,
+        crate::engine::Problems::default(),
+        "{rendered:?}"
+    );
+}
+
 /// 兜底：标题、强调这些最基本的记号还认得 —— 开关加了这么多，先看这里
 #[test]
 fn commonmark_is_there() {
